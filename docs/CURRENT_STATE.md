@@ -1,0 +1,303 @@
+# JevPip Current State
+
+更新日: 2026-09-19
+
+この文書は、JevPipの**現在の実装状態と次の作業境界**を短く把握するためのhandoffです。
+
+詳細な設計判断・経緯は [../DESIGN.md](../DESIGN.md) を参照してください。
+
+## 現在の役割
+
+JevPipはローカルで動くmarket research terminalです。
+
+現在の4本柱:
+
+1. Market Terminal
+2. Paper Broker
+3. Observer / Feature Lab
+4. Backtester
+
+Jevはoptionalなresearch / supervisor componentです。
+
+## 対応市場
+
+### 対円FX
+
+- USD/JPY
+- EUR/JPY
+- GBP/JPY
+- AUD/JPY
+- NZD/JPY
+- CAD/JPY
+- CHF/JPY
+- TRY/JPY
+- ZAR/JPY
+- MXN/JPY
+- HUF/JPY
+- SEK/JPY
+
+JPY quoteのため、現在のpaper accountingでそのまま扱えます。
+
+### BTC/JPY
+
+- GMO暗号資産Public ticker
+- historical KLine
+- paper LONG / synthetic SHORT
+- reference fee model
+
+## Live market / chart
+
+実装済み:
+
+- Public WebSocket ticker
+- historical chart backfill
+- 1min / 5min / 15min / 1hour
+- MA20 / MA200
+- 約180 candleを目安に時間足ごとにvisible rangeを変更
+- weekend / holiday fallback
+- sparse / failed dataでchartが白紙になりにくいguard
+- live MIDをhistorical chartへ接続
+
+## Paper strategies
+
+実装済み:
+
+- Momentum
+- RSI mean reversion
+- MA trend
+- Jev direct signal（research control）
+
+RSI / MA input:
+
+- tick
+- 5s closed bar
+- 15s closed bar
+- 1min closed bar
+- 5min closed bar
+
+PaperBroker:
+
+- real BID / ASK
+- configurable adverse slippage
+- instrument reference fee
+- TP / SL
+- max holding
+- cooldown
+- single position
+- net / gross PnL
+- PF
+- max DD
+- win rate
+- average trade / win / loss
+- exit reason aggregate
+
+## Deterministic supervisor
+
+state:
+
+- NORMAL
+- CAUTION
+- PAUSE_ENTRY
+- PAUSE_ALL
+
+現在のguard:
+
+- market closed
+- stale market timestamp
+- silent feed heartbeat
+- spread over limit
+- spread near limit
+
+code supervisorはriskを緩和しません。
+
+## Jev supervisor foundation
+
+実装済み:
+
+- fixed schema validator
+- allowlisted strategy
+- confidence
+- TTL
+- reason
+- deterministic supervisorとのsafe merge
+
+Jevはcode側の `PAUSE_ENTRY / PAUSE_ALL` を解除できません。
+
+Jev schemaには含めない:
+
+- arbitrary BUY / SELL order
+- quantity
+- TP / SL
+- leverage
+- arbitrary command / code
+
+未実装:
+
+- news / economic calendar / official event context
+- Jev supervisor live paper call
+- TTL expiration scheduling
+- A/B/C experiment harness
+
+## 3つの検証機能
+
+### Strategy BT
+
+historical 1min pointsをPaperBrokerへ流す。
+
+対応:
+
+- Momentum
+- RSI
+- MA
+
+比較:
+
+- strategy
+- No Trade
+- Buy & Hold
+
+制約:
+
+- 1min close-only execution
+- intrabar high / low orderは復元しない
+- BTCはhistorical BID / ASKがないため `bid = ask = close`
+- Jev direct historical BTは未対応
+
+### Raw tick strategy comparison
+
+保存済みraw tickを同条件で再生。
+
+比較:
+
+- No Trade
+- Buy & Hold
+- Momentum
+- RSI
+- MA
+
+deterministic supervisor ON/OFFとbar inputを切替可能。
+
+### Statistical replay
+
+historical 1min dataをFeature pipelineへ流し、次の1分のmove / edgeを調べる。
+
+strategy PnL backtestではない。
+
+## Private API / account
+
+実装済み:
+
+- FX account assets GET
+- USD/JPY open positions GET
+- read-only UI
+- shared GET rate limiter
+- 3秒cache
+
+未実装:
+
+- order POST
+- order cancel / replace
+- live position mutation
+- live trading
+
+`LIVE_TRADING=true` は起動時に拒否。
+
+## Known limitations
+
+- BTC historical backtestにhistorical spreadはない
+- strategy BTは1min close-only
+- raw tickは収集した日だけ高解像度replay可能
+- paper modelはdepth / partial fill / dynamic slippage / margin constraintsを完全再現しない
+- real account open position表示は現在USD/JPY中心
+- non-JPY FX accounting未実装
+- Jev external context未接続
+- UI custom strategy parametersは恒久保存しない
+- 複合entry / exit rule builder未実装
+
+## Open design/work items
+
+### Issue #3
+
+GMO FX scalp operation constraints.
+
+paper / read-only段階で実装済み:
+
+- cooldown
+- spread / fee / slippage
+- stale feed
+- market status gate
+- Private GET rate limiter
+
+live order導入まで保留:
+
+- POST limiter
+- idempotency
+- reconnect order/account synchronization
+- POST retry policy
+
+### Issue #4
+
+Technical strategy engine + Jev supervisor.
+
+実装済み:
+
+- strategy abstraction
+- Momentum / RSI / MA
+- deterministic supervisor
+- Jev supervisor bounded schema
+- raw tick comparison
+- historical strategy BT
+
+未実装:
+
+- external context research
+- Jev supervisor paper integration
+- A/B/C experiment harness
+
+### Issue #5
+
+Non-JPY FX pairs with historical cross-rate JPY accounting.
+
+未着手。
+
+## 次の大きなテーマ
+
+Jevを「相場方向を直接当てる主体」よりも、**code strategyが負けやすい局面を避けるsupervisor**として検証する。
+
+次の順序を推奨:
+
+1. Jevへ渡すfundamental / event contextを調査
+2. timestamp / provenance / look-ahead防止条件を設計
+3. deterministic supervisorをbaselineにする
+4. Jev supervisorをpaper-onlyで接続
+5. A: technical only
+6. B: technical + deterministic supervisor
+7. C: technical + Jev supervisor
+8. D: Jev direct signal control（research control）
+9. 同一market path / cost modelで比較
+
+主に見る指標:
+
+- net PnL
+- Profit Factor
+- max DD
+- average loss
+- fee / trade count
+- Jevが止めたtradeのcounterfactual result
+- avoided loss
+- missed profit
+
+目的は「Jevが未来を当てたか」だけではなく、**事故回避・regime selectionに価値があるか**を測ること。
+
+## 新しいチャットへ引き継ぐ場合
+
+最初に読むもの:
+
+1. README.md
+2. docs/CURRENT_STATE.md
+3. DESIGN.md の Section 26, 29
+4. GitHub Issue #4
+
+次の作業テーマ:
+
+> Jev supervisorへ渡すexternal contextの調査と、paper-only A/B/C experiment設計。
