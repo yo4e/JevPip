@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 import threading
 import webbrowser
 
 from jevpip.backtest.kline import replay_kline
+from jevpip.broker.comparison import compare_raw_file
+from jevpip.instruments import INSTRUMENTS, get_instrument
 from jevpip.config import (
     Settings,
     list_profiles,
@@ -19,7 +22,7 @@ from jevpip.signals import SignalPolicy
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="jevpip", description="JevPip USD/JPY 研究アプリ")
+    parser = argparse.ArgumentParser(prog="jevpip", description="JevPip ローカル市場研究ターミナル")
     sub = parser.add_subparsers(dest="command", required=True)
 
     ui = sub.add_parser("ui", help="日本語のローカルWeb UIを起動")
@@ -35,7 +38,8 @@ def _parser() -> argparse.ArgumentParser:
     signals.add_argument("action", choices=["list"])
     signals.add_argument("--config", type=Path)
 
-    obs = sub.add_parser("observe", help="GMOのUSD/JPYを観測してraw tickを保存")
+    obs = sub.add_parser("observe", help="GMO marketを観測してraw tickを保存")
+    obs.add_argument("--instrument", default="USD_JPY", choices=sorted(INSTRUMENTS))
     obs.add_argument("--profile", default="minimal")
     obs.add_argument("--feature-config", type=Path)
     obs.add_argument("--signal-policy", default="research_default")
@@ -48,13 +52,22 @@ def _parser() -> argparse.ArgumentParser:
     obs.add_argument("--jev-every", type=float, default=1.0, metavar="SECONDS")
     obs.add_argument("--max-ticks", type=int)
 
-    bt = sub.add_parser("backtest", help="GMO公式1分足を使う粗い履歴リプレイ")
+    bt = sub.add_parser("backtest", help="対円FXのGMO公式BID/ASK 1分足リプレイ")
+    bt.add_argument("--instrument", default="USD_JPY", choices=sorted(INSTRUMENTS))
     bt.add_argument("--date", required=True, help="YYYYMMDD (GMO FX KLine availabilityに従う)")
     bt.add_argument("--profile", default="technical")
     bt.add_argument("--feature-config", type=Path)
     bt.add_argument("--limit", type=int)
     bt.add_argument("--output", type=Path)
 
+    cmp = sub.add_parser("compare", help="保存済みraw tickでcode-only paper strategyを比較")
+    cmp.add_argument("--instrument", required=True, choices=sorted(INSTRUMENTS))
+    cmp.add_argument("--file", required=True, type=Path, help="raw tick JSONL")
+    cmp.add_argument("--strategies", default="momentum,rsi_mean_reversion,ma_trend")
+    cmp.add_argument("--initial-balance", type=float, default=100000.0)
+    cmp.add_argument("--size", type=float)
+    cmp.add_argument("--no-supervisor", action="store_true")
+    cmp.add_argument("--json", action="store_true", help="JSONで出力")
     return parser
 
 
@@ -104,8 +117,9 @@ def main(argv: list[str] | None = None) -> int:
             signal_policy = SignalPolicy.from_dict(raw_policy)
             print(f"signal={args.signal_policy}: {description}")
 
+        instrument = get_instrument(args.instrument)
         print(f"profile={args.profile}: {profile.get('description_ja', '')}")
-        print("接続先: GMO 外国為替FX Public WebSocket / USD_JPY")
+        print(f"instrument={instrument.display_symbol} market={instrument.market_kind}")
         asyncio.run(
             observe(
                 profile,
@@ -115,19 +129,59 @@ def main(argv: list[str] | None = None) -> int:
                 args.max_ticks,
                 signal_policy,
                 args.signal_policy if signal_policy else None,
+                instrument_id=args.instrument,
             )
         )
         return 0
 
     if args.command == "backtest":
+        instrument = get_instrument(args.instrument)
+        if instrument.market_kind != "fx" or instrument.quote_currency != "JPY":
+            raise SystemExit("backtest は現在、対円FXペアのみ対応しています")
         profile = load_profile(args.profile, args.feature_config)
-        output = args.output or settings.data_dir / "backtests" / f"{args.date}-{args.profile}.jsonl"
-        rows = replay_kline(args.date, profile, output=output, limit=args.limit)
-        print(f"replayed={len(rows)} profile={args.profile}")
+        output = args.output or settings.data_dir / "backtests" / f"{args.date}-{args.instrument}-{args.profile}.jsonl"
+        rows = replay_kline(
+            args.date,
+            profile,
+            output=output,
+            limit=args.limit,
+            instrument_id=args.instrument,
+        )
+        print(f"replayed={len(rows)} instrument={instrument.display_symbol} profile={args.profile}")
         print(f"saved={output}")
         print("注意: 1分足リプレイは5秒/30秒スキャルピング性能の検証には使えません。")
         return 0
 
+    if args.command == "compare":
+        strategies = tuple(x.strip() for x in args.strategies.split(",") if x.strip())
+        allowed = {"momentum", "rsi_mean_reversion", "ma_trend"}
+        unknown = sorted(set(strategies) - allowed)
+        if unknown:
+            raise SystemExit(f"compare未対応strategy: {', '.join(unknown)}")
+        results = compare_raw_file(
+            args.file,
+            instrument_id=args.instrument,
+            strategies=strategies,
+            initial_balance=args.initial_balance,
+            size=args.size,
+            supervisor=not args.no_supervisor,
+        )
+        if args.json:
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+            return 0
+
+        print(f"file={args.file} instrument={get_instrument(args.instrument).display_symbol}")
+        print("strategy              net_pnl       PF     maxDD   trades    win%      fees")
+        for name, row in results.items():
+            pf = "-" if row["profit_factor"] is None else f'{row["profit_factor"]:.2f}'
+            win = "-" if row["win_rate"] is None else f'{row["win_rate"] * 100:.1f}'
+            print(
+                f"{name:20} {row['net_pnl']:>9.1f} {pf:>8} "
+                f"{row['max_drawdown']:>9.1f} {row['closed_trades']:>8} "
+                f"{win:>7} {row['fees_paid']:>9.1f}"
+            )
+        print("注意: 同じraw tickと同じpaper cost modelでの比較です。将来利益を示すものではありません。")
+        return 0
     return 2
 
 
