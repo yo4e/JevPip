@@ -18,6 +18,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "RSI逆張り" in response.text
         assert "MAトレンド" in response.text
         assert "RSI/MA入力" in response.text
+        assert "戦略BT" in response.text
+        assert "統計リプレイ" in response.text
+        assert "現在設定で戦略バックテスト" in response.text
         assert "戦略比較" in response.text
         assert "No Trade" in response.text
         assert "Buy & Hold" in response.text
@@ -326,3 +329,97 @@ def test_raw_strategy_compare_missing_file_is_400(tmp_path, monkeypatch):
         )
         assert response.status_code == 400
         assert "raw tick data" in response.json()["detail"]
+
+
+def test_strategy_backtest_api(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_strategy_backtest(**kwargs):
+        assert kwargs["instrument_id"] == "USD_JPY"
+        assert kwargs["date"] == "20260919"
+        assert kwargs["config"]["strategy"] == "ma_trend"
+        assert kwargs["config"]["max_hold_bars"] == 8
+        return {
+            "instrument_id": "USD_JPY",
+            "date": "20260919",
+            "replay_mode": "fx_bid_ask_close",
+            "input_semantics": "historical_1m_close",
+            "rows": 100,
+            "config": kwargs["config"],
+            "summary": {
+                "net_pnl": 12.0,
+                "equity": 100012.0,
+                "realized_pnl": 12.0,
+                "gross_realized_pnl": 20.0,
+                "fees_paid": 8.0,
+                "slippage_cost": 0.0,
+                "profit_factor": 1.5,
+                "max_drawdown": 5.0,
+                "max_drawdown_pct": 0.00005,
+                "closed_trades": 4,
+                "wins": 3,
+                "win_rate": 0.75,
+                "average_trade_pnl": 3.0,
+                "average_win_pnl": 5.0,
+                "average_loss_pnl": -3.0,
+                "exit_reasons": {"take_profit": {"count": 3, "net_pnl": 15.0}},
+            },
+            "baselines": {
+                "no_trade": {"net_pnl": 0.0},
+                "buy_and_hold": {"net_pnl": 7.0},
+            },
+            "trades": [],
+            "generated_events": 8,
+        }
+
+    monkeypatch.setattr(controller, "run_strategy_backtest", fake_strategy_backtest)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/strategy-backtest",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "20260919",
+                "strategy": "ma_trend",
+                "initial_balance": 100000,
+                "size": 1000,
+                "max_spread_units": 2,
+                "take_profit_units": 1,
+                "stop_loss_units": 1,
+                "slippage_units": 0,
+                "momentum_lookback_bars": 1,
+                "momentum_trigger_units": 0.6,
+                "rsi_period": 14,
+                "rsi_oversold": 30,
+                "rsi_overbought": 70,
+                "ma_fast_period": 5,
+                "ma_slow_period": 20,
+                "ma_min_gap_units": 0.2,
+                "max_hold_bars": 8,
+                "cooldown_bars": 1,
+                "supervisor_enabled": True,
+                "limit": 100,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["summary"]["net_pnl"] == 12.0
+        assert payload["baselines"]["buy_and_hold"]["net_pnl"] == 7.0
+
+
+def test_strategy_backtest_rejects_jev():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/strategy-backtest",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "20260919",
+                "strategy": "jev",
+                "initial_balance": 100000,
+                "size": 1000,
+                "max_spread_units": 2,
+                "take_profit_units": 1,
+                "stop_loss_units": 1,
+                "momentum_trigger_units": 0.6,
+            },
+        )
+        assert response.status_code == 422
