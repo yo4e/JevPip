@@ -7,7 +7,12 @@ from typing import Any
 
 import httpx
 
+from jevpip.gmo.rate_limit import SlidingWindowRateLimiter
+
 PRIVATE_REST_URL = "https://forex-api.coin.z.com/private"
+
+# Shared across client instances so repeated UI refreshes cannot bypass it.
+FX_PRIVATE_GET_LIMITER = SlidingWindowRateLimiter(6, 1.0)
 
 
 class GMOPrivateReadClient:
@@ -23,10 +28,12 @@ class GMOPrivateReadClient:
         api_secret: str,
         *,
         client: httpx.Client | None = None,
+        rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
         self.api_key = api_key
         self.api_secret = api_secret
         self._client = client
+        self._rate_limiter = rate_limiter or FX_PRIVATE_GET_LIMITER
 
     def _auth_headers(self, path: str, *, timestamp_ms: int | None = None) -> dict[str, str]:
         timestamp = str(timestamp_ms if timestamp_ms is not None else int(time.time() * 1000))
@@ -43,6 +50,7 @@ class GMOPrivateReadClient:
         }
 
     def _get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        self._rate_limiter.acquire()
         client = self._client or httpx
         response = client.get(
             f"{PRIVATE_REST_URL}{path}",
