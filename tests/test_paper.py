@@ -620,3 +620,124 @@ def test_safety_off_does_not_apply_spread_entry_gate():
         tick("2026-09-20T00:00:01+00:00", "150.200", "150.300")
     )
     assert opened and opened[0]["action"] == "OPEN"
+
+
+
+def test_jev_decision_cannot_apply_before_it_was_available():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            strategy_enabled=False,
+            jev_direct_enabled=True,
+            price_unit=0.01,
+            max_spread_units=2,
+            take_profit_units=100,
+            stop_loss_units=100,
+            cooldown_seconds=0,
+            jev_signal_max_age_seconds=3,
+        )
+    )
+    broker.on_decision(
+        {
+            "direction_signal": "LONG",
+            "basis_market_timestamp": "2026-09-20T00:00:00+00:00",
+            "requested_at": "2026-09-20T00:00:00+00:00",
+            "available_at": "2026-09-20T00:00:02+00:00",
+            "recorded_at": "2026-09-20T00:00:02+00:00",
+        }
+    )
+
+    past_tick = {
+        "market_timestamp": "2026-09-20T00:00:00.500000+00:00",
+        "received_at": "2026-09-20T00:00:01.500000+00:00",
+        "bid": "150.000",
+        "ask": "150.002",
+    }
+    assert broker.on_tick(past_tick) == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "jev_future"
+
+    usable_tick = {
+        "market_timestamp": "2026-09-20T00:00:02.100000+00:00",
+        "received_at": "2026-09-20T00:00:02.100000+00:00",
+        "bid": "150.000",
+        "ask": "150.002",
+    }
+    opened = broker.on_tick(usable_tick)
+    assert opened and opened[0]["action"] == "OPEN"
+    assert opened[0]["side"] == "LONG"
+
+
+def test_jev_signal_ttl_counts_from_request_time_not_response_time():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy_enabled=False,
+            jev_direct_enabled=True,
+            price_unit=0.01,
+            max_spread_units=2,
+            cooldown_seconds=0,
+            jev_signal_max_age_seconds=3,
+        )
+    )
+    broker.on_decision(
+        {
+            "direction_signal": "LONG",
+            "basis_market_timestamp": "2026-09-20T00:00:00+00:00",
+            "requested_at": "2026-09-20T00:00:00+00:00",
+            "available_at": "2026-09-20T00:00:02.500000+00:00",
+        }
+    )
+    events = broker.on_tick(
+        {
+            "market_timestamp": "2026-09-20T00:00:03.100000+00:00",
+            "received_at": "2026-09-20T00:00:03.100000+00:00",
+            "bid": "150.000",
+            "ask": "150.002",
+        }
+    )
+    assert events == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "jev_stale_or_wait"
+
+
+def test_jev_direct_close_never_reverses_on_the_same_tick():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy_enabled=False,
+            jev_direct_enabled=True,
+            price_unit=0.01,
+            max_spread_units=2,
+            take_profit_units=100,
+            stop_loss_units=100,
+            max_hold_seconds=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_decision(
+        {
+            "direction_signal": "LONG",
+            "recorded_at": "2026-09-20T00:00:00+00:00",
+        }
+    )
+    opened = broker.on_tick(
+        tick("2026-09-20T00:00:00.500000+00:00", "150.000", "150.002")
+    )
+    assert [event["action"] for event in opened] == ["OPEN"]
+    assert opened[0]["side"] == "LONG"
+
+    broker.on_decision(
+        {
+            "direction_signal": "SHORT",
+            "recorded_at": "2026-09-20T00:00:01+00:00",
+        }
+    )
+    flipped = broker.on_tick(
+        tick("2026-09-20T00:00:01.500000+00:00", "150.000", "150.002")
+    )
+    assert [event["action"] for event in flipped] == ["CLOSE"]
+    assert flipped[0]["reason"] == "opposite_jev_signal"
+    assert broker.snapshot()["position"] is None
+
+    next_tick = broker.on_tick(
+        tick("2026-09-20T00:00:02+00:00", "150.000", "150.002")
+    )
+    assert [event["action"] for event in next_tick] == ["OPEN"]
+    assert next_tick[0]["side"] == "SHORT"
