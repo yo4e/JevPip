@@ -35,6 +35,7 @@
     .account-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.account-card{min-height:220px}.account-top{display:flex;justify-content:space-between;gap:8px;align-items:start}.money{font-size:29px;font-weight:900;margin:10px 0 2px}.pnl.pos{color:var(--ok)}.pnl.neg{color:var(--bad)}.account-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.stat{padding:10px;border-radius:11px;background:#f7f8fc;border:1px solid var(--line)}.stat span{display:block;font-size:10px;color:var(--muted)}.stat strong{font-size:15px;margin-top:3px;display:block}
     .position{margin-top:11px;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fbfcff;font-size:12px;line-height:1.55}
     .notice{margin-top:12px;padding:10px 11px;border:1px solid #e8d8ad;background:#fff9ec;color:#71501d;border-radius:11px;font-size:11px;line-height:1.55}.notice.safe{background:#f0faf5;border-color:#cbe4d7;color:#275d48}
+    .trade-box{margin-top:12px;border:1px solid var(--line);border-radius:14px;padding:13px;background:#fafbfe}.trade-box h3{font-size:12px;margin:0 0 9px;color:var(--muted);letter-spacing:.04em}.trade-summary{font-size:12px;line-height:1.7;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 11px}.trade-summary strong{font-weight:900}.buy{color:var(--ok);font-weight:900}.sell{color:var(--bad);font-weight:900}
     table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:9px 7px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:10px}.scroll{overflow:auto}
     .back-result{display:none;margin-top:16px}.results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.result{background:#f7f8fc;border:1px solid var(--line);border-radius:11px;padding:11px}.result span{font-size:10px;color:var(--muted)}.result strong{display:block;font-size:17px;margin-top:4px}
     .loglist{display:grid;gap:7px}.logrow{display:grid;grid-template-columns:100px 90px 1fr;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:11px}.logtime{color:var(--muted)}.logkind{font-weight:900;color:var(--accent)}.empty{padding:25px;text-align:center;border:1px dashed var(--line);border-radius:11px;color:var(--muted);font-size:12px}
@@ -109,17 +110,30 @@
       <aside class="stack">
         <div class="card">
           <h2>まずはここだけ</h2><p class="intro">難しい設定は下の「詳細設定」にしまいました。</p>
-          <div class="field"><label class="label">銘柄</label><select id="instrument"><option value="USD_JPY">USD/JPY</option><option value="BTC">BTC/JPY ₿</option></select></div><div class="field"><label class="label">使い方</label><select id="mode"><option value="observe">観測だけ</option><option value="paper">デモ取引</option></select></div>
-          <div class="field"><label class="label">実験プリセット</label><select id="profile"></select></div>
-          <div class="pillrow" id="feature-summary"></div>
-          <div class="field" style="margin-top:13px"><label class="toggle"><input id="with-jev" type="checkbox"><span>Jevも使う<small>確率判断を追加します。TypeSafeのAPI利用料が発生し得ます。</small></span></label></div>
+          <div class="field"><label class="label">銘柄</label><select id="instrument"><option value="USD_JPY">USD/JPY</option><option value="BTC">BTC/JPY ₿</option></select></div>
+          <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper">デモ自動売買</option></select></div>
           <div id="paper-basic" style="display:none">
-            <div class="field"><label class="label">デモの売買ロジック</label><select id="paper-strategy"><option value="momentum">5秒モメンタム（Jevなしでも動く）</option><option value="jev">Jevシグナル</option></select></div>
-            <div class="mode-grid">
-              <div class="field"><label class="label">仮想資金</label><input id="paper-balance" type="number" value="100000" min="1"></div>
-              <div class="field"><label class="label" id="paper-size-label">1回の数量（通貨）</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
+            <div class="trade-box">
+              <h3>売買設定</h3>
+              <div class="field"><label class="label">売買戦略</label><select id="paper-strategy"><option value="momentum">モメンタム</option><option value="jev">Jevシグナル</option></select></div>
+              <div class="mode-grid">
+                <div class="field"><label class="label" id="paper-size-label">注文数量（通貨）</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
+                <div class="field"><label class="label">デモ口座残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
+                <div class="field"><label class="label" id="p-tp-label">利確幅 / Take Profit（pips）</label><input id="p-tp" type="number" value="1" step="any"></div>
+                <div class="field"><label class="label" id="p-sl-label">損切り幅 / Stop Loss（pips）</label><input id="p-sl" type="number" value="1" step="any"></div>
+                <div class="field"><label class="label" id="p-spread-label">最大スプレッド（pips）</label><input id="p-spread" type="number" value="1.5" step="any"></div>
+              </div>
+              <div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div>
             </div>
           </div>
+          <div class="field" style="margin-top:13px"><label class="toggle"><input id="with-jev" type="checkbox"><span>Jev判断を追加<small>Jev戦略を選ぶ場合に使います。TypeSafeのAPI利用料が発生し得ます。</small></span></label></div>
+          <details style="margin-top:10px">
+            <summary>研究用Feature設定</summary>
+            <div class="details-body">
+              <div class="field"><label class="label">実験プリセット</label><select id="profile"></select></div>
+              <div class="pillrow" id="feature-summary"></div>
+            </div>
+          </details>
           <div class="actions"><button class="btn primary" id="start">観測を開始</button><button class="btn danger" id="stop" disabled>停止</button></div>
           <div class="notice safe">「デモ取引」でもお金は動きません。実売買経路はありません。</div>
 
@@ -155,13 +169,10 @@
               <div id="paper-advanced">
                 <h3 style="font-size:13px">デモスキャ</h3>
                 <div class="detail-grid">
-                  <div class="field"><label class="label">momentum窓（秒）</label><input id="p-window" type="number" value="5" step=".5"></div>
-                  <div class="field"><label class="label" id="p-trigger-label">entry変化（pips）</label><input id="p-trigger" type="number" value=".6" step="any"></div>
-                  <div class="field"><label class="label" id="p-spread-label">spread上限（pips）</label><input id="p-spread" type="number" value="1.5" step="any"></div>
-                  <div class="field"><label class="label" id="p-tp-label">利確（pips）</label><input id="p-tp" type="number" value="1" step="any"></div>
-                  <div class="field"><label class="label" id="p-sl-label">損切り（pips）</label><input id="p-sl" type="number" value="1" step="any"></div>
-                  <div class="field"><label class="label">最大保有（秒）</label><input id="p-hold" type="number" value="8" step="1"></div>
-                  <div class="field"><label class="label">再entry待ち（秒）</label><input id="p-cool" type="number" value="2" step=".5"></div>
+                  <div class="field"><label class="label">判定時間（秒）</label><input id="p-window" type="number" value="5" step=".5"></div>
+                  <div class="field"><label class="label" id="p-trigger-label">エントリー判定幅（pips）</label><input id="p-trigger" type="number" value=".6" step="any"></div>
+                  <div class="field"><label class="label">最大保有時間（秒）</label><input id="p-hold" type="number" value="8" step="1"></div>
+                  <div class="field"><label class="label">再エントリー待機（秒）</label><input id="p-cool" type="number" value="2" step=".5"></div>
                 </div>
               </div>
             </div>
@@ -223,8 +234,22 @@ function applySignal(name){const p=state.config.signal_policies[name];if(!p)retu
 function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
 function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3}}
 
-function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none"}
-function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true}
+function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary()}
+function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true;updateTradeSummary()}
+function updateTradeSummary(){
+  const box=$("trade-summary");if(!box)return;
+  const i=instrumentSpec();if(!i)return;
+  const unit=i.move_unit_label;
+  const size=Number($("paper-size").value||0).toLocaleString("ja-JP");
+  let entry;
+  if($("paper-strategy").value==="jev"){
+    entry='Jevの研究シグナルが <span class="buy">LONG</span> なら買い、<span class="sell">SHORT</span> なら売り。古いシグナルではエントリーしません。';
+  }else{
+    const sec=$("p-window").value,trigger=$("p-trigger").value;
+    entry=`${sec}秒のMID変化が +${trigger}${unit} 以上なら <span class="buy">買い</span>、-${trigger}${unit} 以下なら <span class="sell">売り</span>。`;
+  }
+  box.innerHTML=`<strong>${esc(i.display_symbol)} / 注文数量 ${size} ${esc(i.quantity_label)}</strong><br>${entry}<br>Take Profit +${esc($("p-tp").value)}${esc(unit)} / Stop Loss -${esc($("p-sl").value)}${esc(unit)} / 最大spread ${esc($("p-spread").value)}${esc(unit)}`;
+}
 function instrumentSpec(){return state.config?.instruments?.[$("instrument").value]||null}
 function applyInstrumentDefaults(){
   const i=instrumentSpec();if(!i)return;
@@ -233,13 +258,14 @@ function applyInstrumentDefaults(){
   $("p-spread").value=i.default_max_spread;
   $("p-tp").value=i.default_take_profit;
   $("p-sl").value=i.default_stop_loss;
-  $("paper-size-label").textContent="1回の数量（"+i.quantity_label+"）";
-  $("p-trigger-label").textContent="entry変化（"+i.move_unit_label+"）";
-  $("p-spread-label").textContent="spread上限（"+i.move_unit_label+"）";
-  $("p-tp-label").textContent="利確（"+i.move_unit_label+"）";
-  $("p-sl-label").textContent="損切り（"+i.move_unit_label+"）";
+  $("paper-size-label").textContent="注文数量（"+i.quantity_label+"）";
+  $("p-trigger-label").textContent="エントリー判定幅（"+i.move_unit_label+"）";
+  $("p-spread-label").textContent="最大スプレッド（"+i.move_unit_label+"）";
+  $("p-tp-label").textContent="利確幅 / Take Profit（"+i.move_unit_label+"）";
+  $("p-sl-label").textContent="損切り幅 / Stop Loss（"+i.move_unit_label+"）";
   $("mid-label").textContent=i.display_symbol+" MID";
   applySignal($("signal-policy").value);
+  updateTradeSummary();
 }
 function localDateYmd(){const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`}
 async function loadHistory(){
@@ -281,7 +307,7 @@ async function runBacktest(){if($("instrument").value!=="USD_JPY"){toast("統計
 async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const d=new Date();d.setDate(d.getDate()-1);$("bt-date").value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;modeChanged();applyInstrumentDefaults();await loadHistory();refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")}));
-$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
+$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script>
