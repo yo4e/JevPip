@@ -99,6 +99,10 @@ class PaperBroker:
         self._last_bid: Decimal | None = None
         self._last_ask: Decimal | None = None
         self._last_market_at: datetime | None = None
+        self._last_received_at: datetime | None = None
+        self._last_market_status = ""
+        self._last_spread_units: Decimal | None = None
+        self._last_supervisor_age_seconds: float | None = None
         self._peak_equity = self.initial_balance
         self._max_drawdown = Decimal("0")
         self._max_drawdown_pct = Decimal("0")
@@ -138,14 +142,16 @@ class PaperBroker:
         spread_units = (ask - bid) / self.price_unit
         market_status = str(event.get("status") or "")
         received_raw = event.get("received_at")
-        market_age_seconds: float | None = None
-        if received_raw:
-            received_at = self._dt(str(received_raw))
-            market_age_seconds = max(0.0, (received_at - at).total_seconds())
+        received_at = self._dt(str(received_raw)) if received_raw else at
+        market_age_seconds = max(0.0, (received_at - at).total_seconds())
 
         self._last_bid = bid
         self._last_ask = ask
         self._last_market_at = at
+        self._last_received_at = received_at
+        self._last_market_status = market_status
+        self._last_spread_units = spread_units
+        self._last_supervisor_age_seconds = market_age_seconds
         self._prices.append((at, mid))
         self._prune_prices(at)
 
@@ -176,6 +182,31 @@ class PaperBroker:
 
         self._update_drawdown()
         return generated
+
+    def heartbeat(self, now: datetime) -> None:
+        """Refresh supervisor state even when the market feed goes quiet.
+
+        This never creates or closes a position. It only tightens the entry gate
+        and updates the visible supervisor state.
+        """
+        if not self.config.deterministic_supervisor_enabled:
+            self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
+            self._last_supervisor_age_seconds = None
+            return
+        if self._last_received_at is None or self._last_spread_units is None:
+            return
+
+        normalized_now = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        normalized_now = normalized_now.astimezone(timezone.utc)
+        age = max(0.0, (normalized_now - self._last_received_at).total_seconds())
+        self._last_supervisor_age_seconds = age
+        self._supervisor = deterministic_supervisor(
+            market_status=self._last_market_status,
+            spread_units=float(self._last_spread_units),
+            max_spread_units=self.config.max_spread_units,
+            market_age_seconds=age,
+            max_market_age_seconds=self.config.max_market_age_seconds,
+        )
 
     def _prune_prices(self, now: datetime) -> None:
         keep_seconds = max(60.0, self.config.momentum_window_seconds * 4)
@@ -401,7 +432,14 @@ class PaperBroker:
             "enabled": True,
             "strategy": self.config.strategy,
             "strategy_decision": asdict(self._latest_strategy_decision),
-            "supervisor": asdict(self._supervisor),
+            "supervisor": {
+                **asdict(self._supervisor),
+                "last_tick_age_seconds": (
+                    None
+                    if self._last_supervisor_age_seconds is None
+                    else round(self._last_supervisor_age_seconds, 3)
+                ),
+            },
             "initial_balance": round(float(self.initial_balance), 3),
             "balance": round(float(balance), 3),
             "equity": round(float(equity), 3),
