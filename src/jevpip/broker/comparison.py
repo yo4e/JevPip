@@ -182,6 +182,27 @@ def _baseline_buy_and_hold(
     }
 
 
+def build_baselines(
+    ticks: list[dict[str, Any]],
+    *,
+    instrument_id: str,
+    initial_balance: float = 100000.0,
+    size: float | None = None,
+) -> dict[str, dict[str, Any]]:
+    return {
+        "no_trade": _baseline_no_trade(
+            ticks=len(ticks),
+            initial_balance=initial_balance,
+        ),
+        "buy_and_hold": _baseline_buy_and_hold(
+            ticks,
+            instrument_id=instrument_id,
+            initial_balance=initial_balance,
+            size=size,
+        ),
+    }
+
+
 def compare_ticks(
     ticks: Iterable[dict[str, Any]],
     *,
@@ -251,11 +272,7 @@ def compare_ticks(
 
     if include_baselines:
         results = {
-            "no_trade": _baseline_no_trade(
-                ticks=seen,
-                initial_balance=initial_balance,
-            ),
-            "buy_and_hold": _baseline_buy_and_hold(
+            **build_baselines(
                 tick_rows,
                 instrument_id=instrument_id,
                 initial_balance=initial_balance,
