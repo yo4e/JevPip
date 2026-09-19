@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Iterable, Literal, Mapping, Any
 
 SupervisorState = Literal["NORMAL", "CAUTION", "PAUSE_ENTRY", "PAUSE_ALL"]
+
+_STATE_RANK: dict[SupervisorState, int] = {
+    "NORMAL": 0,
+    "CAUTION": 1,
+    "PAUSE_ENTRY": 2,
+    "PAUSE_ALL": 3,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,6 +18,130 @@ class SupervisorDecision:
     state: SupervisorState
     reason: str
     allow_entry: bool
+
+
+@dataclass(frozen=True, slots=True)
+class JevSupervisorAdvice:
+    """Validated advisory output from Jev.
+
+    This object is intentionally incapable of carrying order side, quantity,
+    TP/SL, leverage, or arbitrary code. It can only tighten/shape the paper
+    strategy through a bounded supervisor state and an allowlisted strategy.
+    """
+
+    state: SupervisorState
+    strategy: str | None
+    confidence: float
+    ttl_seconds: int
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class SupervisorPlan:
+    """Effective supervisor plan after deterministic and Jev advice are merged."""
+
+    state: SupervisorState
+    allow_entry: bool
+    reason: str
+    strategy: str | None
+    confidence: float | None
+    ttl_seconds: int | None
+
+
+def _state(value: object) -> SupervisorState:
+    text = str(value or "").upper()
+    if text not in _STATE_RANK:
+        raise ValueError(f"Unknown supervisor state: {value!r}")
+    return text  # type: ignore[return-value]
+
+
+def validate_jev_supervisor_payload(
+    payload: Mapping[str, Any],
+    *,
+    allowed_strategies: Iterable[str],
+    max_ttl_seconds: int = 300,
+) -> JevSupervisorAdvice:
+    """Validate a fixed Jev supervisor schema.
+
+    The payload cannot create an arbitrary strategy. A strategy, when present,
+    must already exist in the caller-provided allowlist.
+    """
+
+    state = _state(payload.get("state"))
+    allowed = set(allowed_strategies)
+    raw_strategy = payload.get("strategy")
+    strategy = None if raw_strategy in {None, "", "NONE"} else str(raw_strategy)
+    if strategy is not None and strategy not in allowed:
+        raise ValueError(f"Strategy is not allowlisted: {strategy!r}")
+
+    try:
+        confidence = float(payload.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("confidence must be a number") from exc
+    if not 0.0 <= confidence <= 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+
+    raw_ttl = payload.get("ttl_seconds")
+    if isinstance(raw_ttl, bool):
+        raise ValueError("ttl_seconds must be an integer")
+    try:
+        ttl_seconds = int(raw_ttl)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("ttl_seconds must be an integer") from exc
+    if ttl_seconds < 1 or ttl_seconds > max_ttl_seconds:
+        raise ValueError(f"ttl_seconds must be between 1 and {max_ttl_seconds}")
+
+    reason = str(payload.get("reason") or "").strip()
+    if not reason:
+        raise ValueError("reason is required")
+    if len(reason) > 500:
+        raise ValueError("reason is too long")
+
+    return JevSupervisorAdvice(
+        state=state,
+        strategy=strategy,
+        confidence=confidence,
+        ttl_seconds=ttl_seconds,
+        reason=reason,
+    )
+
+
+def combine_supervisors(
+    deterministic: SupervisorDecision,
+    jev: JevSupervisorAdvice | None,
+) -> SupervisorPlan:
+    """Merge supervisors so Jev can never relax the deterministic safety gate."""
+
+    deterministic_state = _state(deterministic.state)
+    if jev is None:
+        return SupervisorPlan(
+            state=deterministic_state,
+            allow_entry=deterministic.allow_entry,
+            reason=f"code:{deterministic.reason}",
+            strategy=None,
+            confidence=None,
+            ttl_seconds=None,
+        )
+
+    effective_state = (
+        deterministic_state
+        if _STATE_RANK[deterministic_state] >= _STATE_RANK[jev.state]
+        else jev.state
+    )
+    allow_entry = deterministic.allow_entry and _STATE_RANK[effective_state] < _STATE_RANK["PAUSE_ENTRY"]
+
+    # Strategy selection is advisory and only meaningful while entries remain
+    # possible. It never changes size, TP/SL, spread limits, or other risk caps.
+    strategy = jev.strategy if allow_entry else None
+
+    return SupervisorPlan(
+        state=effective_state,
+        allow_entry=allow_entry,
+        reason=f"code:{deterministic.reason}; jev:{jev.reason}",
+        strategy=strategy,
+        confidence=jev.confidence,
+        ttl_seconds=jev.ttl_seconds,
+    )
 
 
 def deterministic_supervisor(
