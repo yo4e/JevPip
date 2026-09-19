@@ -1,0 +1,71 @@
+[profile.minimal]
+description_ja = "短期価格・スプレッド・値動き・tick活性だけを見る標準プロファイル"
+quote = true
+returns_seconds = [1, 3, 5, 15, 30, 60]
+range_seconds = [5, 30, 60]
+tick_count_seconds = [5, 30]
+realized_vol_seconds = [30, 60]
+moon_phase = false
+rsi_period = 0
+sma_periods = []
+random_control = false
+
+[profile.technical]
+description_ja = "短期値動きにRSI/SMAを加えた実験用プロファイル"
+quote = true
+returns_seconds = [5, 30, 60, 180, 300]
+range_seconds = [30, 60, 300]
+tick_count_seconds = [30, 60]
+realized_vol_seconds = [60, 300]
+moon_phase = false
+rsi_period = 14
+sma_periods = [5, 10, 20]
+random_control = false
+
+[profile.moon_only]
+description_ja = "月の満ち欠けだけをJevに見せる。価格情報は評価用に保存するがstateには入れない"
+quote = false
+returns_seconds = []
+range_seconds = []
+tick_count_seconds = []
+realized_vol_seconds = []
+moon_phase = true
+rsi_period = 0
+sma_periods = []
+random_control = false
+
+[profile.price_and_moon]
+description_ja = "標準短期価格情報に月相を追加する比較実験"
+quote = true
+returns_seconds = [1, 5, 30, 60]
+range_seconds = [5, 30, 60]
+tick_count_seconds = [5, 30]
+realized_vol_seconds = [30, 60]
+moon_phase = true
+rsi_period = 0
+sma_periods = []
+random_control = false
+
+[profile.random_control]
+description_ja = "価格を見せず、時刻から決定論的に生成した無意味な対照特徴だけを見せる"
+quote = false
+returns_seconds = []
+range_seconds = []
+tick_count_seconds = []
+realized_vol_seconds = []
+moon_phase = false
+rsi_period = 0
+sma_periods = []
+random_control = true
+
+[profile.kitchen_sink]
+description_ja = "利用可能な特徴をほぼ全部ONにする探索用プロファイル"
+quote = true
+returns_seconds = [1, 3, 5, 15, 30, 60, 180, 300]
+range_seconds = [5, 30, 60, 300]
+tick_count_seconds = [5, 30, 60]
+realized_vol_seconds = [30, 60, 300]
+moon_phase = true
+rsi_period = 14
+sma_periods = [5, 10, 20, 50]
+random_control = true
