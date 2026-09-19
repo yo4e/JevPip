@@ -1431,3 +1431,29 @@ uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.json
 `--no-supervisor` によりdeterministic supervisorなしのbaselineも再生できる。
 
 raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
+
+
+### 26.5 Private API rate-limit / retry policy
+
+Issue #3の運用制約を次のように扱う。
+
+現在:
+
+- Foreign FX Private GETは共有sliding-window limiterを通す
+- limiterはclient instanceを跨いで共有し、client再生成で回避されない
+- UI controllerの3秒cacheも維持
+- read-only GETのautomatic retryはしない
+
+理由:
+
+read-only GETは次回refreshで再取得できるため、network failure時にその場でretry stormを起こす利点が小さい。
+
+将来order POSTを実装する場合:
+
+- timeout / connection reset後のblind retryは禁止
+- retry前に注文照会・client-side idempotency key相当の設計を行う
+- POST専用rate limiterを実注文path直前へ置く
+- reconnect後はaccount / position / active orderを同期するまでarmしない
+- 最新GMO公式rate limitを再確認する
+
+現時点ではorder POSTが存在しないため、POST retry / limiterを「実装済み」とは扱わない。
