@@ -1596,3 +1596,120 @@ Desktop UIのbottom terminalは固定225pxを廃止する。
 - resize時にCanvas chartを再描画
 
 mobile layoutではresizerを表示せず、terminalは通常flowで表示する。
+
+
+---
+
+## 29. Historical Strategy Backtest（2026-09-19）
+
+### 29.1 Three different replay purposes
+
+UIの検証機能を混同しない。
+
+1. **統計リプレイ**
+   - historical 1min closeをFeature pipelineへ流す
+   - 次の1分のmove / edgeを集計
+   - strategy PnLは計算しない
+
+2. **戦略BT**
+   - historical 1min market pointsをPaperBrokerへ流す
+   - Momentum / RSI / MAを実際にentry / exitさせる
+   - fee / spread / slippage / TP / SL / holding / cooldownを反映
+   - No Trade / Buy & Holdと比較
+
+3. **戦略比較**
+   - 保存済みraw tickを再生
+   - より細かい時間解像度でcode-only strategyを比較
+
+### 29.2 Strategy BT config boundary
+
+live paperの現在設定から再利用する:
+
+- strategy
+- size
+- TP / SL
+- max spread
+- slippage
+- Momentum threshold
+- RSI params
+- MA params
+- instrument fee model
+
+historical 1min専用に別定義する:
+
+- `momentum_lookback_bars`
+- `max_hold_bars`
+- `cooldown_bars`
+
+liveの5秒windowや8秒max holdをhistorical 1minへ暗黙変換しない。
+
+Momentumのhistorical semantics:
+
+```text
+lookback 1 = 1本前の1min close
+lookback 3 = 3本前の1min close
+```
+
+RSI / MAはhistorical 1min close系列を入力とする。
+
+### 29.3 Execution approximation
+
+FX:
+
+- historical BID close / ASK closeを使う
+- spread gateとLONG/SHORT execution sideを再現
+- reference API fee / configured slippageを反映
+
+BTC:
+
+- historical KLineにBID / ASKがない
+- `bid = ask = close` のsynthetic execution
+- reference taker fee / configured slippageを反映
+- synthetic SHORTであることを維持
+
+### 29.4 Critical limitation: close-only execution
+
+戦略BTは1min candleのclose点だけをPaperBrokerへ与える。
+
+したがって、
+
+- candle内でTPに触れた
+- candle内でSLに触れた
+- 同一candle内でTP / SL両方へ触れた
+- high / lowへ到達した順序
+
+を判定しない。
+
+TP / SLは次に観測した1min close時点で判定する。
+
+この結果をtick-level / intrabar execution backtestとして扱ってはいけない。
+
+### 29.5 Finite sample handling
+
+sample末尾のtickでは新規entryを禁止する。
+末尾にopen positionが残る場合は `end_of_sample` reasonで明示的にcloseする。
+
+これにより、
+
+- 最終barでentryして即時決済
+- unrealized positionのまま比較
+- strategyごとに終了条件が異なる
+
+ことを避ける。
+
+### 29.6 Future fine-grained signals
+
+StrategyBacktestConfigはsignal / risk / executionの個別parameterを明示的に受ける。
+
+将来は、
+
+- entry rules / exit rulesの分離
+- AND / OR
+- multiple indicators
+- confirmation bars
+- time-of-day filters
+- volatility filters
+
+を追加可能にする。
+
+ただしUIへ一度に全て露出せず、simple preset + advanced rulesの二層構造を維持する。
