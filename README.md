@@ -292,17 +292,21 @@ external contextはBLS / BOJ / Fedのofficial scheduled eventへ接続済みで�
 
 raw tick収集やcode-only strategyだけならTypeSafe API keyは不要です。
 
-Jevを使う場合は、`.env.example` を参考にローカルの `.env` へ設定します。
+Jevを使う場合は、右上の **⚙ 設定** からTypeSafe API keyを保存できます。保存先はローカルの `.env` で、保存済みのkey値そのものはブラウザへ返しません。
+
+手動設定も引き続き使えます。
 
 ```env
 TYPESAFE_API_KEY=...
 ```
 
-API keyはブラウザへ返しません。
+TypeSafe APIが返す `usage.input_tokens` / `usage.output_tokens` は、現在の観測セッションについてUIでcall数・input・output・totalを集計表示します。usageが返らないcallは推定せず、報告済みcall数を分けて扱います。
 
 ## GMO実口座をread-onlyで表示する場合
 
-オプションです。注文権限は不要です。
+オプションです。注文権限は不要です。右上の **⚙ 設定** からAPI key / secretを保存できます。
+
+手動設定も可能です。
 
 ```env
 GMO_FX_API_KEY=...

@@ -9,7 +9,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
-from jevpip.config import Settings, list_profiles, list_signal_policies
+from jevpip.config import (
+    Settings,
+    list_profiles,
+    list_signal_policies,
+    update_local_credentials,
+)
 from jevpip.instruments import get_instrument, public_instruments
 from jevpip.signals import SignalPolicy
 from jevpip.web.controller import UIController
@@ -77,6 +82,26 @@ class PaperDemoInput(BaseModel):
     deterministic_supervisor_enabled: bool = False
     max_market_age_seconds: float = Field(default=5.0, ge=0.1, le=60)
     strategy_bar_seconds: Literal[0, 5, 15, 60, 300] = 0
+
+
+class CredentialSettingsInput(BaseModel):
+    typesafe_api_key: str | None = Field(default=None, max_length=4096)
+    gmo_fx_api_key: str | None = Field(default=None, max_length=4096)
+    gmo_fx_api_secret: str | None = Field(default=None, max_length=4096)
+    clear_typesafe_api_key: bool = False
+    clear_gmo_private_credentials: bool = False
+
+    @field_validator(
+        "typesafe_api_key",
+        "gmo_fx_api_key",
+        "gmo_fx_api_secret",
+    )
+    @classmethod
+    def normalize_secret_input(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class ObserverStartRequest(BaseModel):
@@ -186,6 +211,35 @@ async def get_config() -> dict[str, Any]:
         "typesafe_api_key_configured": bool(settings.typesafe_api_key),
         "gmo_private_credentials_configured": settings.gmo_private_read_configured,
         "live_trading_available": False,
+    }
+
+
+@app.post("/api/config/credentials")
+async def update_credentials(request: CredentialSettingsInput) -> dict[str, Any]:
+    jev_changed = bool(
+        request.typesafe_api_key is not None or request.clear_typesafe_api_key
+    )
+    try:
+        update_local_credentials(
+            settings,
+            typesafe_api_key=request.typesafe_api_key,
+            gmo_fx_api_key=request.gmo_fx_api_key,
+            gmo_fx_api_secret=request.gmo_fx_api_secret,
+            clear_typesafe_api_key=request.clear_typesafe_api_key,
+            clear_gmo_private_credentials=request.clear_gmo_private_credentials,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ローカル設定の保存に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+    return {
+        "typesafe_api_key_configured": bool(settings.typesafe_api_key),
+        "gmo_private_credentials_configured": settings.gmo_private_read_configured,
+        "jev_applies_next_observer_start": bool(controller.running and jev_changed),
     }
 
 

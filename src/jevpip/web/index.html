@@ -31,7 +31,8 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 .money{font-size:20px;font-weight:900}.pnl{font-size:11px;margin-top:3px}.pnl.pos{color:var(--green)}.pnl.neg{color:var(--red)}.account-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:8px}.stat{padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.stat span{display:block;color:var(--muted);font-size:9px}.stat strong{display:block;font-size:12px;margin-top:3px}.position{font-size:11px;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:6px;background:#fff}.empty{font-size:11px;color:var(--muted);padding:12px;border:1px dashed var(--line);border-radius:6px}.notice{font-size:10px;line-height:1.5;color:#7c5a12;background:#fffbeb;border:1px solid #fde68a;padding:7px;border-radius:6px;margin-top:7px}.notice.safe{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
 .loglist{display:grid;gap:4px;padding:9px}.logrow{display:grid;grid-template-columns:74px 60px 1fr;gap:7px;padding:5px 7px;border-bottom:1px solid var(--line);font-size:10px}.logtime{color:var(--muted)}.logkind{font-weight:900;color:var(--blue)}
 .back-wrap{padding:14px}.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:560px}.back-result{display:none;margin-top:11px}.results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.result{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.result span{font-size:9px;color:var(--muted)}.result strong{display:block;font-size:13px;margin-top:3px}.decision-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-.toast{position:fixed;right:12px;bottom:12px;z-index:50;background:#111827;color:#fff;padding:8px 10px;border-radius:6px;font-size:10px;display:none}.toast.error{background:#7f1d1d}
+.settings-overlay{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.42);display:grid;place-items:center;padding:18px}.settings-overlay[hidden]{display:none}.settings-card{width:min(560px,100%);max-height:min(760px,calc(100vh - 36px));overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.22)}.settings-head{display:flex;align-items:center;gap:10px;padding:15px 17px;border-bottom:1px solid var(--line)}.settings-head h2{font-size:16px;margin:0}.settings-body{padding:16px 17px}.settings-section{padding:13px 0;border-bottom:1px solid var(--line)}.settings-section:first-child{padding-top:0}.settings-section:last-child{border-bottom:0;padding-bottom:0}.settings-status{font-size:10px;font-weight:800;color:var(--muted);margin-left:6px}.secret-actions{display:flex;align-items:center;gap:10px;margin-top:6px}.secret-actions label{font-size:10px;color:var(--muted)}.settings-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 17px;border-top:1px solid var(--line);background:var(--panel2)}.token-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.token-grid .stat strong{font-size:14px}
+.toast{position:fixed;right:12px;bottom:12px;z-index:80;background:#111827;color:#fff;padding:8px 10px;border-radius:6px;font-size:10px;display:none}.toast.error{background:#7f1d1d}
 #quote-big{display:none}
 @media(max-width:1100px) and (min-width:901px){.workspace{grid-template-columns:minmax(0,1fr) 320px}.side-section{padding-left:13px;padding-right:13px}}
 @media(max-width:900px){body{overflow:auto}.app{height:auto;min-height:100vh;grid-template-rows:auto auto auto auto}.terminal-resizer{display:none}.topbar{flex-wrap:wrap;padding:8px 10px;gap:7px}.topbar .grow{display:none}.workspace{grid-template-columns:1fr}.chart-pane{height:58vh;min-height:420px;border-right:0}.side{border-top:1px solid var(--line);max-height:none}.terminal{min-height:500px}.terminal-grid{grid-template-columns:1fr}.terminal-cell{border-right:0;border-bottom:1px solid var(--line)}.results{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -44,6 +45,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
   <div class="grow"></div>
   <span class="status-pill" id="status">停止中</span><span class="status-pill safe">実注文なし</span>
   <span class="status-pill" id="jev-badge">Jev確認中</span><span class="status-pill" id="gmo-badge">実口座キー確認中</span>
+  <button class="mini-btn" id="settings-open" type="button" title="APIキー設定">⚙ 設定</button>
   <button class="mini-btn primary" id="start">開始</button><button class="mini-btn danger" id="stop" disabled>停止</button>
 </header>
 
@@ -176,6 +178,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="money" id="decision-signal">WAIT</div>
           <div class="decision-grid"><div class="stat"><span>UP</span><strong id="up">-</strong></div><div class="stat"><span>DOWN</span><strong id="down">-</strong></div><div class="stat"><span>FLAT</span><strong id="flat">-</strong></div><div class="stat"><span>latency</span><strong id="latency">-</strong></div></div>
         </div>
+        <div class="muted" id="jev-token-summary" style="font-size:10px;margin-top:7px">Jev tokens: -</div>
         <div class="notice" id="jev-supervisor" style="margin-top:8px">Jev監督: OFF</div>
       </div>
     </div>
@@ -256,6 +259,35 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
   <section class="tab" id="tab-logs"><div class="loglist" id="logs"><div class="empty">まだイベントはありません。</div></div></section>
 </section>
 </div>
+<div class="settings-overlay" id="settings-modal" hidden>
+  <section class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="settings-head"><h2 id="settings-title">⚙ API設定</h2><span class="grow"></span><button class="mini-btn" id="settings-close" type="button">閉じる</button></div>
+    <div class="settings-body">
+      <p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 10px">キーはこのPCの <code>.env</code> に保存します。保存済みの値そのものはブラウザへ返しません。空欄は「変更しない」です。</p>
+      <div class="settings-section">
+        <div class="field"><label class="label">TypeSafe / Jev API key <span class="settings-status" id="settings-jev-status">未設定</span></label><input id="settings-jev-key" type="password" autocomplete="new-password" placeholder="変更する場合のみ入力"></div>
+        <div class="secret-actions"><label><input id="settings-clear-jev" type="checkbox"> 保存済みJevキーを削除</label></div>
+      </div>
+      <div class="settings-section">
+        <div class="field"><label class="label">GMO FX API key <span class="settings-status" id="settings-gmo-status">未設定</span></label><input id="settings-gmo-key" type="password" autocomplete="new-password" placeholder="変更する場合のみ入力"></div>
+        <div class="field"><label class="label">GMO FX API secret</label><input id="settings-gmo-secret" type="password" autocomplete="new-password" placeholder="変更する場合のみ入力"></div>
+        <div class="secret-actions"><label><input id="settings-clear-gmo" type="checkbox"> 保存済みGMOキー / secretを削除</label></div>
+        <div class="notice safe" style="margin-top:8px">GMO credentialsは実口座の参照専用です。JevPipには注文POST endpointがありません。</div>
+      </div>
+      <div class="settings-section">
+        <div class="label">Jev API使用量（現在の観測セッション）</div>
+        <div class="token-grid">
+          <div class="stat"><span>calls</span><strong id="settings-usage-calls">0</strong></div>
+          <div class="stat"><span>input</span><strong id="settings-usage-input">0</strong></div>
+          <div class="stat"><span>output</span><strong id="settings-usage-output">0</strong></div>
+          <div class="stat"><span>total</span><strong id="settings-usage-total">0</strong></div>
+        </div>
+        <div class="muted" id="settings-usage-note" style="font-size:10px;margin-top:7px">TypeSafeがusageを返したcallだけ集計します。</div>
+      </div>
+    </div>
+    <div class="settings-actions"><button class="btn" id="settings-cancel" type="button">キャンセル</button><button class="btn primary" id="settings-save" type="button">保存</button></div>
+  </section>
+</div>
 <div class="toast" id="toast"></div><script>
 const $=id=>document.getElementById(id);
 const state={config:null,lastStatus:null,lastAccountAt:0,history:[],historyRequestId:0,historyCache:{}};
@@ -269,6 +301,61 @@ function moveUnits(v){if(v==null)return "-";const spec=instrumentSpec(),unit=spe
 const list=v=>(v||[]).join(", ");
 function parseList(id){const r=$(id).value.trim();if(!r)return [];return [...new Set(r.split(",").map(x=>Number(x.trim())).filter(x=>Number.isInteger(x)&&x>0))]}
 function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+
+function renderCredentialState(){
+  const c=state.config||{};
+  const jev=!!c.typesafe_api_key_configured,gmo=!!c.gmo_private_credentials_configured;
+  $("jev-badge").textContent=jev?"Jevキー設定済み":"Jevキー未設定";
+  $("jev-badge").classList.toggle("safe",jev);
+  $("gmo-badge").textContent=gmo?"実口座キー設定済み":"実口座キー未設定";
+  $("gmo-badge").classList.toggle("safe",gmo);
+  if($("settings-jev-status"))$("settings-jev-status").textContent=jev?"設定済み":"未設定";
+  if($("settings-gmo-status"))$("settings-gmo-status").textContent=gmo?"設定済み":"未設定";
+  if(!gmo){
+    $("account-body").style.display="none";
+    $("account-unconfigured").style.display="block";
+  }
+}
+function renderJevUsage(u){
+  const x=u||{},latest=x.latest||{},reported=Number(x.reported_calls||0),calls=Number(x.calls||0);
+  $("settings-usage-calls").textContent=String(calls);
+  $("settings-usage-input").textContent=Number(x.input_tokens||0).toLocaleString("ja-JP");
+  $("settings-usage-output").textContent=Number(x.output_tokens||0).toLocaleString("ja-JP");
+  $("settings-usage-total").textContent=Number(x.total_tokens||0).toLocaleString("ja-JP");
+  $("settings-usage-note").textContent=calls
+    ? `usage報告 ${reported}/${calls} calls / 最新 input ${latest.input_tokens??"-"} + output ${latest.output_tokens??"-"}`
+    : "まだJev API callはありません。";
+  $("jev-token-summary").textContent=calls
+    ? `Jev tokens: ${Number(x.total_tokens||0).toLocaleString("ja-JP")} total (in ${Number(x.input_tokens||0).toLocaleString("ja-JP")} / out ${Number(x.output_tokens||0).toLocaleString("ja-JP")})`
+    : "Jev tokens: -";
+}
+function openSettings(){
+  ["settings-jev-key","settings-gmo-key","settings-gmo-secret"].forEach(id=>$(id).value="");
+  $("settings-clear-jev").checked=false;$("settings-clear-gmo").checked=false;
+  renderCredentialState();renderJevUsage(state.lastStatus?.jev_usage);
+  $("settings-modal").hidden=false;
+  $("settings-jev-key").focus();
+}
+function closeSettings(){$("settings-modal").hidden=true}
+async function saveSettings(){
+  const payload={
+    clear_typesafe_api_key:$("settings-clear-jev").checked,
+    clear_gmo_private_credentials:$("settings-clear-gmo").checked,
+  };
+  const jev=$("settings-jev-key").value.trim(),gmo=$("settings-gmo-key").value.trim(),secret=$("settings-gmo-secret").value.trim();
+  if(jev)payload.typesafe_api_key=jev;if(gmo)payload.gmo_fx_api_key=gmo;if(secret)payload.gmo_fx_api_secret=secret;
+  if(!jev&&!gmo&&!secret&&!payload.clear_typesafe_api_key&&!payload.clear_gmo_private_credentials){closeSettings();toast("設定の変更はありません。");return}
+  const b=$("settings-save");b.disabled=true;b.textContent="保存中…";
+  try{
+    const r=await api("/api/config/credentials",{method:"POST",body:JSON.stringify(payload)});
+    state.config.typesafe_api_key_configured=!!r.typesafe_api_key_configured;
+    state.config.gmo_private_credentials_configured=!!r.gmo_private_credentials_configured;
+    renderCredentialState();closeSettings();
+    if(state.config.gmo_private_credentials_configured)refreshAccount(true);
+    toast(r.jev_applies_next_observer_start?"保存しました。Jevキーは次回の観測開始から反映します。":"API設定を保存しました。");
+  }catch(e){toast(e.message,true)}
+  finally{b.disabled=false;b.textContent="保存"}
+}
 
 const profileLabels={minimal:"基本",technical:"テクニカル",moon_only:"月だけ 🌙",price_and_moon:"価格＋月 🌙",random_control:"ランダム対照",kitchen_sink:"全部入り"};
 function applyProfile(name){const p=state.config.profiles[name];if(!p)return;$("f-quote").checked=!!p.quote;$("f-moon").checked=!!p.moon_phase;$("f-random").checked=!!p.random_control;$("f-rsi-on").checked=Number(p.rsi_period||0)>0;$("returns").value=list(p.returns_seconds);$("ranges").value=list(p.range_seconds);$("ticks").value=list(p.tick_count_seconds);$("vols").value=list(p.realized_vol_seconds);$("rsi").value=Number(p.rsi_period||14)||14;$("sma").value=list(p.sma_periods);renderFeatures()}
@@ -576,6 +663,7 @@ async function refresh(){
     renderPaper($("mode").value==="paper"&&activeInstrument?s.paper:null);
     renderEventContext(activeInstrument?s.external_context:null);
     renderDecision(d,activeInstrument?s.jev_supervisor:null);
+    renderJevUsage(s.jev_usage);
     const live=activeInstrument?(s.chart||[]):[];
     drawChart([...state.history,...live],activeInstrument?s.paper?.trades:[]);
     renderLogs(activeInstrument?s.events:[]);
@@ -694,14 +782,14 @@ async function runStrategyBacktest(){
 function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
 async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();await Promise.all([loadHistory(),loadCompareDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();await Promise.all([loadHistory(),loadCompareDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value,live=active?(state.lastStatus?.chart||[]):[];requestAnimationFrame(()=>drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[]))}
 function initTerminalResizer(){const handle=$("terminal-resizer");if(!handle)return;try{const saved=Number(localStorage.getItem("jevpip-terminal-height"));if(saved>0)setTerminalHeight(saved)}catch{}let dragging=false,startY=0,startHeight=0;handle.addEventListener("pointerdown",e=>{if(window.innerWidth<=900)return;dragging=true;startY=e.clientY;startHeight=document.querySelector(".terminal").getBoundingClientRect().height;handle.setPointerCapture(e.pointerId);e.preventDefault()});handle.addEventListener("pointermove",e=>{if(!dragging)return;setTerminalHeight(startHeight+(startY-e.clientY))});const stop=()=>{dragging=false};handle.addEventListener("pointerup",stop);handle.addEventListener("pointercancel",stop);handle.addEventListener("dblclick",()=>setTerminalHeight(300))}
 
 document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active");if(b.dataset.tab==="compare")loadCompareDates()}));
 ["ind-ma20","ind-ma200"].forEach(id=>$(id).addEventListener("change",()=>{const active=state.lastStatus?.instrument_id===$("instrument").value;const live=active?(state.lastStatus?.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[])}));
-initTerminalResizer();$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("context-refresh").addEventListener("click",refreshContext);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
+initTerminalResizer();$("settings-open").addEventListener("click",openSettings);$("settings-close").addEventListener("click",closeSettings);$("settings-cancel").addEventListener("click",closeSettings);$("settings-save").addEventListener("click",saveSettings);$("settings-modal").addEventListener("click",e=>{if(e.target===$("settings-modal"))closeSettings()});document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("settings-modal").hidden)closeSettings()});$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("context-refresh").addEventListener("click",refreshContext);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>

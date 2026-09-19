@@ -851,3 +851,98 @@ def test_chart_history_does_not_hide_non_404_http_errors(monkeypatch):
                 date="20260920",
             )
         )
+
+
+
+def test_credentials_api_saves_secrets_without_returning_them(tmp_path, monkeypatch):
+    from jevpip.web.app import controller, settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "typesafe_api_key", None)
+    monkeypatch.setattr(settings, "gmo_fx_api_key", None)
+    monkeypatch.setattr(settings, "gmo_fx_api_secret", None)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/config/credentials",
+            json={
+                "typesafe_api_key": "jev-secret",
+                "gmo_fx_api_key": "gmo-key",
+                "gmo_fx_api_secret": "gmo-secret",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["typesafe_api_key_configured"] is True
+    assert payload["gmo_private_credentials_configured"] is True
+    assert "jev-secret" not in response.text
+    assert "gmo-secret" not in response.text
+    saved = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert 'TYPESAFE_API_KEY="jev-secret"' in saved
+    assert 'GMO_FX_API_KEY="gmo-key"' in saved
+    assert 'GMO_FX_API_SECRET="gmo-secret"' in saved
+    assert controller.settings is settings
+
+
+def test_controller_tracks_typesafe_reported_token_usage():
+    import asyncio
+
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    controller = UIController(Settings(_env_file=None))
+    asyncio.run(
+        controller._on_update(
+            {
+                "kind": "decision",
+                "instrument_id": "BTC",
+                "recorded_at": "2026-09-20T00:00:00+00:00",
+                "market_timestamp": "2026-09-20T00:00:00+00:00",
+                "jev": {
+                    "model": "jev-latest",
+                    "usage": {"input_tokens": 120, "output_tokens": 8},
+                    "answers": {},
+                },
+            }
+        )
+    )
+    asyncio.run(
+        controller._on_update(
+            {
+                "kind": "decision",
+                "instrument_id": "BTC",
+                "recorded_at": "2026-09-20T00:00:01+00:00",
+                "market_timestamp": "2026-09-20T00:00:01+00:00",
+                "jev": {
+                    "model": "jev-latest",
+                    "usage": {"input_tokens": 100, "output_tokens": 6},
+                    "answers": {},
+                },
+            }
+        )
+    )
+
+    usage = controller.snapshot()["jev_usage"]
+    assert usage == {
+        "calls": 2,
+        "reported_calls": 2,
+        "input_tokens": 220,
+        "output_tokens": 14,
+        "total_tokens": 234,
+        "latest": {
+            "input_tokens": 100,
+            "output_tokens": 6,
+            "total_tokens": 106,
+        },
+    }
+
+
+def test_homepage_has_local_api_settings_ui():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "⚙ 設定" in response.text
+    assert "settings-jev-key" in response.text
+    assert "settings-gmo-secret" in response.text
+    assert "Jev API使用量" in response.text

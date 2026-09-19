@@ -59,6 +59,15 @@ class UIController:
         self._jev_supervisor_advice: JevSupervisorAdvice | None = None
         self._jev_supervisor_expires_at: datetime | None = None
         self._jev_supervisor_error: str | None = None
+        self._jev_usage_calls = 0
+        self._jev_usage_reported_calls = 0
+        self._jev_usage_input_tokens = 0
+        self._jev_usage_output_tokens = 0
+        self._jev_usage_latest: dict[str, int | None] = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
 
     @property
     def running(self) -> bool:
@@ -129,6 +138,7 @@ class UIController:
         self._jev_supervisor_advice = None
         self._jev_supervisor_expires_at = None
         self._jev_supervisor_error = None
+        self._reset_jev_usage()
         self._chart.clear()
         self._events.clear()
 
@@ -219,6 +229,7 @@ class UIController:
                     self._events.appendleft(paper_event)
         elif kind == "decision":
             self._latest_decision = event
+            self._record_jev_usage(event)
             if self._paper is not None:
                 self._paper.on_decision(event)
             self._update_jev_supervisor(event)
@@ -293,6 +304,7 @@ class UIController:
             "paper": None if self._paper is None else self._paper.snapshot(),
             "external_context": self._external_context_snapshot(now, self._instrument_id),
             "jev_supervisor": self._jev_supervisor_snapshot(now),
+            "jev_usage": self._jev_usage_snapshot(),
             "events": list(self._events)[:40],
         }
 
@@ -319,6 +331,65 @@ class UIController:
             currencies=self._context_currencies(instrument_id),
         )
         return to_jev_context_state(selected, as_of=as_of)
+
+    @staticmethod
+    def _usage_token(value: Any) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return None
+        return value
+
+    def _reset_jev_usage(self) -> None:
+        self._jev_usage_calls = 0
+        self._jev_usage_reported_calls = 0
+        self._jev_usage_input_tokens = 0
+        self._jev_usage_output_tokens = 0
+        self._jev_usage_latest = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
+
+    def _record_jev_usage(self, event: dict[str, Any]) -> None:
+        jev = event.get("jev")
+        if not isinstance(jev, dict):
+            return
+        self._jev_usage_calls += 1
+        usage = jev.get("usage")
+        if not isinstance(usage, dict):
+            self._jev_usage_latest = {
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
+            }
+            return
+
+        input_tokens = self._usage_token(usage.get("input_tokens"))
+        output_tokens = self._usage_token(usage.get("output_tokens"))
+        if input_tokens is not None or output_tokens is not None:
+            self._jev_usage_reported_calls += 1
+        if input_tokens is not None:
+            self._jev_usage_input_tokens += input_tokens
+        if output_tokens is not None:
+            self._jev_usage_output_tokens += output_tokens
+        self._jev_usage_latest = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": (
+                None
+                if input_tokens is None or output_tokens is None
+                else input_tokens + output_tokens
+            ),
+        }
+
+    def _jev_usage_snapshot(self) -> dict[str, Any]:
+        return {
+            "calls": self._jev_usage_calls,
+            "reported_calls": self._jev_usage_reported_calls,
+            "input_tokens": self._jev_usage_input_tokens,
+            "output_tokens": self._jev_usage_output_tokens,
+            "total_tokens": self._jev_usage_input_tokens + self._jev_usage_output_tokens,
+            "latest": dict(self._jev_usage_latest),
+        }
 
     def _update_jev_supervisor(self, event: dict[str, Any]) -> None:
         if (

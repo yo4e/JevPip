@@ -1808,3 +1808,32 @@ UIで次を確認可能:
 - TTL expiry
 
 次の実装テーマはA/B/C/D experiment harnessとcounterfactual logging。
+
+
+---
+
+## 31. Local credential settings / Jev usage（2026-09-20）
+
+ローカルWeb UI右上に **⚙ 設定** を追加し、TypeSafe / GMO FX credentialsを同じ場所から設定できるようにする。
+
+安全境界:
+
+- 保存先は従来どおりgit-ignoredなlocal `.env`
+- browser/APIへ保存済みsecret値を返さない
+- UIは「設定済み / 未設定」だけを取得する
+- 入力欄は既存値でprefillしない
+- clear操作は明示checkboxで行う
+- POSIXでは保存後の `.env` permissionを `0600` にする
+- GMO credentialsは引き続きread-only GET clientだけで利用し、order POSTは追加しない
+- Observer実行中にJev keyを変更した場合、現在のJev clientへhot-swapせず次回Observer開始から反映する
+
+TypeSafe SDKのSystem One responseに含まれる `usage.input_tokens` / `usage.output_tokens` を、現在のObserver sessionについて集計する。
+
+- successful Jev decision call数
+- usageが報告されたcall数
+- input token累計
+- output token累計
+- total
+- latest callのtoken数
+
+usageが欠けるcallは推定しない。runtime表示だけに使い、実測値をpublic repoへcommitしない。
