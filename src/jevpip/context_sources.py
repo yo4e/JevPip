@@ -13,8 +13,10 @@ from jevpip.context import ContextRisk, ExternalContextItem
 BLS_ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BLS_SCHEDULE_URL = "https://www.bls.gov/schedule/"
 BOJ_MPM_URL = "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm"
+FED_FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 _BLS_TZ = ZoneInfo("America/New_York")
 _BOJ_TZ = ZoneInfo("Asia/Tokyo")
+_FED_TZ = ZoneInfo("America/New_York")
 _TZ_ALIASES = {
     "Eastern Standard Time": "America/New_York",
     "US/Eastern": "America/New_York",
@@ -334,6 +336,136 @@ def fetch_boj_events(
         response = client.get(BOJ_MPM_URL)
         response.raise_for_status()
     return parse_boj_mpm_html(
+        response.text,
+        observed_at=observed,
+        year=target_year,
+    )
+
+
+_FED_MONTHS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in {"script", "style"}:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self._skip_depth:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        text = " ".join(data.replace("\xa0", " ").split())
+        if text:
+            self.parts.append(text)
+
+
+def parse_fed_fomc_html(
+    html: str,
+    *,
+    observed_at: datetime,
+    year: int,
+    source_url: str = FED_FOMC_URL,
+) -> tuple[ExternalContextItem, ...]:
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+
+    parser = _VisibleTextParser()
+    parser.feed(html)
+    parts = parser.parts
+
+    heading = f"{year} FOMC Meetings"
+    try:
+        start = next(i for i, part in enumerate(parts) if heading in part)
+    except StopIteration:
+        return ()
+
+    end = len(parts)
+    for i in range(start + 1, len(parts)):
+        part = parts[i]
+        if re.fullmatch(r"20\d{2} FOMC Meetings", part) and heading not in part:
+            end = i
+            break
+
+    events: list[ExternalContextItem] = []
+    month: int | None = None
+    for part in parts[start + 1 : end]:
+        lower = part.lower()
+        if lower in _FED_MONTHS:
+            month = _FED_MONTHS[lower]
+            continue
+        if "/" in lower:
+            candidates = [item.strip() for item in lower.split("/")]
+            if all(item in _FED_MONTHS for item in candidates):
+                month = _FED_MONTHS[candidates[-1]]
+                continue
+        if month is None:
+            continue
+
+        match = re.fullmatch(r"(\d{1,2})(?:-(\d{1,2}))?\*?", part)
+        if not match:
+            continue
+        final_day = int(match.group(2) or match.group(1))
+        local_at = datetime(year, month, final_day, 14, 0, tzinfo=_FED_TZ)
+        scheduled_at = local_at.astimezone(timezone.utc)
+        events.append(
+            ExternalContextItem(
+                source="fed",
+                source_id=f"fomc-statement-{local_at.date().isoformat()}",
+                kind="scheduled_event",
+                title="Federal Reserve FOMC statement",
+                observed_at=observed_at,
+                source_url=source_url,
+                scheduled_at=scheduled_at,
+                currencies=("USD",),
+                risk="high",
+            )
+        )
+
+    unique = {item.key: item for item in events}
+    return tuple(sorted(unique.values(), key=lambda item: item.scheduled_at or item.observed_at))
+
+
+def fetch_fed_events(
+    observed_at: datetime | None = None,
+    *,
+    year: int | None = None,
+    timeout_seconds: float = 8.0,
+) -> tuple[ExternalContextItem, ...]:
+    observed = observed_at or datetime.now(timezone.utc)
+    target_year = year or observed.astimezone(_FED_TZ).year
+    headers = {
+        "User-Agent": "JevPip/0.1 (+https://github.com/yo4e/JevPip)",
+        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
+    }
+    with httpx.Client(
+        timeout=timeout_seconds,
+        follow_redirects=True,
+        headers=headers,
+    ) as client:
+        response = client.get(FED_FOMC_URL)
+        response.raise_for_status()
+    return parse_fed_fomc_html(
         response.text,
         observed_at=observed,
         year=target_year,
