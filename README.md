@@ -44,22 +44,35 @@ uv run jevpip ui --no-open
 
 PowerShell または Windows Terminal で同じコマンドを実行します。
 
+
+## すでにclone済みの場合
+
+新しいUIへ更新するには、JevPipディレクトリで次を実行します。
+
+```bash
+git pull
+uv sync --extra dev
+uv run jevpip ui
+```
+
 ## ブラウザUIでできること
 
-現在のUIは日本語です。
+現在のUIは日本語です。主画面はリアルタイムチャート中心に整理し、難しい研究用パラメータは「詳細設定」に畳んでいます。
 
-- GMO外国為替FXのUSD/JPY観測を開始・停止
-- Jevに見せる特徴量をON/OFF
-- Featureプリセットを選択して、その場で内容を変更
+- GMO外国為替FXのUSD/JPYをリアルタイム観測
+- BID / ASKからMIDチャートを描画
+- 「観測だけ」と「デモ取引」を切り替え
+- 仮想資金・仮想ポジション・確定/含み損益をリアルタイム表示
+- チャート上へデモのOPEN / CLOSEマーカーを表示
+- デモ戦略を「5秒モメンタム」または「Jevシグナル」から選択
+- 実口座の時価評価総額・残高・取引余力・評価損益・証拠金維持率・USD/JPY建玉を参照専用で表示
+- Featureプリセットを「基本」「テクニカル」「月だけ」などから選択
 - Jev利用のON/OFF
-- Jev判定間隔の変更
-- LONG / SHORT / WAIT候補へ変換するシグナル閾値の変更
-- 最新BID / ASK / spreadの表示
-- 最新Jev判断の表示
+- 詳細設定でFeature / Signal / Paper scalpingパラメータを変更
 - GMO公式BID/ASK 1分足による粗い履歴リプレイ
-- この起動中の最新イベントログ表示
+- tick / Jev / デモ売買イベントのログ表示
 
-設定は実験用です。現時点ではUI上で変更したカスタム設定を恒久保存しません。
+UI上で変更したカスタム設定は、現時点では恒久保存しません。
 
 ## JevのAPIキー
 
@@ -72,6 +85,30 @@ TYPESAFE_API_KEY=...
 ```
 
 APIキーそのものはブラウザへ返しません。
+
+
+## GMO実口座を参照する
+
+実口座表示はオプションです。設定しなくても観測・デモ取引・バックテストは使えます。
+
+GMOコイン外国為替FXの会員ページでAPIキーを作成し、**口座情報・建玉の参照に必要な権限だけ**を与えてください。注文権限はJevPipの現在の用途には不要です。可能ならGMO側のIP制限も利用してください。
+
+`.env` に次を追加します。
+
+```env
+GMO_FX_API_KEY=...
+GMO_FX_API_SECRET=...
+```
+
+JevPipが実口座表示に使うPrivate APIは、現在この2つだけです。
+
+```text
+GET /private/v1/account/assets
+GET /private/v1/openPositions?symbol=USD_JPY
+```
+
+JevPipのPrivate APIクライアント自体をGET専用として実装しており、注文系POSTエンドポイントは持っていません。APIキーとシークレットの値はブラウザへ返しません。
+
 
 ## Jevに見せる情報
 
@@ -118,6 +155,21 @@ Jevには直接「買う / 売る」を決めさせません。
 ```bash
 uv run jevpip signals list
 ```
+
+## デモ取引
+
+ブラウザUIで「デモ取引」を選ぶと、GMOから受信した**実際のBID / ASK**で仮想スキャルピングを行います。
+
+初期状態では次の2戦略を選べます。
+
+- **5秒モメンタム**: 直近5秒のMID変化が設定値を超えた方向へ仮想エントリー。Jev不要
+- **Jevシグナル**: Jevの研究用 `LONG / SHORT / WAIT` シグナルで仮想エントリー
+
+仮想LONGはASKで入りBIDで決済し、仮想SHORTはBIDで入りASKで決済します。そのため実際のspreadは最初から損益へ反映されます。
+
+初期版では単一ポジションとし、利確・損切り・最大保有時間・cooldownを設定できます。
+
+> デモ取引は将来の利益を示すものではありません。現在はAPI手数料とslippageをまだモデル化していないため、実取引より有利に見える場合があります。
 
 ## CLIで観測する
 
@@ -180,11 +232,12 @@ TypeSafeの現行契約にはサービスのbenchmark / performance information�
 
 現時点のJevPipには、次のものはありません。
 
-- GMO Private API接続
-- 注文作成
-- ポジション管理
-- 自動売買
+- GMO Private APIによる注文
+- 実ポジションの作成・決済
+- 自動実売買
 - live trading
+
+Private APIは、設定した場合に口座残高と建玉を**参照するGETのみ**実装しています。
 
 また、`LIVE_TRADING=true` を設定すると起動時に拒否します。
 
