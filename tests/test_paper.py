@@ -515,3 +515,32 @@ def test_jev_direction_gate_does_not_block_position_exit():
     closed = broker.on_tick(tick("2026-09-19T00:00:02+00:00", "150.024", "150.026"))
     assert closed and closed[0]["action"] == "CLOSE"
     assert closed[0]["reason"] == "take_profit"
+
+
+
+def test_direction_signal_takes_precedence_over_research_wait():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            jev_direction_gate_enabled=True,
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=100,
+            stop_loss_units=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    broker.on_decision(
+        {
+            "direction_signal": "LONG",
+            "research_signal": "WAIT",
+            "recorded_at": "2026-09-19T00:00:00+00:00",
+        }
+    )
+    opened = broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
+    assert opened and opened[0]["action"] == "OPEN"
+    assert opened[0]["side"] == "LONG"
