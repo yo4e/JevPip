@@ -1,6 +1,6 @@
 # JevPip 設計書 / Project Handoff
 
-> **Status:** design only / no implementation yet  
+> **Status:** early prototype implemented / Observer + Feature Lab + 1分足replay + local Web UI  
 > **Repository:** `yo4e/JevPip`  
 > **Created:** 2026-09-19  
 > **Primary goal:** GMOコインの外国為替FX APIからリアルタイム市場データを受け取り、TypeSafe AI の Jev を「高速な確率付き判断器」として組み込んだ、USD/JPY向けスキャルピング研究システムを作る。  
@@ -827,3 +827,65 @@ GMOコイン外国為替FX APIを対象とした日本向けツールである�
 
 実装開始前調査の詳細は `docs/RESEARCH_2026-09-19.md` を参照。
 
+
+
+---
+
+## 21. ローカルWeb UI v0.1（2026-09-19）
+
+CLIだけではFeature / Signal設定の実験が煩雑になるため、初期段階でローカルWeb UIを追加した。
+
+### 21.1 起動方式
+
+```text
+uv run jevpip ui
+        ↓
+127.0.0.1:8765
+        ↓
+Safari / Chrome / Edge 等
+```
+
+JevPip本体はローカルのPython processとして動き、ブラウザは操作盤として使う。
+
+macOS / Windowsで同じUIを使えることを優先する。
+
+CLIは削除せず、automation / debugging / headless運用向けとして残す。
+
+### 21.2 UI v0.1の範囲
+
+- Observer開始 / 停止
+- Feature preset選択
+- Featureの個別ON/OFF・時間窓変更
+- Jev ON/OFF
+- Jev cadence変更
+- Signal Policy preset選択
+- Signal thresholdの個別変更
+- 最新BID / ASK / spread表示
+- 最新Jev decision表示
+- GMO公式1分足KLine replay
+- 直近イベント表示
+
+UIで変更したcustom設定はv0.1では永続化しない。
+
+### 21.3 UIの安全境界
+
+- localhostを標準bind先にする
+- TypeSafe API keyの値をブラウザへ返さない
+- GMO Private APIをUIから利用しない
+- 注文UIを作らない
+- `LIVE_TRADING=true` は引き続き拒否する
+- ブラウザ上の `LONG / SHORT / WAIT` は研究用labelであり注文ではない
+
+### 21.4 実装
+
+初期UIはFastAPI + vanilla HTML/CSS/JavaScriptとする。
+
+React等のSPA frameworkは現時点では導入しない。Feature Labの操作性や画面構成が固まってから必要性を判断する。
+
+`jevpip ui` がUvicornを起動し、標準ではブラウザを自動で開く。
+
+### 21.5 README / UI言語
+
+READMEと初期UIは日本語を基本とする。
+
+コード識別子・データfield・外部API boundaryは英語を維持する。
