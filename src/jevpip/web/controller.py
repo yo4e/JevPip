@@ -205,13 +205,24 @@ class UIController:
         interval: str,
         date: str,
     ) -> dict[str, Any]:
-        get_instrument(instrument_id)
-        rows: list[Any] = []
-        used_date = date
+        instrument = get_instrument(instrument_id)
         requested = datetime.strptime(date, "%Y%m%d")
-        # FX weekends/holidays can have no KLine for the requested local date.
-        # Walk back several days instead of turning the chart into a blank panel.
-        for days_back in range(0, 8):
+
+        # TradingView-style behaviour: keep the visible candle count roughly
+        # stable, so a larger timeframe naturally shows a longer time span
+        # instead of repainting the same single day with fewer candles.
+        target_candles = 180
+        max_lookback_days = {
+            "1min": 8,
+            "5min": 8,
+            "15min": 10,
+            "1hour": 18,
+        }[interval]
+
+        by_open_time: dict[int, Any] = {}
+        used_dates: list[str] = []
+        empty_streak = 0
+        for days_back in range(max_lookback_days):
             candidate = requested - timedelta(days=days_back)
             candidate_date = candidate.strftime("%Y%m%d")
             rows = await asyncio.to_thread(
@@ -221,12 +232,31 @@ class UIController:
                 interval,
             )
             if rows:
-                used_date = candidate_date
+                used_dates.append(candidate_date)
+                empty_streak = 0
+                for item in rows:
+                    by_open_time[item.open_time_ms] = item
+            else:
+                empty_streak += 1
+
+            if len(by_open_time) >= target_candles:
                 break
+
+            # Crypto trades continuously, so repeated empty dates usually mean
+            # the requested history is unavailable. FX may legitimately have a
+            # weekend/holiday gap, therefore give it more room.
+            if instrument.market_kind == "crypto_spot" and empty_streak >= 2:
+                break
+
+        rows = sorted(by_open_time.values(), key=lambda item: item.open_time_ms)
+        rows = rows[-target_candles:]
+
         return {
             "instrument_id": instrument_id,
             "interval": interval,
-            "date": used_date,
+            "date": date,
+            "dates": sorted(used_dates),
+            "target_candles": target_candles,
             "candles": [
                 {
                     "timestamp": datetime.fromtimestamp(
