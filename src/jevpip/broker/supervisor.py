@@ -18,16 +18,24 @@ def deterministic_supervisor(
     market_status: str | None,
     spread_units: float,
     max_spread_units: float,
+    market_age_seconds: float | None = None,
+    max_market_age_seconds: float = 5.0,
 ) -> SupervisorDecision:
-    """Fail closed on a closed market and gate entries on spread.
+    """Code-only safety supervisor used as a baseline for future Jev supervision.
 
-    CAUTION begins at 80% of the configured max spread. This does not change
-    position size or risk limits; it is a visible baseline state for future
-    Jev-supervisor comparisons.
+    It can only tighten behaviour. It never increases size, widens risk limits,
+    or creates orders.
     """
     status = (market_status or "").upper()
     if status and status != "OPEN":
         return SupervisorDecision("PAUSE_ALL", f"market_status:{status}", False)
+
+    if (
+        market_age_seconds is not None
+        and max_market_age_seconds >= 0
+        and market_age_seconds > max_market_age_seconds
+    ):
+        return SupervisorDecision("PAUSE_ALL", "stale_market_data", False)
 
     if max_spread_units >= 0 and spread_units > max_spread_units:
         return SupervisorDecision("PAUSE_ENTRY", "spread_over_limit", False)
