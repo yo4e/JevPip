@@ -15,12 +15,20 @@ class FakeJevClient:
         self.response = response
         self.calls = []
 
-    def decide(self, state, horizon="5s", *, supervisor_strategies=()):
+    def decide(
+        self,
+        state,
+        horizon="5s",
+        *,
+        supervisor_strategies=(),
+        instrument_label="the instrument",
+    ):
         self.calls.append(
             {
                 "state": state,
                 "horizon": horizon,
                 "supervisor_strategies": supervisor_strategies,
+                "instrument_label": instrument_label,
             }
         )
         return self.response
@@ -91,6 +99,7 @@ def test_observer_uses_one_jev_call_for_context_and_supervisor(tmp_path, monkeyp
     assert len(client.calls) == 1
     call = client.calls[0]
     assert call["supervisor_strategies"] == ("momentum", "ma_trend")
+    assert call["instrument_label"] == "USD/JPY"
     assert call["state"]["external_context"][0]["source_id"] == "fomc-test"
 
     decision = next(event for event in events if event["kind"] == "decision")
