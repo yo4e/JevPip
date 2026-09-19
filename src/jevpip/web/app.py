@@ -58,7 +58,7 @@ class SignalPolicyInput(BaseModel):
 class PaperDemoInput(BaseModel):
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(default=1000, gt=0, le=100000000)
-    strategy: Literal["momentum", "jev"] = "momentum"
+    strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"] = "momentum"
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
     momentum_trigger_units: float = Field(default=0.6, gt=0, le=100000000)
     max_spread_units: float = Field(default=1.5, ge=0, le=100000000)
@@ -68,6 +68,14 @@ class PaperDemoInput(BaseModel):
     cooldown_seconds: float = Field(default=2.0, ge=0, le=600)
     jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)
     slippage_units: float = Field(default=0.0, ge=0, le=100000000)
+    rsi_period: int = Field(default=14, ge=2, le=500)
+    rsi_oversold: float = Field(default=30.0, ge=0, le=100)
+    rsi_overbought: float = Field(default=70.0, ge=0, le=100)
+    ma_fast_period: int = Field(default=5, ge=1, le=5000)
+    ma_slow_period: int = Field(default=20, ge=2, le=5000)
+    ma_min_gap_units: float = Field(default=0.2, ge=0, le=100000000)
+    deterministic_supervisor_enabled: bool = False
+    max_market_age_seconds: float = Field(default=5.0, ge=0.1, le=60)
 
 
 class ObserverStartRequest(BaseModel):
