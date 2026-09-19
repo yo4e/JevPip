@@ -6,7 +6,12 @@ from jevpip.broker.strategies import (
     momentum_signal,
     rsi_mean_reversion_signal,
 )
-from jevpip.broker.supervisor import deterministic_supervisor
+from jevpip.broker.supervisor import (
+    SupervisorDecision,
+    combine_supervisors,
+    deterministic_supervisor,
+    validate_jev_supervisor_payload,
+)
 
 
 def prices(values):
@@ -92,3 +97,76 @@ def test_supervisor_pauses_stale_data():
     assert decision.state == "PAUSE_ALL"
     assert decision.reason == "stale_market_data"
     assert decision.allow_entry is False
+
+
+def test_jev_supervisor_payload_rejects_unknown_strategy():
+    import pytest
+
+    with pytest.raises(ValueError, match="allowlisted"):
+        validate_jev_supervisor_payload(
+            {
+                "state": "CAUTION",
+                "strategy": "invented_magic",
+                "confidence": 0.8,
+                "ttl_seconds": 30,
+                "reason": "test",
+            },
+            allowed_strategies={"momentum", "ma_trend"},
+        )
+
+
+def test_jev_supervisor_payload_accepts_bounded_advice():
+    advice = validate_jev_supervisor_payload(
+        {
+            "state": "PAUSE_ENTRY",
+            "strategy": "ma_trend",
+            "confidence": 0.72,
+            "ttl_seconds": 45,
+            "reason": "event risk",
+        },
+        allowed_strategies={"momentum", "ma_trend"},
+    )
+    assert advice.state == "PAUSE_ENTRY"
+    assert advice.strategy == "ma_trend"
+    assert advice.confidence == 0.72
+    assert advice.ttl_seconds == 45
+
+
+def test_code_supervisor_cannot_be_relaxed_by_jev():
+    advice = validate_jev_supervisor_payload(
+        {
+            "state": "NORMAL",
+            "strategy": "momentum",
+            "confidence": 0.9,
+            "ttl_seconds": 30,
+            "reason": "looks calm",
+        },
+        allowed_strategies={"momentum"},
+    )
+    plan = combine_supervisors(
+        SupervisorDecision("PAUSE_ALL", "stale_market_data", False),
+        advice,
+    )
+    assert plan.state == "PAUSE_ALL"
+    assert plan.allow_entry is False
+    assert plan.strategy is None
+
+
+def test_jev_can_tighten_and_select_allowlisted_strategy():
+    advice = validate_jev_supervisor_payload(
+        {
+            "state": "CAUTION",
+            "strategy": "ma_trend",
+            "confidence": 0.8,
+            "ttl_seconds": 60,
+            "reason": "trend regime",
+        },
+        allowed_strategies={"momentum", "ma_trend"},
+    )
+    plan = combine_supervisors(
+        SupervisorDecision("NORMAL", "ok", True),
+        advice,
+    )
+    assert plan.state == "CAUTION"
+    assert plan.allow_entry is True
+    assert plan.strategy == "ma_trend"
