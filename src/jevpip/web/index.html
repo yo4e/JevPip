@@ -85,6 +85,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
     <section class="side-section">
       <h2>Jev</h2>
       <label class="toggle"><input id="with-jev" type="checkbox"><span>Jev判断<small>ON + コード戦略ONなら方向一致ゲート。ON + コード戦略OFFならJev単独でpaper entry方向を決めます。安全監督とは独立です。</small></span></label>
+      <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
     </section>
 
     <section class="side-section">
@@ -370,7 +371,24 @@ function paperConfig(){if($("mode").value!=="paper")return null;return{initial_b
 
 function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper($("mode").value==="paper"&&active?state.lastStatus.paper:null)}}
 function strategyChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
-function strategyEnabledChanged(){$("paper-strategy").disabled=!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
+function strategyEnabledChanged(){$("paper-strategy").disabled=Boolean(state.lastStatus?.running)||!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
+function syncSessionControls(s,activeInstrument){
+  const locked=Boolean(s.running&&activeInstrument);
+  if(locked){
+    $("with-jev").checked=Boolean(s.with_jev);
+    if(s.paper){
+      $("paper-strategy-enabled").checked=Boolean(s.paper.strategy_enabled);
+      $("paper-supervisor").checked=Boolean(s.paper.config?.deterministic_supervisor_enabled);
+      if(s.paper.strategy&&s.paper.strategy!=="jev")$("paper-strategy").value=s.paper.strategy;
+    }
+  }
+  $("paper-strategy-enabled").disabled=locked;
+  $("paper-supervisor").disabled=locked;
+  $("with-jev").disabled=locked;
+  $("paper-strategy").disabled=locked||!$("paper-strategy-enabled").checked;
+  $("session-lock-note").style.display=locked?"block":"none";
+  if(locked)updateTradeSummary();
+}
 function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
   const i=instrumentSpec();if(!i)return;
@@ -711,6 +729,7 @@ async function refresh(){
     $("start").disabled=s.running;
     $("stop").disabled=!s.running;
     $("instrument").disabled=s.running;
+    syncSessionControls(s,activeInstrument);
     const spec=state.config?.instruments?.[selectedInstrument]||instrumentSpec();
     const m=activeInstrument?s.latest_market:null;
     if(m){
