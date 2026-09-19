@@ -150,6 +150,7 @@ Jevとは独立したdeterministic supervisorがあります。
 - Fed定例FOMC statement → 公式14:00 ETの公開時刻を使い `PAUSE_ENTRY`
 
 BLS calendar、BOJ MPM release schedule、Fed FOMC calendarはObserver開始時とUIの「公式イベント更新」から取得します。
+Observer稼働中は標準15分ごとに再取得し、各sourceの取得結果・失敗・その時点のevent metadataを `data/context/<source>/YYYY-MM-DD.jsonl` へrevision logとして保存します。raw本文は保存しません。
 CPI / PPI / Employment Situation等のrisk分類はBLS公式の重要度ではなく、JevPip側の比較実験用local classificationです。
 
 supervisorはリスクを**厳しくする方向にしか動けません**。
