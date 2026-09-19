@@ -79,3 +79,16 @@ def test_supervisor_pauses_over_spread_and_warns_near_limit():
     assert paused.allow_entry is False
     assert caution.state == "CAUTION"
     assert caution.allow_entry is True
+
+
+def test_supervisor_pauses_stale_data():
+    decision = deterministic_supervisor(
+        market_status="OPEN",
+        spread_units=0.2,
+        max_spread_units=2,
+        market_age_seconds=8,
+        max_market_age_seconds=5,
+    )
+    assert decision.state == "PAUSE_ALL"
+    assert decision.reason == "stale_market_data"
+    assert decision.allow_entry is False
