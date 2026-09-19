@@ -5,8 +5,15 @@ import asyncio
 from pathlib import Path
 
 from jevpip.backtest.kline import replay_kline
-from jevpip.config import Settings, list_profiles, load_profile
+from jevpip.config import (
+    Settings,
+    list_profiles,
+    list_signal_policies,
+    load_profile,
+    load_signal_policy,
+)
 from jevpip.observer import observe
+from jevpip.signals import SignalPolicy
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -15,9 +22,17 @@ def _parser() -> argparse.ArgumentParser:
 
     features = sub.add_parser("features", help="特徴量プロファイル")
     features.add_argument("action", choices=["list"])
+    features.add_argument("--config", type=Path)
+
+    signals = sub.add_parser("signals", help="研究用売買シグナル設定")
+    signals.add_argument("action", choices=["list"])
+    signals.add_argument("--config", type=Path)
 
     obs = sub.add_parser("observe", help="GMOのUSD/JPYを観測してraw tickを保存")
     obs.add_argument("--profile", default="minimal")
+    obs.add_argument("--feature-config", type=Path)
+    obs.add_argument("--signal-policy", default="research_default")
+    obs.add_argument("--signal-config", type=Path)
     obs.add_argument(
         "--with-jev",
         action="store_true",
@@ -29,6 +44,7 @@ def _parser() -> argparse.ArgumentParser:
     bt = sub.add_parser("backtest", help="GMO公式1分足を使う粗い履歴リプレイ")
     bt.add_argument("--date", required=True, help="YYYYMMDD (GMO FX KLine availabilityに従う)")
     bt.add_argument("--profile", default="technical")
+    bt.add_argument("--feature-config", type=Path)
     bt.add_argument("--limit", type=int)
     bt.add_argument("--output", type=Path)
 
@@ -40,20 +56,29 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings()
 
     if args.command == "features":
-        for name, profile in sorted(list_profiles().items()):
+        for name, profile in sorted(list_profiles(args.config).items()):
             print(f"{name:16} {profile.get('description_ja', '')}")
         return 0
 
-    profile = load_profile(args.profile)
+    if args.command == "signals":
+        for name, policy in sorted(list_signal_policies(args.config).items()):
+            print(f"{name:16} {policy.get('description_ja', '')}")
+        return 0
+
+    profile = load_profile(args.profile, args.feature_config)
 
     if args.command == "observe":
         jev = None
+        signal_policy = None
         if args.with_jev:
             if not settings.typesafe_api_key:
                 raise SystemExit("--with-jev には TYPESAFE_API_KEY が必要です")
             from jevpip.jev.client import JevClient
 
             jev = JevClient(settings.typesafe_api_key)
+            raw_policy, description = load_signal_policy(args.signal_policy, args.signal_config)
+            signal_policy = SignalPolicy.from_dict(raw_policy)
+            print(f"signal={args.signal_policy}: {description}")
 
         print(f"profile={args.profile}: {profile.get('description_ja', '')}")
         print("Connected target: GMO FX Public WebSocket / USD_JPY")
@@ -64,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
                 jev,
                 args.jev_every,
                 args.max_ticks,
+                signal_policy,
+                args.signal_policy if signal_policy else None,
             )
         )
         return 0
