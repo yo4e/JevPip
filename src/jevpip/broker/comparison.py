@@ -22,6 +22,7 @@ def default_paper_config(
     initial_balance: float = 100000.0,
     size: float | None = None,
     supervisor: bool = True,
+    bar_seconds: int = 0,
 ) -> PaperConfig:
     instrument = get_instrument(instrument_id)
     return PaperConfig(
@@ -42,6 +43,7 @@ def default_paper_config(
         slippage_units=float(instrument.default_slippage_units),
         short_is_synthetic=instrument.paper_short_is_synthetic,
         deterministic_supervisor_enabled=supervisor,
+        strategy_bar_seconds=bar_seconds,
     )
 
 
@@ -70,6 +72,7 @@ def compare_ticks(
     initial_balance: float = 100000.0,
     size: float | None = None,
     supervisor: bool = True,
+    bar_seconds: int = 0,
 ) -> dict[str, dict[str, Any]]:
     selected = tuple(dict.fromkeys(strategies))
     if not selected:
@@ -85,6 +88,7 @@ def compare_ticks(
                 initial_balance=initial_balance,
                 size=size,
                 supervisor=supervisor,
+                bar_seconds=bar_seconds,
             )
         )
         for name in selected
@@ -107,6 +111,7 @@ def compare_ticks(
         results[name] = {
             "ticks": seen,
             "strategy": name,
+            "strategy_bar_seconds": snapshot["strategy_bar_seconds"],
             "equity": snapshot["equity"],
             "net_pnl": round(snapshot["equity"] - snapshot["initial_balance"], 3),
             "realized_pnl": snapshot["realized_pnl"],
@@ -130,6 +135,7 @@ def compare_raw_file(
     initial_balance: float = 100000.0,
     size: float | None = None,
     supervisor: bool = True,
+    bar_seconds: int = 0,
 ) -> dict[str, dict[str, Any]]:
     return compare_ticks(
         read_raw_ticks(path),
@@ -138,4 +144,5 @@ def compare_raw_file(
         initial_balance=initial_balance,
         size=size,
         supervisor=supervisor,
+        bar_seconds=bar_seconds,
     )
