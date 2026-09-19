@@ -6,15 +6,23 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
+from jevpip.broker.strategies import (
+    StrategyDecision,
+    StrategyName,
+    ma_trend_signal,
+    momentum_signal,
+    rsi_mean_reversion_signal,
+)
+from jevpip.broker.supervisor import SupervisorDecision, deterministic_supervisor
+
 Side = Literal["LONG", "SHORT"]
-Strategy = Literal["momentum", "jev"]
 
 
 @dataclass(frozen=True, slots=True)
 class PaperConfig:
     initial_balance: float = 100000.0
     size: float = 1000.0
-    strategy: Strategy = "momentum"
+    strategy: StrategyName = "momentum"
     price_unit: float = 0.01
     move_unit_label: str = "pips"
     momentum_window_seconds: float = 5.0
@@ -29,6 +37,13 @@ class PaperConfig:
     fee_label: str = "手数料なし"
     slippage_units: float = 0.0
     short_is_synthetic: bool = False
+    rsi_period: int = 14
+    rsi_oversold: float = 30.0
+    rsi_overbought: float = 70.0
+    ma_fast_period: int = 5
+    ma_slow_period: int = 20
+    ma_min_gap_units: float = 0.2
+    deterministic_supervisor_enabled: bool = False
 
 
 @dataclass(slots=True)
@@ -86,6 +101,8 @@ class PaperBroker:
         self._peak_equity = self.initial_balance
         self._max_drawdown = Decimal("0")
         self._max_drawdown_pct = Decimal("0")
+        self._latest_strategy_decision = StrategyDecision("WAIT", "not_started", {})
+        self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
     @property
     def price_unit(self) -> Decimal:
@@ -118,12 +135,22 @@ class PaperBroker:
         ask = Decimal(str(event["ask"]))
         mid = (bid + ask) / Decimal("2")
         spread_units = (ask - bid) / self.price_unit
+        market_status = str(event.get("status") or "")
 
         self._last_bid = bid
         self._last_ask = ask
         self._last_market_at = at
         self._prices.append((at, mid))
         self._prune_prices(at)
+
+        if self.config.deterministic_supervisor_enabled:
+            self._supervisor = deterministic_supervisor(
+                market_status=market_status,
+                spread_units=float(spread_units),
+                max_spread_units=self.config.max_spread_units,
+            )
+        else:
+            self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
         generated: list[dict[str, Any]] = []
         if self.position is not None:
@@ -133,9 +160,10 @@ class PaperBroker:
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
         if self.position is None and self._can_enter(at, spread_units):
-            desired = self._desired_signal(at, mid)
-            if desired in {"LONG", "SHORT"}:
-                trade = self._open(desired, at, bid, ask)
+            decision = self._strategy_decision(at, mid)
+            self._latest_strategy_decision = decision
+            if decision.signal in {"LONG", "SHORT"}:
+                trade = self._open(decision.signal, at, bid, ask, decision.reason)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
         self._update_drawdown()
@@ -147,34 +175,51 @@ class PaperBroker:
             self._prices.popleft()
 
     def _can_enter(self, at: datetime, spread_units: Decimal) -> bool:
+        if not self._supervisor.allow_entry:
+            return False
         if spread_units > Decimal(str(self.config.max_spread_units)):
             return False
         if self._last_exit_at is None:
             return True
         return (at - self._last_exit_at).total_seconds() >= self.config.cooldown_seconds
 
-    def _desired_signal(self, at: datetime, mid: Decimal) -> str:
+    def _strategy_decision(self, at: datetime, mid: Decimal) -> StrategyDecision:
         if self.config.strategy == "jev":
             if self._latest_jev_at is None:
-                return "WAIT"
+                return StrategyDecision("WAIT", "jev_warmup", {})
             age = abs((at - self._latest_jev_at).total_seconds())
-            return self._latest_jev_signal if age <= self.config.jev_signal_max_age_seconds else "WAIT"
+            signal = self._latest_jev_signal if age <= self.config.jev_signal_max_age_seconds else "WAIT"
+            return StrategyDecision(
+                signal,
+                "jev_signal" if signal != "WAIT" else "jev_stale_or_wait",
+                {"signal_age_seconds": round(age, 3)},
+            )
 
-        previous: Decimal | None = None
-        for seen_at, seen_mid in reversed(self._prices):
-            if (at - seen_at).total_seconds() >= self.config.momentum_window_seconds:
-                previous = seen_mid
-                break
-        if previous is None:
-            return "WAIT"
+        if self.config.strategy == "rsi_mean_reversion":
+            return rsi_mean_reversion_signal(
+                self._prices,
+                period=self.config.rsi_period,
+                oversold=self.config.rsi_oversold,
+                overbought=self.config.rsi_overbought,
+            )
 
-        move_units = (mid - previous) / self.price_unit
-        trigger = Decimal(str(self.config.momentum_trigger_units))
-        if move_units >= trigger:
-            return "LONG"
-        if move_units <= -trigger:
-            return "SHORT"
-        return "WAIT"
+        if self.config.strategy == "ma_trend":
+            return ma_trend_signal(
+                self._prices,
+                price_unit=self.price_unit,
+                fast_period=self.config.ma_fast_period,
+                slow_period=self.config.ma_slow_period,
+                min_gap_units=self.config.ma_min_gap_units,
+            )
+
+        return momentum_signal(
+            self._prices,
+            at=at,
+            mid=mid,
+            price_unit=self.price_unit,
+            window_seconds=self.config.momentum_window_seconds,
+            trigger_units=self.config.momentum_trigger_units,
+        )
 
     def _entry_price(self, side: Side, bid: Decimal, ask: Decimal) -> Decimal:
         slip = self.slippage_price
@@ -224,14 +269,14 @@ class PaperBroker:
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
         if self.config.strategy == "jev":
-            desired = self._desired_signal(at, (bid + ask) / Decimal("2"))
+            desired = self._strategy_decision(at, (bid + ask) / Decimal("2")).signal
             if desired == "SHORT" and self.position.side == "LONG":
                 return "opposite_jev_signal"
             if desired == "LONG" and self.position.side == "SHORT":
                 return "opposite_jev_signal"
         return None
 
-    def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal) -> PaperTrade:
+    def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal, reason: str) -> PaperTrade:
         size = Decimal(str(self.config.size))
         raw_price = ask if side == "LONG" else bid
         price = self._entry_price(side, bid, ask)
@@ -259,7 +304,7 @@ class PaperBroker:
             gross_pnl=None,
             fees=round(float(entry_fee), 3),
             slippage_cost=round(float(entry_slippage), 3),
-            reason="momentum" if self.config.strategy == "momentum" else "jev_signal",
+            reason=reason,
         )
         self.trades.appendleft(trade)
         return trade
@@ -347,6 +392,8 @@ class PaperBroker:
         return {
             "enabled": True,
             "strategy": self.config.strategy,
+            "strategy_decision": asdict(self._latest_strategy_decision),
+            "supervisor": asdict(self._supervisor),
             "initial_balance": round(float(self.initial_balance), 3),
             "balance": round(float(balance), 3),
             "equity": round(float(equity), 3),
