@@ -55,6 +55,11 @@ def derive_jev_supervisor_advice(
     """
 
     allowed = tuple(dict.fromkeys(str(name) for name in allowed_strategies))
+    pause_answer = _answer(response, "supervisor_pause_entry")
+    caution_answer = _answer(response, "supervisor_caution")
+    if "noul" not in pause_answer or "noul" not in caution_answer:
+        raise ValueError("Jev supervisor response is missing required bounded answers")
+
     pause_probability = _probability(response, "supervisor_pause_entry")
     caution_probability = _probability(response, "supervisor_caution")
 
