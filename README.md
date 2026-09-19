@@ -87,7 +87,7 @@ UI上で変更したカスタム設定は、現時点では恒久保存しませ
 - **MA trend**: short MAとlong MAの差がthresholdを超えた方向へentry
 - **Jev signal**: Jevの研究用LONG / SHORT / WAITを利用
 
-RSI / MAのstrategy計算は、現時点では**tick本数ベース**です。MT4等で一般的な時間足barベースのRSI / MAとは意味が異なるため、UIでもtick semanticsであることを明示しています。今後bar-based strategyへ発展させます。
+RSI / MAのstrategy入力は、詳細設定で **tick / 5秒bar / 15秒bar / 1分bar / 5分bar** から選べます。初期値は従来互換のtick本数ベースです。barを選んだ場合は、**確定したbarの終値だけ**でRSI / MAを計算し、形成途中のbarでは新しいstrategy signalを出しません。
 
 ### Code-only safety supervisor
 
@@ -277,8 +277,8 @@ uv run jevpip signals list
 現在は次の4戦略を選べます。
 
 - **Momentum**: 直近のMID変化が設定値を超えた方向へ仮想エントリー。Jev不要
-- **RSI mean reversion**: tick-count RSIがoversoldならLONG、overboughtならSHORT
-- **MA trend**: tick-count short / long MAの差がthresholdを超えた方向へentry
+- **RSI mean reversion**: 選択したtick / closed-bar系列のRSIがoversoldならLONG、overboughtならSHORT
+- **MA trend**: 選択したtick / closed-bar系列のshort / long MA差がthresholdを超えた方向へentry
 - **Jev signal**: Jevの研究用 `LONG / SHORT / WAIT` シグナルで仮想エントリー
 
 仮想LONGはASKで入りBIDで決済し、仮想SHORTはBIDで入りASKで決済します。そのため実際のspreadは最初から損益へ反映されます。
@@ -364,6 +364,17 @@ uv run jevpip compare \
   --file data/raw_ticks/BTC/2026-09-19.jsonl \
   --no-supervisor
 ```
+
+RSI / MAを確定1分barで比較する場合:
+
+```bash
+uv run jevpip compare \
+  --instrument BTC \
+  --file data/raw_ticks/BTC/2026-09-19.jsonl \
+  --bar-seconds 60
+```
+
+`--bar-seconds 0` が従来のtick入力です。5 / 15 / 60 / 300秒を選べます。
 
 このcompareはJev APIを呼びません。Jev direct / Jev supervisorとの比較は、code-only baselineを固めた後の別Phaseです。
 
