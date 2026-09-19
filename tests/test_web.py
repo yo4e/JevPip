@@ -768,3 +768,86 @@ def test_controller_jev_context_state_is_lookahead_safe():
         "USD_JPY",
     )
     assert state["external_context"] == []
+
+
+def test_chart_history_treats_fx_404_as_empty_day_and_looks_back(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    import httpx
+    import jevpip.web.controller as controller_module
+    from jevpip.web.app import controller
+
+    calls = []
+
+    def fake_fetch(instrument_id, date, interval):
+        calls.append((instrument_id, date, interval))
+        if date in {"20260920", "20260919"}:
+            request = httpx.Request(
+                "GET",
+                f"https://forex-api.coin.z.com/public/v1/klines?date={date}",
+            )
+            response = httpx.Response(404, request=request)
+            raise httpx.HTTPStatusError(
+                "404 Not Found",
+                request=request,
+                response=response,
+            )
+        if date == "20260918":
+            return [
+                SimpleNamespace(
+                    open_time_ms=1758153600000 + i * 60_000,
+                    open=147.0 + i * 0.001,
+                    high=147.1 + i * 0.001,
+                    low=146.9 + i * 0.001,
+                    close=147.05 + i * 0.001,
+                )
+                for i in range(200)
+            ]
+        return []
+
+    monkeypatch.setattr(controller_module, "fetch_history", fake_fetch)
+    payload = asyncio.run(
+        controller.fetch_chart_history(
+            instrument_id="USD_JPY",
+            interval="1min",
+            date="20260920",
+        )
+    )
+
+    assert [date for _, date, _ in calls] == [
+        "20260920",
+        "20260919",
+        "20260918",
+    ]
+    assert payload["dates"] == ["20260918"]
+    assert len(payload["candles"]) == 180
+
+
+def test_chart_history_does_not_hide_non_404_http_errors(monkeypatch):
+    import asyncio
+
+    import httpx
+    import pytest
+    import jevpip.web.controller as controller_module
+    from jevpip.web.app import controller
+
+    def fake_fetch(instrument_id, date, interval):
+        request = httpx.Request("GET", "https://example.test/klines")
+        response = httpx.Response(503, request=request)
+        raise httpx.HTTPStatusError(
+            "503 Service Unavailable",
+            request=request,
+            response=response,
+        )
+
+    monkeypatch.setattr(controller_module, "fetch_history", fake_fetch)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(
+            controller.fetch_chart_history(
+                instrument_id="USD_JPY",
+                interval="1min",
+                date="20260920",
+            )
+        )
