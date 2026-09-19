@@ -123,6 +123,16 @@ code supervisorはriskを緩和しません。
 
 Jevはcode側の `PAUSE_ENTRY / PAUSE_ALL` を解除できません。
 
+external context foundationも実装済み:
+
+- provenance-first context item schema
+- source / source_id / observed_at / scheduled_at / published_at
+- currency / instrument tags
+- decision時点のlook-ahead防止
+- calendar revisionを過去へ逆流させないselection
+- boundedなJev context state変換
+- source / reuse調査: `docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md`
+
 Jev schemaには含めない:
 
 - arbitrary BUY / SELL order
@@ -133,10 +143,12 @@ Jev schemaには含めない:
 
 未実装:
 
-- news / economic calendar / official event context
+- BLS / Fed / BOJのsource adapterとruntime fetch
+- deterministic event-window supervisor
+- official post-release context
 - Jev supervisor live paper call
 - TTL expiration scheduling
-- A/B/C experiment harness
+- A/B/C/D experiment harness
 
 ## 3つの検証機能
 
@@ -248,11 +260,18 @@ Technical strategy engine + Jev supervisor.
 - raw tick comparison
 - historical strategy BT
 
+実装済み:
+
+- external context source / reuse research
+- provenance-first context schema
+- look-ahead-safe context selection
+
 未実装:
 
-- external context research
+- BLS / Fed / BOJ source adapters
+- deterministic event-window supervisor
 - Jev supervisor paper integration
-- A/B/C experiment harness
+- A/B/C/D experiment harness
 
 ### Issue #5
 
@@ -266,15 +285,16 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. Jevへ渡すfundamental / event contextを調査
-2. timestamp / provenance / look-ahead防止条件を設計
-3. deterministic supervisorをbaselineにする
-4. Jev supervisorをpaper-onlyで接続
-5. A: technical only
-6. B: technical + deterministic supervisor
-7. C: technical + Jev supervisor
-8. D: Jev direct signal control（research control）
-9. 同一market path / cost modelで比較
+1. BLS ICS adapterを実装
+2. Fed / BOJ scheduled-event adapterを追加
+3. deterministic event-window supervisorをbaselineとして実装
+4. runtime context logを保存
+5. Jev supervisorをpaper-onlyで接続
+6. A: technical only
+7. B: technical + deterministic event supervisor
+8. C: technical + deterministic + Jev supervisor
+9. D: Jev direct signal control（research control）
+10. 同一market path / cost modelでcounterfactualも含めて比較
 
 主に見る指標:
 
@@ -300,4 +320,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> Jev supervisorへ渡すexternal contextの調査と、paper-only A/B/C experiment設計。
+> BLS / Fed / BOJのscheduled-event adapterとdeterministic event-window supervisorを実装し、paper-only A/B/C/D experimentへ接続する。
