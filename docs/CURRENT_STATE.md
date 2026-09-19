@@ -146,6 +146,7 @@ Jev schemaには含めない:
 - BLS公式ICS adapter / runtime fetch
 - BOJ MPM release schedule adapter
 - Summary of Opinions / MPM Minutesの公式8:50 JST時刻
+- BOJ source_idの日付はUTC変換後ではなく公式JST日付で固定
 - BLS / BOJを独立・並列refresh
 - 片方のsource取得失敗時も、もう片方とlast known-good dataを維持
 - observer開始時のcontext refresh
