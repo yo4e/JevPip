@@ -24,6 +24,8 @@ class PaperConfig:
     initial_balance: float = 100000.0
     size: float = 1000.0
     strategy: StrategyName = "momentum"
+    strategy_enabled: bool = True
+    jev_direct_enabled: bool = False
     price_unit: float = 0.01
     move_unit_label: str = "pips"
     momentum_window_seconds: float = 5.0
@@ -219,7 +221,11 @@ class PaperBroker:
                 mid,
                 strategy_override=strategy_override,
             )
-            if self.config.jev_direction_gate_enabled and self.config.strategy != "jev":
+            if (
+                self.config.strategy_enabled
+                and self.config.jev_direction_gate_enabled
+                and self.config.strategy != "jev"
+            ):
                 decision = self._apply_jev_direction_gate(decision, at)
             self._latest_strategy_decision = decision
             if decision.signal in {"LONG", "SHORT"}:
@@ -286,7 +292,10 @@ class PaperBroker:
     def _can_enter(self, at: datetime, spread_units: Decimal) -> bool:
         if not self._supervisor.allow_entry:
             return False
-        if spread_units > Decimal(str(self.config.max_spread_units)):
+        if (
+            self.config.deterministic_supervisor_enabled
+            and spread_units > Decimal(str(self.config.max_spread_units))
+        ):
             return False
         if self._last_exit_at is None:
             return True
@@ -336,7 +345,13 @@ class PaperBroker:
         *,
         strategy_override: StrategyName | None = None,
     ) -> StrategyDecision:
-        strategy = strategy_override or self.config.strategy
+        if self.config.jev_direct_enabled:
+            strategy = "jev"
+        elif not self.config.strategy_enabled:
+            return StrategyDecision("WAIT", "strategy_disabled", {})
+        else:
+            strategy = strategy_override or self.config.strategy
+
         if strategy == "jev":
             if self._latest_jev_at is None:
                 return StrategyDecision("WAIT", "jev_warmup", {})
@@ -449,7 +464,7 @@ class PaperBroker:
             return "stop_loss"
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
-        if self.config.strategy == "jev":
+        if self.config.strategy == "jev" or self.config.jev_direct_enabled:
             desired = self._strategy_decision(at, (bid + ask) / Decimal("2")).signal
             if desired == "SHORT" and self.position.side == "LONG":
                 return "opposite_jev_signal"
@@ -609,6 +624,8 @@ class PaperBroker:
         return {
             "enabled": True,
             "strategy": self.config.strategy,
+            "strategy_enabled": self.config.strategy_enabled,
+            "jev_direct_enabled": self.config.jev_direct_enabled,
             "jev_direction_gate_enabled": self.config.jev_direction_gate_enabled,
             "latest_jev_signal": self._latest_jev_signal,
             "strategy_bar_seconds": self.config.strategy_bar_seconds,
