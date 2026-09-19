@@ -1,0 +1,26 @@
+[signal.research_default]
+description_ja = "初期研究用。閾値は性能を保証する値ではなく、後から比較するための出発点"
+min_direction_probability = 0.65
+min_direction_margin = 0.20
+max_noise_probability = 0.40
+max_reversal_probability = 0.35
+min_trend_strength = 1.0
+max_spread_pips = 2.0
+
+[signal.loose]
+description_ja = "候補を多めに出す探索用。実売買向けではない"
+min_direction_probability = 0.55
+min_direction_margin = 0.10
+max_noise_probability = 0.55
+max_reversal_probability = 0.50
+min_trend_strength = 0.5
+max_spread_pips = 3.0
+
+[signal.strict]
+description_ja = "候補をかなり絞る探索用。実売買向けではない"
+min_direction_probability = 0.75
+min_direction_margin = 0.30
+max_noise_probability = 0.30
+max_reversal_probability = 0.25
+min_trend_strength = 2.0
+max_spread_pips = 1.5
