@@ -1401,45 +1401,6 @@ live order codeが存在しないため、以下はlive trading導入時まで�
 live orderを追加する前にIssue #3と最新GMO公式仕様を必ず再確認する。
 
 
----
-
-## 27. Raw Tick Strategy Comparison（2026-09-19）
-
-保存済みraw tickを同一条件で複数paper strategyへ流すcomparison runnerを持つ。
-
-目的は「あるstrategyが勝った」という単独結果ではなく、**同じmarket path / cost model / sizeでbaselineを横並び比較**すること。
-
-初期compare対象:
-
-- momentum
-- rsi_mean_reversion
-- ma_trend
-
-JevはAPI call / contract上のbenchmark公開制約が絡むため、このcode-only compare runnerからは呼ばない。
-
-出力:
-
-- net / realized / unrealized PnL
-- Profit Factor
-- max drawdown
-- trade count
-- win rate
-- fee
-- supervisor final state
-
-CLI:
-
-```bash
-uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.jsonl
-```
-
-`--no-supervisor` によりdeterministic supervisorなしのbaselineも再生できる。
-
-`--bar-seconds 5|15|60|300` によりRSI / MAを同じraw tickからclosed time barへ集約して比較できる。`0` はtick input。
-
-raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
-
-
 ### 26.5 Private API rate-limit / retry policy
 
 Issue #3の運用制約を次のように扱う。
@@ -1492,3 +1453,42 @@ Jevはdeterministic `PAUSE_ENTRY / PAUSE_ALL` をNORMALへ戻せない。
 allowlisted strategy提案も、effective stateがentry可能な場合だけ採用候補とする。
 
 外部fundamental context source / Jev API call / TTL expiration schedulingは別Phase。
+
+---
+
+## 27. Raw Tick Strategy Comparison（2026-09-19）
+
+保存済みraw tickを同一条件で複数paper strategyへ流すcomparison runnerを持つ。
+
+目的は「あるstrategyが勝った」という単独結果ではなく、**同じmarket path / cost model / sizeでbaselineを横並び比較**すること。
+
+初期compare対象:
+
+- momentum
+- rsi_mean_reversion
+- ma_trend
+
+JevはAPI call / contract上のbenchmark公開制約が絡むため、このcode-only compare runnerからは呼ばない。
+
+出力:
+
+- net / realized / unrealized PnL
+- Profit Factor
+- max drawdown
+- trade count
+- win rate
+- fee
+- supervisor final state
+
+CLI:
+
+```bash
+uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.jsonl
+```
+
+`--no-supervisor` によりdeterministic supervisorなしのbaselineも再生できる。
+
+`--bar-seconds 5|15|60|300` によりRSI / MAを同じraw tickからclosed time barへ集約して比較できる。`0` はtick input。
+
+raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
+
