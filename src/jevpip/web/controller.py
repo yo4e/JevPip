@@ -14,7 +14,7 @@ from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_event_supervisor
 from jevpip.config import Settings
 from jevpip.context import ExternalContextItem
-from jevpip.context_sources import fetch_bls_events
+from jevpip.context_sources import fetch_bls_events, fetch_boj_events
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.instruments import get_instrument
@@ -307,17 +307,48 @@ class UIController:
         target = instrument_id or self._instrument_id
         get_instrument(target)
         observed_at = datetime.now(timezone.utc)
-        try:
-            self._external_context_items = await asyncio.to_thread(
-                fetch_bls_events,
-                observed_at,
+
+        fetchers = {
+            "bls": fetch_bls_events,
+            "boj": fetch_boj_events,
+        }
+        results = await asyncio.gather(
+            *(
+                asyncio.to_thread(fetcher, observed_at)
+                for fetcher in fetchers.values()
+            ),
+            return_exceptions=True,
+        )
+
+        by_source: dict[str, tuple[ExternalContextItem, ...]] = {}
+        for item in self._external_context_items:
+            by_source.setdefault(item.source, ())
+            by_source[item.source] = (*by_source[item.source], item)
+
+        errors: list[str] = []
+        for (source, _fetcher), result in zip(fetchers.items(), results, strict=True):
+            if isinstance(result, BaseException):
+                errors.append(f"{source}:{type(result).__name__}: {result}")
+                continue
+            by_source[source] = tuple(result)
+
+        merged = [
+            item
+            for source_items in by_source.values()
+            for item in source_items
+        ]
+        self._external_context_items = tuple(
+            sorted(
+                merged,
+                key=lambda item: item.scheduled_at
+                or item.published_at
+                or item.observed_at,
             )
+        )
+        if any(not isinstance(result, BaseException) for result in results):
             self._external_context_fetched_at = observed_at
-            self._external_context_error = None
-        except Exception as exc:
-            # Keep the last known-good calendar. External context must never
-            # prevent the market observer itself from starting.
-            self._external_context_error = f"{type(exc).__name__}: {exc}"
+        self._external_context_error = "; ".join(errors) if errors else None
+
         self._update_event_supervisor(observed_at, target)
         return self._external_context_snapshot(observed_at, target)
 
