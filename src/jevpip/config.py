@@ -8,9 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime settings. Private GMO credentials intentionally do not exist yet."""
+    """Runtime settings. Live order paths remain intentionally unavailable."""
 
     typesafe_api_key: str | None = None
+    gmo_fx_api_key: str | None = None
+    gmo_fx_api_secret: str | None = None
     live_trading: bool = False
     data_dir: Path = Path("data")
 
@@ -19,6 +21,10 @@ class Settings(BaseSettings):
     def model_post_init(self, __context: Any) -> None:
         if self.live_trading:
             raise ValueError("LIVE_TRADING=true is not supported: JevPip has no live-order path.")
+
+    @property
+    def gmo_private_read_configured(self) -> bool:
+        return bool(self.gmo_fx_api_key and self.gmo_fx_api_secret)
 
 
 def load_profile(name: str, config_path: Path | None = None) -> dict[str, Any]:
