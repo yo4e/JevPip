@@ -283,6 +283,16 @@ Jevには選択Featureに加え、look-ahead-safeなofficial event contextと、
 
 Jev supervisorも併用できます。
 
+paper modeの意思決定レイヤーは独立にON/OFFできます。
+
+- コード戦略 ON / Jev OFF: code-only
+- コード戦略 ON / Jev ON: code strategy + Jev direction一致gate
+- コード戦略 OFF / Jev ON: Jev direction単独
+- コード戦略 OFF / Jev OFF: 新規entryなし
+- 安全監督は上記と独立してON/OFF
+
+安全監督OFFではmarket status / stale / spread / official eventのentry vetoを適用しません。既存positionのTP / SL / max hold等の決済ロジックは維持します。
+
 Jev supervisor用には固定schemaを実装済みです。
 
 - `NORMAL`
