@@ -104,6 +104,39 @@ class RawCompareRequest(BaseModel):
     bar_seconds: Literal[0, 5, 15, 60, 300] = 0
 
 
+class StrategyBacktestRequest(BaseModel):
+    instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{8}$")
+    strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend"]
+    initial_balance: float = Field(default=100000, gt=0, le=1000000000)
+    size: float = Field(gt=0, le=100000000)
+    max_spread_units: float = Field(ge=0, le=100000000)
+    take_profit_units: float = Field(gt=0, le=100000000)
+    stop_loss_units: float = Field(gt=0, le=100000000)
+    slippage_units: float = Field(default=0, ge=0, le=100000000)
+    momentum_lookback_bars: int = Field(default=1, ge=1, le=1440)
+    momentum_trigger_units: float = Field(gt=0, le=100000000)
+    rsi_period: int = Field(default=14, ge=2, le=500)
+    rsi_oversold: float = Field(default=30, ge=0, le=100)
+    rsi_overbought: float = Field(default=70, ge=0, le=100)
+    ma_fast_period: int = Field(default=5, ge=1, le=5000)
+    ma_slow_period: int = Field(default=20, ge=2, le=5000)
+    ma_min_gap_units: float = Field(default=0.2, ge=0, le=100000000)
+    max_hold_bars: int = Field(default=8, ge=1, le=1440)
+    cooldown_bars: int = Field(default=1, ge=0, le=1440)
+    supervisor_enabled: bool = True
+    limit: int | None = Field(default=None, ge=2, le=10000)
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        try:
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError as exc:
+            raise ValueError("日付はYYYYMMDD形式で指定してください。") from exc
+        return value
+
+
 class BacktestRequest(BaseModel):
     instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{8}$")
@@ -262,6 +295,31 @@ async def compare_raw(request: RawCompareRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"raw tick比較に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.post("/api/strategy-backtest")
+async def run_strategy_backtest_api(
+    request: StrategyBacktestRequest,
+) -> dict[str, Any]:
+    try:
+        get_instrument(request.instrument_id)
+        payload = request.model_dump()
+        instrument_id = payload.pop("instrument_id")
+        date = payload.pop("date")
+        limit = payload.pop("limit")
+        return await controller.run_strategy_backtest(
+            date=date,
+            instrument_id=instrument_id,
+            config=payload,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"戦略バックテストに失敗しました: {type(exc).__name__}: {exc}",
         ) from exc
 
 
