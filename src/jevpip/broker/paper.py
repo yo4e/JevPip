@@ -123,6 +123,7 @@ class PaperBroker:
         self._max_drawdown_pct = Decimal("0")
         self._closed_trade_count = 0
         self._win_count = 0
+        self._loss_count = 0
         self._sum_wins = Decimal("0")
         self._sum_losses_abs = Decimal("0")
         self._sum_closed_net = Decimal("0")
@@ -585,6 +586,7 @@ class PaperBroker:
             self._win_count += 1
             self._sum_wins += net_pnl
         elif net_pnl < 0:
+            self._loss_count += 1
             self._sum_losses_abs += abs(net_pnl)
         stats = self._exit_reason_stats.setdefault(
             reason,
@@ -650,7 +652,7 @@ class PaperBroker:
         average_win_pnl = None
         if wins:
             average_win_pnl = self._sum_wins / Decimal(wins)
-        losses = closed_count - wins
+        losses = self._loss_count
         average_loss_pnl = None
         if losses:
             average_loss_pnl = -(self._sum_losses_abs / Decimal(losses))
@@ -680,6 +682,23 @@ class PaperBroker:
                 "current_units": round(float(current_units), 3),
                 "move_unit_label": self.config.move_unit_label,
             }
+
+        fee_break_even_units_estimate = None
+        if (
+            self.fee_rate > 0
+            and self._last_bid is not None
+            and self._last_ask is not None
+            and self.price_unit > 0
+            and self.fee_rate < 1
+        ):
+            reference_price = (self._last_bid + self._last_ask) / Decimal("2")
+            fee_break_even_units_estimate = (
+                reference_price
+                * Decimal("2")
+                * self.fee_rate
+                / (Decimal("1") - self.fee_rate)
+                / self.price_unit
+            )
 
         return {
             "enabled": True,
@@ -711,6 +730,7 @@ class PaperBroker:
             "position": position,
             "closed_trades": closed_count,
             "wins": wins,
+            "losses": losses,
             "win_rate": None if not closed_count else round(wins / closed_count, 4),
             "profit_factor": None if profit_factor is None else round(float(profit_factor), 4),
             "average_trade_pnl": None if average_trade_pnl is None else round(float(average_trade_pnl), 3),
@@ -725,6 +745,11 @@ class PaperBroker:
                 "spread": "real_bid_ask",
                 "fee_rate_per_execution": self.config.fee_rate,
                 "fee_label": self.config.fee_label,
+                "estimated_fee_break_even_units": (
+                    None
+                    if fee_break_even_units_estimate is None
+                    else round(float(fee_break_even_units_estimate), 3)
+                ),
                 "slippage_units": self.config.slippage_units,
                 "short_is_synthetic": self.config.short_is_synthetic,
             },
