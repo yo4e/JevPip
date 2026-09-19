@@ -169,6 +169,13 @@ Jev schemaには含めない:
 - 15〜30秒TTLと自動失効
 - deterministic event supervisorとのstrict merge
 - UIでJev supervisor state / strategy / confidence / expiryを表示
+- Jev ON + code strategyではJev direction gateをpaper新規entryへ適用
+- code LONG/SHORTとfreshなJev LONG/SHORTが同方向のときだけentry候補を通す
+- Jev WAIT / 反対方向 / stale / warmupでは新規entryを止める
+- existing positionのTP / SL / max hold exitはdirection gateで止めない
+- Jev stateへconfigured strategy / latest strategy decision / position side・ageを追加
+- external contextはJev ON時にdirection判断側へも渡す
+- UIでWAIT gate理由と「Jev方向一致必須」を表示
 
 未実装:
 
