@@ -149,8 +149,12 @@ Jev schemaには含めない:
 - BOJ source_idの日付はUTC変換後ではなく公式JST日付で固定
 - Fed FOMC statement adapter（定例会合最終日14:00 ET）
 - BLS / BOJ / Fedを独立・並列refresh
-- 片方のsource取得失敗時も、もう片方とlast known-good dataを維持
+- 片方のsource取得失敗時も、他sourceとlast known-good dataを維持
 - observer開始時のcontext refresh
+- Observer稼働中の定期refresh（default 15分 / minimum 60秒）
+- source別runtime revision log: `data/context/<source>/YYYY-MM-DD.jsonl`
+- success / error / observed_at / bounded event metadataを保存
+- raw calendar / article bodyはrevision logへ保存しない
 - UIからの手動context refresh
 - deterministic event-window supervisor
 - high/critical: 前30分〜後15分 PAUSE_ENTRY
@@ -161,7 +165,6 @@ Jev schemaには含めない:
 未実装:
 
 - BOJ policy decision本体（固定公開時刻がないため未接続）
-- contextの定期refresh / runtime revision log
 - official post-release context
 - Jev supervisor live paper call
 - TTL expiration scheduling
@@ -292,7 +295,6 @@ Technical strategy engine + Jev supervisor.
 未実装:
 
 - BOJ policy decision本体の安全な時刻表現
-- runtime revision log
 - Jev supervisor paper integration
 - A/B/C/D experiment harness
 
@@ -309,9 +311,7 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 次の順序を推奨:
 
 1. BOJ policy decision本体を、固定時刻を捏造せず扱う方法を設計
-2. runtime context revision logを保存
-3. contextの定期refreshを追加
-4. Jev supervisorをpaper-onlyで接続
+2. Jev supervisorをpaper-onlyで接続
 6. A: technical only
 7. B: technical + deterministic event supervisor
 8. C: technical + deterministic + Jev supervisor
@@ -342,4 +342,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> runtime revision logとcontext定期refreshを追加し、Jev supervisor → paper-only A/B/C/D experimentへ接続する。
+> Jev supervisorをpaper-onlyで接続し、TTL → A/B/C/D experiment / counterfactualへ進む。
