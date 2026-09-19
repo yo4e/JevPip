@@ -82,6 +82,7 @@ class ObserverStartRequest(BaseModel):
 
 
 class BacktestRequest(BaseModel):
+    instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{8}$")
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
@@ -212,12 +213,18 @@ async def get_account(force: bool = False) -> dict[str, Any]:
 @app.post("/api/backtest")
 async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
     try:
+        instrument = get_instrument(request.instrument_id)
+        if instrument.market_kind != "fx" or instrument.quote_currency != "JPY":
+            raise ValueError("統計リプレイは現在、対円FXペアのみ対応しています。")
         return await controller.run_backtest(
             date=request.date,
+            instrument_id=request.instrument_id,
             profile_name=request.profile_name,
             profile=request.profile.model_dump(),
             limit=request.limit,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=502,
