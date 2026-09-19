@@ -965,7 +965,7 @@ def test_homepage_explains_wait_signal_gate_failures():
         response = client.get("/")
     assert response.status_code == 200
     assert 'id="signal-detail"' in response.text
-    assert "WAIT理由:" in response.text
+    assert "方向WAIT:" in response.text
     assert "signalGateSummary" in response.text
 
 
