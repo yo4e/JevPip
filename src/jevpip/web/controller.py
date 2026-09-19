@@ -14,7 +14,7 @@ from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_event_supervisor
 from jevpip.config import Settings
 from jevpip.context import ExternalContextItem
-from jevpip.context_sources import fetch_bls_events, fetch_boj_events
+from jevpip.context_sources import fetch_bls_events, fetch_boj_events, fetch_fed_events
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.instruments import get_instrument
@@ -311,6 +311,7 @@ class UIController:
         fetchers = {
             "bls": fetch_bls_events,
             "boj": fetch_boj_events,
+            "fed": fetch_fed_events,
         }
         results = await asyncio.gather(
             *(
