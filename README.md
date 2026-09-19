@@ -1,53 +1,44 @@
 # JevPip
 
-JevPip は、**GMOの市場データを使うローカル・マーケットターミナル兼研究アプリ**です。GMO外国為替FXの対円12ペアとBTC/JPYへ対応し、TypeSafe AI の Jev は必要なときだけ追加できる判断レイヤーとして扱います。
+JevPip は、**GMOの市場データを使うローカル・マーケットターミナル兼研究アプリ**です。
 
-目的は、いきなり自動売買をすることではありません。まず市場を観測し、raw tick、特徴量、Jevの確率判断、将来価格を保存して、「Jevに何を見せると、どんな判断になり、その判断は実際の値動きとどう対応するか」を検証します。
+現在は、対円FX 12ペアと BTC/JPY を対象に、
 
-> **現在は実売買しません。** 市場データはGMOのPublic APIから取得します。外国為替FXのPrivate APIは設定した場合に口座・建玉をGETで参照するだけで、注文系POSTは実装していません。
+- historical / live chart
+- raw tick収集
+- code-based paper trading
+- strategy backtest
+- raw tick replay comparison
+- optionalなJev研究レイヤー
 
-## いちばん簡単な使い方
+を1つのローカルUIへまとめています。
 
-JevPip は Python 3.12 で動くローカルアプリです。macOS と Windows の両方で動く構成にしています。
+> **実売買はしません。** GMO Private APIは、設定した場合も口座・建玉のGET参照だけです。注文POSTは実装していません。
 
-まず Python 3.12 と [uv](https://docs.astral.sh/uv/) を用意し、このリポジトリで依存関係を入れます。
+Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
+
+## Quick start
+
+Python 3.12 と [uv](https://docs.astral.sh/uv/) を用意します。
 
 ```bash
 uv sync --extra dev
-```
-
-ブラウザUIを起動します。
-
-```bash
 uv run jevpip ui
 ```
 
-標準では次のURLで起動し、ブラウザも自動で開きます。
+標準では次で起動します。
 
 ```text
 http://127.0.0.1:8765
 ```
 
-終了するときは、起動したターミナルまたはPowerShellで `Ctrl+C` を押します。
-
-ブラウザを自動で開きたくない場合:
+ブラウザを自動で開かない場合:
 
 ```bash
 uv run jevpip ui --no-open
 ```
 
-### macOS
-
-「ターミナル」で上記コマンドを実行します。
-
-### Windows
-
-PowerShell または Windows Terminal で同じコマンドを実行します。
-
-
-## すでにclone済みの場合
-
-新しいUIへ更新するには、JevPipディレクトリで次を実行します。
+すでにclone済みなら:
 
 ```bash
 git pull
@@ -55,100 +46,33 @@ uv sync --extra dev
 uv run jevpip ui
 ```
 
-## ブラウザUIでできること
+終了は起動したターミナル / PowerShellで `Ctrl+C`。
 
-現在のUIは日本語です。主画面は **簡単なMT4 + TradingView** を意識した1画面ターミナルに整理し、難しい研究用パラメータは「詳細設定」に畳んでいます。中央をチャート、右を自動売買設定、下を口座・建玉・Jev・ログ系のターミナルとして使います。
+## ブラウザUI
 
-- GMO外国為替FXの対円12ペアと BTC/JPY を切り替えてリアルタイム観測
-- GMOの過去KLineを自動で読み込み、live tickを末尾へ接続
-- 1分 / 5分 / 15分 / 1時間のチャート切替
-- 各時間足で約180本を表示し、時間足が長くなるほど見える期間も長くなる
-- 過去KLineをローソク足表示し、live MIDを末尾へ接続
-- MA20 / MA200 の表示切替
-- BID / ASKからMIDを更新
-- 「観測だけ」と「デモ取引」を切り替え
-- 仮想資金・仮想ポジション・確定/含み損益をリアルタイム表示
-- チャート上へデモのOPEN / CLOSEマーカーを表示
-- デモ戦略を Momentum / RSI mean reversion / MA trend / Jev signal から選択
-- 外国為替FX実口座の時価評価総額・残高・取引余力・評価損益・証拠金維持率・USD/JPY建玉を参照専用で表示
-- Featureプリセットを「基本」「テクニカル」「月だけ」などから選択
-- Jev利用のON/OFF
-- 詳細設定でFeature / Signal / Paper scalpingパラメータを変更
-- 対円FX / BTCの1分足統計リプレイ
-- historical 1分足をPaperBrokerへ流す戦略バックテスト
-- tick / Jev / デモ売買イベントのログ表示
+UIは日本語です。中央にチャート、右にpaper strategy設定、下に口座・戦略検証・ログを置いた1画面の取引ターミナル風レイアウトです。
 
-デスクトップUIでは、チャートと下部ターミナルの境界を上下へドラッグして、バックテスト / 戦略比較 / ログ領域の高さを変更できます。ダブルクリックで標準サイズへ戻ります。高さはブラウザのlocalStorageへ保存します。
+主な機能:
 
-UI上で変更したカスタム設定は、現時点では恒久保存しません。
+- 対円FX 12ペア / BTC/JPY の切替
+- GMO Public APIのlive ticker
+- historical KLine
+- 1分 / 5分 / 15分 / 1時間チャート
+- MA20 / MA200
+- live MIDをhistorical chart末尾へ接続
+- 仮想資金・建玉・PnL表示
+- paper tradeのOPEN / CLOSE marker
+- Jev ON / OFF
+- read-onlyなGMO FX実口座表示
+- 下部ターミナルの高さをドラッグで変更
 
-## Paper strategy
+UI上で変更した設定は、現時点では恒久保存しません。下部ターミナルの高さだけはブラウザのlocalStorageへ保存します。
 
-デモ自動売買では現在、次のstrategyを選べます。
+## 対応銘柄
 
-- **Momentum**: 指定秒数のMID変化がthresholdを超えた方向へentry
-- **RSI mean reversion**: RSIがoversoldならLONG、overboughtならSHORT
-- **MA trend**: short MAとlong MAの差がthresholdを超えた方向へentry
-- **Jev signal**: Jevの研究用LONG / SHORT / WAITを利用
+### 対円FX
 
-RSI / MAのstrategy入力は、詳細設定で **tick / 5秒bar / 15秒bar / 1分bar / 5分bar** から選べます。初期値は従来互換のtick本数ベースです。barを選んだ場合は、**確定したbarの終値だけ**でRSI / MAを計算し、形成途中のbarでは新しいstrategy signalを出しません。
-
-### Code-only safety supervisor
-
-Paper strategyの前に、Jevを使わないdeterministic supervisorを置けます。
-
-現在見るもの:
-
-- market statusがOPENでない → `PAUSE_ALL`
-- market timestampが古すぎる → `PAUSE_ALL`
-- spreadが設定上限を超える → `PAUSE_ENTRY`
-- spreadが上限の80%以上 → `CAUTION`
-
-supervisorは**リスクを厳しくする方向にしか動けません**。数量を増やしたり、TP / SLやspread limitを緩めたりはしません。
-
-これは将来のJev supervisorと比較するbaselineでもあります。
-
-### Jev supervisor schema
-
-将来Jevを「売買方向を直接決める人」ではなく、strategyを監督する管制塔として使うため、固定schemaとvalidatorを先に実装しています。
-
-Jevが返せるのは次だけです。
-
-- `NORMAL`
-- `CAUTION`
-- `PAUSE_ENTRY`
-- `PAUSE_ALL`
-- allowlist済みstrategyの提案
-- confidence
-- TTL
-- reason
-
-Jevから、注文方向・数量・TP/SL・レバレッジ・任意コードは受け取りません。
-
-さらにcode-only safety supervisorとmergeするとき、Jevは**安全側へ厳しくすることはできても、code側のPAUSEを解除することはできません**。
-
-現時点ではこのschema / validation / mergeまで実装済みで、ニュースや経済指標などの外部context取得はまだ接続していません。
-
-## Jevなしでも使える
-
-Jevは必須ではありません。
-
-JevをOFFにしても、次の機能は使えます。
-
-- 対円FX 12ペア / BTC/JPY のチャート
-- 過去KLineの表示
-- live market観測
-- raw tick保存
-- 5秒モメンタム等のcode-based paper strategy
-- デモ口座の残高・PnL・仮想建玉
-- 対円FXのBID/ASK KLine replay / BTCのclose-only KLine replay
-- 外国為替FX実口座のread-only表示（認証情報を設定した場合）
-
-つまりJevPip本体は、チャート・データ収集・paper broker・研究機能を持つ小さなターミナルとして動きます。Jevはその上に追加できるstrategy / research componentの一つです。
-
-## 対応FXペア
-
-現在paper PnLを日本円のまま正しく扱える、以下の対円12ペアを有効にしています。
+現在paper PnLをJPYのまま扱える12ペアを有効にしています。
 
 - USD/JPY
 - EUR/JPY
@@ -163,223 +87,120 @@ JevをOFFにしても、次の機能は使えます。
 - HUF/JPY
 - SEK/JPY
 
-GMO外国為替FX自体は非対円ペアを含む21通貨ペアを扱っていますが、EUR/USDなどはPnLをJPYへ換算するcross-rate modelが必要です。JevPipでは計算を誤魔化さず、円換算モデルを入れてから対応します。
+非対円FXは、historical cross-rateを含むJPY accountingを実装してから追加する方針です。
 
-対円FXはライブ観測・過去チャート・paper trading・1分足BID/ASK replayに利用できます。
+### BTC/JPY
 
-## BTC/JPY
+BTCはGMOコイン暗号資産Public APIの現物ticker / KLineを使います。
 
-BTCはGMOコイン暗号資産Public APIの現物 `BTC` tickerを使います。
+PaperBrokerでは比較研究のためLONG / SHORT両方向を扱いますが、BTCのSHORTは**synthetic short**です。
 
-```text
-Public REST:
-https://api.coin.z.com/public
+## Paper trading
 
-Public WebSocket:
-wss://api.coin.z.com/ws/public/v1
-```
+選べるstrategy:
 
-BTCはメンテナンス時を除き24時間365日動くため、FX市場が閉じる週末でも観測・デモ取引を試せます。
+- **Momentum**
+- **RSI mean reversion**
+- **MA trend**
+- **Jev signal**（研究対照）
 
-チャートの過去足はGMO暗号資産Public RESTのKLineを使用し、現在は次を切り替えられます。
+RSI / MAのlive paper入力は、
 
-- 1min
-- 5min
-- 15min
-- 1hour
+- tick
+- 5秒bar
+- 15秒bar
+- 1分bar
+- 5分bar
 
-BTCのpaper tradeでは、価格差の単位をFXのpipsではなく**円**として扱い、数量には小数BTCを使用します。初期値は研究用の仮設定であり、推奨売買条件ではありません。
+から選べます。bar modeは確定barのcloseだけで判断します。
 
-## JevのAPIキー
+PaperBrokerは次を反映します。
 
-raw tick収集やJevを使わない1分足リプレイだけなら、TypeSafeのAPIキーは不要です。
+- BID / ASK
+- configured slippage
+- instrumentごとのreference fee
+- TP / SL
+- max holding
+- cooldown
+- single position
 
-Jevを使う場合は、`.env.example` を参考に `.env` を作り、次を設定してください。
+表示する主な指標:
 
-```env
-TYPESAFE_API_KEY=...
-```
+- net / gross PnL
+- fee / slippage cost
+- Profit Factor
+- max drawdown
+- win rate
+- average trade / win / loss
+- exit reason別集計
 
-APIキーそのものはブラウザへ返しません。
+> Paper tradingは将来利益を示すものではありません。板の深さ、部分約定、動的slippage、資金・証拠金制約などは完全にはモデル化していません。
 
+## Safety supervisor
 
-## GMO実口座を参照する
+Jevとは独立したdeterministic supervisorがあります。
 
-実口座表示はオプションです。設定しなくても観測・デモ取引・バックテストは使えます。
+- market closed → `PAUSE_ALL`
+- stale market data → `PAUSE_ALL`
+- spread over limit → `PAUSE_ENTRY`
+- spread near limit → `CAUTION`
 
-GMOコイン外国為替FXの会員ページでAPIキーを作成し、**口座情報・建玉の参照に必要な権限だけ**を与えてください。注文権限はJevPipの現在の用途には不要です。可能ならGMO側のIP制限も利用してください。
+supervisorはリスクを**厳しくする方向にしか動けません**。
 
-`.env` に次を追加します。
+将来のJev supervisorも同じ境界へ接続し、code側のPAUSEをJevが解除できない設計にしています。
 
-```env
-GMO_FX_API_KEY=...
-GMO_FX_API_SECRET=...
-```
+## 3つの検証機能
 
-JevPipが実口座表示に使うPrivate APIは、現在この2つだけです。
+### 1. 戦略BT
 
-```text
-GET /private/v1/account/assets
-GET /private/v1/openPositions?symbol=USD_JPY
-```
+historical 1分足をPaperBrokerへ時系列で流し、code-only strategyを実際にentry / exitさせます。
 
-JevPipのPrivate APIクライアント自体をGET専用として実装しており、注文系POSTエンドポイントは持っていません。APIキーとシークレットの値はブラウザへ返しません。
-
-
-## Jevに見せる情報
-
-JevPipでは「正しい指標セット」を固定しません。
-
-標準Featureプリセット:
-
-- `minimal` : 短期価格、spread、短期move、tick activity
-- `technical` : RSI / SMAを追加
-- `moon_only` : **月の満ち欠けだけ**をJevに見せる
-- `price_and_moon` : 価格 + 月相
-- `random_control` : 無意味な決定論的featureだけを与える対照群
-- `kitchen_sink` : 利用可能featureを広くON
-
-ブラウザUIでは、これらを選んだあとに個別設定を変更できます。
-
-CLIで一覧を見る場合:
-
-```bash
-uv run jevpip features list
-```
-
-## 研究用シグナル
-
-Jevには直接「買う / 売る」を決めさせません。
-
-初期Jev questions:
-
-- direction: UP / DOWN / FLAT
-- market_is_noisy
-- reversal_risk
-- trend_strength
-
-その回答を、コード側のSignal Policyで `LONG / SHORT / WAIT` 候補へ変換します。
-
-標準Signal Policy:
-
-- `loose`
-- `research_default`
-- `strict`
-
-どれも「正しい売買設定」ではありません。比較実験の出発点です。
-
-```bash
-uv run jevpip signals list
-```
-
-## デモ取引
-
-ブラウザUIで「デモ自動売買」を選ぶと、GMOから受信した**実際のBID / ASK**で仮想スキャルピングを行います。
-
-売買設定は、一般的な売買画面に近い順番で **銘柄 / 注文数量 / Take Profit / Stop Loss / 最大スプレッド** を前面に出します。JevPip固有の判定時間、エントリー判定幅、再エントリー待機などは詳細設定へ分け、現在の条件を日本語の文章でも要約表示します。
-
-現在は次の4戦略を選べます。
-
-- **Momentum**: 直近のMID変化が設定値を超えた方向へ仮想エントリー。Jev不要
-- **RSI mean reversion**: 選択したtick / closed-bar系列のRSIがoversoldならLONG、overboughtならSHORT
-- **MA trend**: 選択したtick / closed-bar系列のshort / long MA差がthresholdを超えた方向へentry
-- **Jev signal**: Jevの研究用 `LONG / SHORT / WAIT` シグナルで仮想エントリー
-
-仮想LONGはASKで入りBIDで決済し、仮想SHORTはBIDで入りASKで決済します。そのため実際のspreadは最初から損益へ反映されます。
-
-初期版では単一ポジションとし、利確・損切り・最大保有時間・cooldownを設定できます。
-
-デモ損益は次のコストを含めます。
-
-- 実際のBID / ASK spread
-- BTC: 取引所現物のTaker 0.05% / 約定を参考にしたpaper fee
-- 対円FX: 外国為替FX APIの約定金額 × 0.002% / 約定を参考にしたpaper fee
-- 任意のadverse slippage（詳細設定。初期値0）
-
-UIには **コスト後確定損益 / 粗利益 / 手数料 / Profit Factor / 最大ドローダウン / 勝率** を表示します。
-
-BTCのPublic tickerは現物市場ですが、paper engineは比較研究のためLONG / SHORT両方向を許可しています。したがってBTCのSHORTは**仮想ショート**であり、現物売買そのものを再現したものではありません。
-
-> デモ取引は将来の利益を示すものではありません。約定板の深さ、部分約定、動的slippage、資金・証拠金制約などはまだ完全にはモデル化していません。
-
-## CLIで観測する
-
-ブラウザUIを使わず、ターミナルだけでも動かせます。
-
-raw tickだけ集める:
-
-```bash
-uv run jevpip observe --profile minimal
-```
-
-Jevも使う:
-
-```bash
-uv run jevpip observe --profile minimal --with-jev
-```
-
-月だけ見せる:
-
-```bash
-uv run jevpip observe --profile moon_only --with-jev
-```
-
-## 戦略バックテスト
-
-ブラウザUI下部の **「戦略BT」** では、選択した過去日付の1分足を、実際のPaperBrokerへ時系列で流してcode-only strategyを検証できます。
-
-対応strategy:
+対応:
 
 - Momentum
 - RSI mean reversion
 - MA trend
 
-Jev direct signalは、historical時点のJev contextが保存されていないためこのバックテストでは使いません。
+右側の現在設定から主に次を使います。
 
-戦略BTは右側の現在の自動売買設定から次を読み込みます。
-
-- 注文数量
-- Momentum threshold
-- RSI period / oversold / overbought
-- MA fast / slow / minimum gap
-- Take Profit
-- Stop Loss
+- size
+- TP / SL
 - max spread
 - slippage
-- instrument固有のreference fee
+- Momentum threshold
+- RSI params
+- MA params
+- instrument fee model
 
-historical専用として、次は「秒」ではなく**1分足の本数**で設定します。
+historical専用:
 
 - Momentum参照本数
 - 最大保有本数
 - 再entry待機本数
-
-たとえばMomentum参照本数3なら、現在の1分足closeと3本前のcloseを比較します。
 
 結果:
 
 - net PnL
 - Profit Factor
 - max drawdown
-- trade count
-- win rate
+- trade count / win rate
 - fee
-- average trade PnL
+- average trade
 - exit reason
 - No Trade baseline
 - Buy & Hold baseline
 
-FXはhistorical BID / ASK closeを使うためspreadを反映できます。BTC historical KLineにはBID / ASKがないため、BTCは `bid = ask = close` の近似で、reference feeとconfigured slippageを反映します。BTC SHORTは引き続きsynthetic shortです。
+FXはhistorical BID / ASK closeを使います。
 
-> 戦略BTは1分足の**closeだけ**でentry / exit条件を評価します。1分の途中でTP / SLへ触れたか、その中でどちらへ先に触れたかは復元できません。したがってtick-level execution backtestの代替ではありません。
+BTC historical KLineにはBID / ASKがないため、`bid = ask = close` の近似でreference feeとconfigured slippageを反映します。
 
-右側の「RSI/MA入力」で選ぶtick / 5秒bar / 15秒bar等はlive paper用です。historical戦略BTのRSI / MAは1分足close系列を使います。
+> 戦略BTは1分足の**close点だけ**でTP / SL等を評価します。1分の途中の値動き順序は復元しないため、tick-level execution backtestではありません。
 
-## Raw tickで戦略比較
+### 2. 戦略比較
 
-ライブ観測で保存したraw tickを、**同じデータ・同じpaper cost model**で複数のcode-only strategyへ流して比較できます。
+保存済みraw tickを、同じsize / cost modelで比較します。
 
-ブラウザUI下部の **「戦略比較」** タブでは、選択中の銘柄について保存済みの日付を選び、次の5者を同じraw tick / size / cost modelで比較できます。
+標準比較:
 
 - No Trade
 - Buy & Hold
@@ -387,11 +208,9 @@ FXはhistorical BID / ASK closeを使うためspreadを反映できます。BTC 
 - RSI mean reversion
 - MA trend
 
-表示するのは **net PnL / Profit Factor / max drawdown / 決済数 / 勝率 / fee / 1取引平均 / 平均勝ち / 平均負け / exit理由別損益**。安全監督のON/OFFと、RSI/MAのtick / closed-bar入力も選べます。
+安全監督ON/OFFや、RSI / MAのtick / closed-bar入力を変えて再生できます。
 
-No Tradeは常に0円、Buy & Holdは最初のASKでLONGし最後のBIDで手仕舞う単純baselineで、spread / reference fee / configured slippageを同じように反映します。
-
-例:
+CLI:
 
 ```bash
 uv run jevpip compare \
@@ -399,40 +218,7 @@ uv run jevpip compare \
   --file data/raw_ticks/BTC/2026-09-19.jsonl
 ```
 
-標準では次を比較します。
-
-- momentum
-- rsi_mean_reversion
-- ma_trend
-
-出力:
-
-- net PnL
-- Profit Factor
-- max drawdown
-- closed trades
-- win rate
-- fees paid
-
-JSONが必要なら:
-
-```bash
-uv run jevpip compare \
-  --instrument BTC \
-  --file data/raw_ticks/BTC/2026-09-19.jsonl \
-  --json
-```
-
-安全監督の有無も比較できます。
-
-```bash
-uv run jevpip compare \
-  --instrument BTC \
-  --file data/raw_ticks/BTC/2026-09-19.jsonl \
-  --no-supervisor
-```
-
-RSI / MAを確定1分barで比較する場合:
+1分barで比較する例:
 
 ```bash
 uv run jevpip compare \
@@ -441,33 +227,133 @@ uv run jevpip compare \
   --bar-seconds 60
 ```
 
-`--bar-seconds 0` が従来のtick入力です。5 / 15 / 60 / 300秒を選べます。
+### 3. 統計リプレイ
 
-このcompareはJev APIを呼びません。Jev direct / Jev supervisorとの比較は、code-only baselineを固めた後の別Phaseです。
+historical 1分足をFeature pipelineへ流し、次の1分の値動きを集計する研究機能です。
 
-## 統計リプレイ（1分足）
+**売買戦略のPnLバックテストではありません。**
 
-「統計リプレイ」の日付欄は**過去日付を自由に選択**できます。UIの初期値は前日です。これは売買戦略のPnLを測る機能ではなく、Featureと次の1分の値動きを調べる研究用リプレイです。
+FXではhistorical BID / ASKからspread-aware edgeも見ます。BTCはclose-to-closeの変化だけを扱います。
 
-対円FXではGMO公式のBID / ASK 1分足KLineを使い、同じFeature pipelineへ流します。このため1分後のMID変化に加えて、historical spreadを含むLONG / SHORT edgeも確認できます。
-
-BTC/JPYもバックテストできます。ただし暗号資産のhistorical KLineはBID / ASK履歴ではないため、**1分足close-to-closeの方向・変化量を見る粗いリプレイ**として扱います。BTCでhistorical spread込みのLONG / SHORT edgeを捏造しません。
-
-ブラウザUIから実行するほか、CLIでも動かせます。
+CLI:
 
 ```bash
 uv run jevpip backtest --date 20260918 --profile technical
 ```
 
-これは**粗い1分足研究用**です。
+## Jevの現在地
 
-1分足だけでは60秒の中の値動き順序を復元できないため、5秒・30秒スキャルピング性能の検証には使いません。短期の精密バックテストは、今から保存するraw tickを後日replayして行います。
+Jevは現在、research componentです。
 
-## データ保存
+標準Feature preset:
 
-runtime dataは `data/` 以下へ保存します。
+- `minimal`
+- `technical`
+- `moon_only`
+- `price_and_moon`
+- `random_control`
+- `kitchen_sink`
 
-主な保存先:
+初期Jev questions:
+
+- direction
+- market_is_noisy
+- reversal_risk
+- trend_strength
+
+Jev answerと、code側のsignal / safety ruleは分離しています。
+
+将来はJevを直接の売買方向決定器よりも、**code strategyを監督するsupervisor**として使う方向を優先しています。
+
+Jev supervisor用には固定schemaを実装済みです。
+
+- `NORMAL`
+- `CAUTION`
+- `PAUSE_ENTRY`
+- `PAUSE_ALL`
+- allowlist済みstrategy
+- confidence
+- TTL
+- reason
+
+Jevは数量、TP / SL、レバレッジ、任意commandを指定できません。
+
+ニュース・経済指標などのexternal context接続はまだ未実装です。
+
+## Jevを使う場合
+
+raw tick収集やcode-only strategyだけならTypeSafe API keyは不要です。
+
+Jevを使う場合は、`.env.example` を参考にローカルの `.env` へ設定します。
+
+```env
+TYPESAFE_API_KEY=...
+```
+
+API keyはブラウザへ返しません。
+
+## GMO実口座をread-onlyで表示する場合
+
+オプションです。注文権限は不要です。
+
+```env
+GMO_FX_API_KEY=...
+GMO_FX_API_SECRET=...
+```
+
+現在使うPrivate API:
+
+```text
+GET /private/v1/account/assets
+GET /private/v1/openPositions?symbol=USD_JPY
+```
+
+Private clientはGET専用で、注文POST endpointを持ちません。
+
+Private GETには共有rate limiterがあり、read-only GETは自動retryしません。
+
+## Safety boundary
+
+現時点で存在しないもの:
+
+- GMO Private APIによる注文
+- 実ポジションの作成・決済
+- 自動実売買
+- live trading
+
+`LIVE_TRADING=true` を設定すると起動時に拒否します。
+
+将来注文機能を検討する場合も、rate limit、idempotency、reconnect sync、position / loss limit等を先に設計する方針です。
+
+## CLI
+
+Feature preset一覧:
+
+```bash
+uv run jevpip features list
+```
+
+Signal Policy一覧:
+
+```bash
+uv run jevpip signals list
+```
+
+raw tick観測:
+
+```bash
+uv run jevpip observe --profile minimal
+```
+
+Jevあり:
+
+```bash
+uv run jevpip observe --profile minimal --with-jev
+```
+
+## Data
+
+runtime dataは `data/` 以下へ保存し、Gitでは無視します。
 
 ```text
 data/
@@ -478,68 +364,32 @@ data/
 └── backtests/
 ```
 
-これらはGitで無視されます。
+TypeSafeのperformance / benchmarkに関する実測値は、契約上の公開範囲を確認したうえで扱い、Jevのaccuracy / Brier score / PnL等は公開repoへcommitしない方針です。
 
-TypeSafeの現行契約にはサービスのbenchmark / performance informationの公開制限があるため、Jevの実測accuracy、Brier score、勝率、PnL等は公開リポジトリへcommitしない方針です。評価コードや評価方法自体は公開できます。
-
-参考:
-
-- https://typesafe.ai/legal/mca
-
-## Private APIのrate-limit / retry
-
-現在の外国為替FX Private API利用はread-onlyです。
-
-- Private GETはclient内の共有sliding-window limiterを通す
-- UI側にも3秒cacheがあり、口座refresh連打でAPIを叩き続けない
-- read-only GETはclient内で自動retryしない
-- 一時的な失敗はエラー表示し、次回refreshへ任せる
-- 将来注文POSTを追加する場合、**timeout / connection errorを理由に同じ注文をblind retryしない**
-- 注文系retryを実装する前に、client order ID相当・注文照会・idempotency・最新のGMO公式rate limitを確認する
-
-現在のPrivate clientには注文POST自体が存在しません。
-
-## 安全方針
-
-現時点のJevPipには、次のものはありません。
-
-- GMO Private APIによる注文
-- 実ポジションの作成・決済
-- 自動実売買
-- live trading
-
-Private APIは、設定した場合に口座残高と建玉を**参照するGETのみ**実装しています。
-
-また、`LIVE_TRADING=true` を設定すると起動時に拒否します。
-
-Jevの出力を将来注文へつなぐ場合も、spread、market status、position limit、loss limit、stale data等はコード側の決定論的ルールで管理する方針です。
-
-## 開発
+## Development
 
 ```bash
 uv sync --extra dev
 uv run pytest
 ```
 
-FastAPIのWeb UIはローカルホストで動きます。UI/APIのテストにはFastAPIの `TestClient` を使っています。
+unit testは外部APIへ依存しないものを基本とし、live connectivityはintegration checkとして分離します。
 
-外部APIを使わないunit testを基本とし、GMO Public WebSocketやTypeSafeへのlive疎通はintegration checkとして分離します。
+## Documents
 
-## 設計資料
-
-実装・設計判断を変更するときは、まず [DESIGN.md](./DESIGN.md) を確認してください。
-
-初期の類似実装調査:
-
-- [docs/RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md)
+- [CURRENT_STATE.md](./docs/CURRENT_STATE.md) : 現在できること、未実装、次の一手
+- [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
+- [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
 
 ## 現在の位置づけ
 
-JevPipは現在、次の四つを同じローカルアプリへまとめている段階です。
+JevPipは現在、
 
-1. **Market Terminal** : 対円FX 12ペア / BTC/JPY の過去チャート + live market表示
-2. **Paper Broker** : Jevなしのルール戦略でも動く仮想売買・PnL
-3. **Observer / Feature Lab** : raw tickを保存し、Jevへ見せる情報を組み替えて比較
-4. **Backtester** : 1分足統計リプレイ、historical 1分足の戦略BT、保存raw tickの戦略比較で設定を再検証
+1. **Market Terminal**
+2. **Paper Broker**
+3. **Observer / Feature Lab**
+4. **Backtester**
 
-Jevはこの土台を利用する任意コンポーネントです。将来、ETHや他のFX通貨ペアを追加しても、market / chart / paperの基本構造を再利用できる設計にします。
+を1つのローカルアプリへまとめた段階です。
+
+次の大きなテーマは、**Jev supervisorへ何のcontextを渡すかを調査し、code-only baselineとpaper環境で比較すること**です。
