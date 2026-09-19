@@ -380,6 +380,7 @@ unit testは外部APIへ依存しないものを基本とし、live connectivity
 - [CURRENT_STATE.md](./docs/CURRENT_STATE.md) : 現在できること、未実装、次の一手
 - [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
 - [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
+- [EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md](./docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md) : Jev supervisor向け公式event source / provenance / look-ahead設計
 
 ## 現在の位置づけ
 
@@ -392,4 +393,4 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-次の大きなテーマは、**Jev supervisorへ何のcontextを渡すかを調査し、code-only baselineとpaper環境で比較すること**です。
+次の大きなテーマは、**公式scheduled eventをlook-aheadなしで取り込み、deterministic event supervisorとJev supervisorをpaper環境で比較すること**です。
