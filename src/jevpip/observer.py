@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+import inspect
 from pathlib import Path
 import time
 from typing import Any
@@ -12,6 +14,16 @@ from jevpip.market.features import build_features
 from jevpip.signals import SignalPolicy, classify_research_signal
 from jevpip.storage.jsonl import append_jsonl
 
+UpdateCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+
+async def _notify(callback: UpdateCallback | None, event: dict[str, Any]) -> None:
+    if callback is None:
+        return
+    result = callback(event)
+    if inspect.isawaitable(result):
+        await result
+
 
 async def observe(
     profile: dict[str, Any],
@@ -21,6 +33,9 @@ async def observe(
     max_ticks: int | None = None,
     signal_policy: SignalPolicy | None = None,
     signal_policy_name: str | None = None,
+    *,
+    on_update: UpdateCallback | None = None,
+    emit_console: bool = True,
 ) -> None:
     buffer = TickBuffer()
     count = 0
@@ -35,10 +50,24 @@ async def observe(
         append_jsonl(raw_path, tick.as_json_dict())
 
         features = build_features(tick, buffer, profile)
-        print(
-            f"USD_JPY bid={tick.bid} ask={tick.ask} "
-            f"spread={tick.spread_pips:.3f}p status={tick.status}"
-        )
+        tick_event = {
+            "kind": "tick",
+            "received_at": tick.received_at.isoformat(),
+            "market_timestamp": tick.market_timestamp.isoformat(),
+            "symbol": tick.symbol,
+            "bid": str(tick.bid),
+            "ask": str(tick.ask),
+            "spread_pips": float(tick.spread_pips),
+            "status": tick.status,
+            "features": features,
+        }
+        await _notify(on_update, tick_event)
+
+        if emit_console:
+            print(
+                f"USD_JPY bid={tick.bid} ask={tick.ask} "
+                f"spread={tick.spread_pips:.3f}p status={tick.status}"
+            )
 
         now = time.monotonic()
         if jev_client is not None and now - last_jev_at >= jev_every_seconds:
@@ -55,8 +84,12 @@ async def observe(
                         signal_policy,
                     )
                 event = {
+                    "kind": "decision",
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                     "market_timestamp": tick.market_timestamp.isoformat(),
+                    "bid": str(tick.bid),
+                    "ask": str(tick.ask),
+                    "spread_pips": float(tick.spread_pips),
                     "profile": profile,
                     "state": features,
                     "jev": answer,
@@ -66,10 +99,21 @@ async def observe(
                     "signal_detail": signal_detail,
                 }
                 append_jsonl(data_dir / "decisions" / f"{day}.jsonl", event)
-                suffix = f" signal={research_signal}" if research_signal else ""
-                print(f"Jev decision saved ({latency_ms} ms){suffix}")
+                await _notify(on_update, event)
+                if emit_console:
+                    suffix = f" signal={research_signal}" if research_signal else ""
+                    print(f"Jev decision saved ({latency_ms} ms){suffix}")
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
-                print(f"Jev error: {type(exc).__name__}: {exc}")
+                error_event = {
+                    "kind": "error",
+                    "recorded_at": datetime.now(timezone.utc).isoformat(),
+                    "message": f"Jev error: {type(exc).__name__}: {exc}",
+                }
+                await _notify(on_update, error_event)
+                if emit_console:
+                    print(error_event["message"])
             last_jev_at = now
 
         if max_ticks is not None and count >= max_ticks:
