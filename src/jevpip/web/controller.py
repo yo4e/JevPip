@@ -254,21 +254,27 @@ class UIController:
         self,
         *,
         date: str,
+        instrument_id: str,
         profile_name: str,
         profile: dict[str, Any],
         limit: int | None,
     ) -> dict[str, Any]:
         slug = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in profile_name)[:64] or "custom"
-        output = self.settings.data_dir / "backtests" / f"{date}-{slug}.jsonl"
+        instrument = get_instrument(instrument_id)
+        if instrument.market_kind != "fx" or instrument.quote_currency != "JPY":
+            raise ValueError("統計リプレイは現在、対円FXペアのみ対応しています。")
+        output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
         rows = await asyncio.to_thread(
             replay_kline,
             date,
             profile,
             output,
             limit,
+            instrument_id,
         )
         return {
             "date": date,
+            "instrument_id": instrument_id,
             "profile_name": profile_name,
             "output": str(output),
             "summary": summarize_backtest(rows),
