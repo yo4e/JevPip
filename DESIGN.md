@@ -889,3 +889,111 @@ React等のSPA frameworkは現時点では導入しない。Feature Labの操作
 READMEと初期UIは日本語を基本とする。
 
 コード識別子・データfield・外部API boundaryは英語を維持する。
+
+
+---
+
+## 22. Dashboard / Paper / Read-only Account（2026-09-19）
+
+### 22.1 Dashboard-first UI
+
+UI v0.2では、Feature設定を主画面から退避し、次を最初に見せる。
+
+- USD/JPY realtime chart
+- current MID / spread
+- Observer status
+- Jev research signal
+- demo account equity / PnL
+- real account equity / PnL（credentials設定時のみ）
+
+ユーザーが最初に触る設定は、
+
+- 観測だけ / デモ取引
+- Feature preset
+- Jev ON / OFF
+- demo strategy
+
+に絞る。
+
+Feature windows、Signal Policy、paper risk parametersは「詳細設定」に畳む。
+
+### 22.2 Realtime chart
+
+Observerが受け取ったGMO Public WebSocketのBID / ASKからMIDを作り、UIへrecent pointsを渡す。
+
+チャートにはpaper brokerのOPEN / CLOSEをmarkerとして重ねる。
+
+初期実装は外部chart libraryを増やさず、browser Canvasで描画する。
+
+### 22.3 Paper scalper
+
+Paper tradingは実口座・GMO Private order APIと完全に分離する。
+
+初期条件:
+
+- virtual initial balance
+- one position at a time
+- configurable currency size
+- LONG entry = current ASK
+- LONG exit = current BID
+- SHORT entry = current BID
+- SHORT exit = current ASK
+- take profit
+- stop loss
+- max holding seconds
+- cooldown
+- max spread
+
+これによりspreadは自然に損益へ含まれる。
+
+初期strategy:
+
+1. `momentum`
+   - recent MIDの変化がthresholdを超えた方向へ仮想entry
+   - Jev不要
+2. `jev`
+   - code-side Signal Policyが返した `LONG / SHORT / WAIT` research labelを利用
+   - 古いsignalは利用しない
+
+API手数料とslippageはv0.2では未モデル。UIにその事実を明示する。
+
+Paper resultsはprediction quality / live profitabilityの証拠として扱わない。
+
+### 22.4 GMO FX Private APIの参照専用利用
+
+実口座表示のため、以下のGETだけを実装する。
+
+```text
+GET /private/v1/account/assets
+GET /private/v1/openPositions?symbol=USD_JPY
+```
+
+表示対象:
+
+- equity
+- availableAmount
+- balance
+- estimatedTradeFee
+- margin
+- marginRatio
+- positionLossGain
+- totalSwap
+- transferableAmount
+- USD/JPY open positions
+
+認証情報はlocal `.env` に保存し、browserへAPI key / secretの値を返さない。
+
+Private clientはGET専用classとして実装し、order / close / change / cancel等のPOST methodを持たせない。
+
+API keyはGMO会員ページで必要最小限の参照permissionに限定する。可能ならGMO側IP制限も使用する。
+
+### 22.5 Safety invariant
+
+この変更後も、以下は不変。
+
+- `LIVE_TRADING=true` は起動拒否
+- live order codeなし
+- Private order endpointなし
+- demo tradeはlocal simulation
+- UIのLONG / SHORTはresearch / paper label
+- real account cardはread-only
