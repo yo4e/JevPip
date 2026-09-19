@@ -45,6 +45,45 @@ def normalize_jev_signal_inputs(response: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def classify_direction_signal(
+    response: dict[str, Any],
+    policy: SignalPolicy,
+) -> tuple[Signal, dict[str, Any]]:
+    """Classify Jev direction without mixing in quality/supervisor questions.
+
+    This is the paper entry direction gate. Spread and other deterministic risk
+    limits remain code-owned elsewhere.
+    """
+    values = normalize_jev_signal_inputs(response)
+    long_margin = values["up"] - values["down"]
+    short_margin = values["down"] - values["up"]
+
+    if (
+        values["up"] >= policy.min_direction_probability
+        and long_margin >= policy.min_direction_margin
+    ):
+        signal: Signal = "LONG"
+    elif (
+        values["down"] >= policy.min_direction_probability
+        and short_margin >= policy.min_direction_margin
+    ):
+        signal = "SHORT"
+    else:
+        signal = "WAIT"
+
+    return signal, {
+        "up": values["up"],
+        "down": values["down"],
+        "flat": values["flat"],
+        "long_margin": long_margin,
+        "short_margin": short_margin,
+        "policy": {
+            "min_direction_probability": policy.min_direction_probability,
+            "min_direction_margin": policy.min_direction_margin,
+        },
+    }
+
+
 def classify_research_signal(
     response: dict[str, Any],
     spread_pips: float,
