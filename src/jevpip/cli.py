@@ -67,6 +67,7 @@ def _parser() -> argparse.ArgumentParser:
     cmp.add_argument("--initial-balance", type=float, default=100000.0)
     cmp.add_argument("--size", type=float)
     cmp.add_argument("--no-supervisor", action="store_true")
+    cmp.add_argument("--bar-seconds", type=int, choices=[0, 5, 15, 60, 300], default=0, help="RSI/MA入力: 0=tick, または確定bar秒数")
     cmp.add_argument("--json", action="store_true", help="JSONで出力")
     return parser
 
@@ -165,12 +166,14 @@ def main(argv: list[str] | None = None) -> int:
             initial_balance=args.initial_balance,
             size=args.size,
             supervisor=not args.no_supervisor,
+            bar_seconds=args.bar_seconds,
         )
         if args.json:
             print(json.dumps(results, ensure_ascii=False, indent=2))
             return 0
 
-        print(f"file={args.file} instrument={get_instrument(args.instrument).display_symbol}")
+        mode = "tick" if args.bar_seconds == 0 else f"{args.bar_seconds}s bars"
+        print(f"file={args.file} instrument={get_instrument(args.instrument).display_symbol} strategy_input={mode}")
         print("strategy              net_pnl       PF     maxDD   trades    win%      fees")
         for name, row in results.items():
             pf = "-" if row["profit_factor"] is None else f'{row["profit_factor"]:.2f}'
