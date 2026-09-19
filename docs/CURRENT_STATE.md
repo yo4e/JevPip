@@ -170,8 +170,9 @@ Jev schemaには含めない:
 - deterministic event supervisorとのstrict merge
 - UIでJev supervisor state / strategy / confidence / expiryを表示
 - Jev ON + code strategyではJev direction gateをpaper新規entryへ適用
-- code LONG/SHORTとfreshなJev LONG/SHORTが同方向のときだけentry候補を通す
-- Jev WAIT / 反対方向 / stale / warmupでは新規entryを止める
+- code LONG/SHORTとfreshなJev direction LONG/SHORTが同方向のときだけentry候補を通す
+- Jev direction WAIT / 反対方向 / stale / warmupでは新規entryを止める
+- direction gateはdirection probability / marginだけで判定し、noise / reversal / trend はresearch filter・supervisor側へ分離
 - existing positionのTP / SL / max hold exitはdirection gateで止めない
 - Jev stateへconfigured strategy / latest strategy decision / position side・ageを追加
 - external contextはJev ON時にdirection判断側へも渡す
