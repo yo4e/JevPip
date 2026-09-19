@@ -107,23 +107,27 @@ class UIController:
             normalized["fee_rate"] = float(instrument.paper_fee_rate)
             normalized["fee_label"] = instrument.paper_fee_label
             normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
+
+            legacy_jev_strategy = normalized.get("strategy") == "jev"
+            if legacy_jev_strategy and not with_jev:
+                raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
+            if legacy_jev_strategy:
+                normalized["strategy"] = "momentum"
+                normalized["strategy_enabled"] = False
+
             strategy_enabled = bool(normalized.get("strategy_enabled", True))
             normalized["strategy_enabled"] = strategy_enabled
             normalized["jev_direct_enabled"] = bool(with_jev and not strategy_enabled)
             normalized["jev_direction_gate_enabled"] = bool(
                 with_jev
                 and strategy_enabled
-                and normalized.get("strategy") != "jev"
             )
             config = PaperConfig(**normalized)
-            if config.strategy == "jev" and not with_jev:
-                raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
             self._paper_config = config
             self._paper = PaperBroker(config)
             if (
                 with_jev
                 and config.strategy_enabled
-                and config.strategy != "jev"
                 and config.deterministic_supervisor_enabled
             ):
                 jev_supervisor_strategies = (
