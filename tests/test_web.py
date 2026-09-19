@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from jevpip.web.app import app
@@ -16,6 +18,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "RSI逆張り" in response.text
         assert "MAトレンド" in response.text
         assert "RSI/MA入力" in response.text
+        assert "戦略比較" in response.text
+        assert "3戦略を比較" in response.text
         assert "1分bar" in response.text
         assert "安全監督" in response.text
         assert "tick age" in response.text
@@ -162,3 +166,72 @@ def test_chart_renderer_has_non_finite_and_bid_ask_fallback_guards():
         assert "function chartPrice" in response.text
         assert "表示できるチャートデータがありません" in response.text
         assert "historyCache" in response.text
+
+
+def test_raw_dates_and_strategy_compare_api(tmp_path, monkeypatch):
+    from jevpip.web.app import controller
+
+    monkeypatch.setattr(controller.settings, "data_dir", tmp_path)
+    raw_dir = tmp_path / "raw_ticks" / "USD_JPY"
+    raw_dir.mkdir(parents=True)
+    path = raw_dir / "2026-09-19.jsonl"
+    rows = []
+    for second in range(7):
+        mid = 150.0 + second * 0.01
+        timestamp = f"2026-09-19T00:00:{second:02d}+00:00"
+        rows.append(
+            {
+                "instrument_id": "USD_JPY",
+                "symbol": "USD_JPY",
+                "market_timestamp": timestamp,
+                "received_at": timestamp,
+                "bid": f"{mid:.3f}",
+                "ask": f"{mid + 0.002:.3f}",
+                "status": "OPEN",
+            }
+        )
+    path.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(app) as client:
+        dates = client.get("/api/raw/dates?instrument_id=USD_JPY")
+        assert dates.status_code == 200
+        assert dates.json()["dates"] == ["2026-09-19"]
+
+        response = client.post(
+            "/api/compare/raw",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "2026-09-19",
+                "strategies": ["momentum", "ma_trend"],
+                "initial_balance": 100000,
+                "supervisor": True,
+                "bar_seconds": 0,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert set(payload["results"]) == {"momentum", "ma_trend"}
+        assert payload["source"].endswith("2026-09-19.jsonl")
+        assert payload["results"]["momentum"]["ticks"] == 7
+
+
+def test_raw_strategy_compare_missing_file_is_400(tmp_path, monkeypatch):
+    from jevpip.web.app import controller
+
+    monkeypatch.setattr(controller.settings, "data_dir", tmp_path)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/compare/raw",
+            json={
+                "instrument_id": "BTC",
+                "date": "2026-09-19",
+                "strategies": ["momentum"],
+                "supervisor": True,
+                "bar_seconds": 0,
+            },
+        )
+        assert response.status_code == 400
+        assert "raw tick data" in response.json()["detail"]
