@@ -58,3 +58,14 @@ def test_jev_supervisor_needs_strategy_confidence():
         allowed_strategies=("momentum", "ma_trend"),
     )
     assert advice.strategy is None
+
+
+
+def test_jev_supervisor_rejects_missing_required_answers():
+    import pytest
+
+    with pytest.raises(ValueError, match="missing required"):
+        derive_jev_supervisor_advice(
+            {"answers": {"supervisor_pause_entry": {"noul": 0.2}}},
+            allowed_strategies=("momentum",),
+        )
