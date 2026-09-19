@@ -6,7 +6,6 @@ def tick(at: str, bid: str, ask: str):
         "market_timestamp": at,
         "bid": bid,
         "ask": ask,
-        "spread_pips": (float(ask) - float(bid)) / 0.01,
     }
 
 
@@ -15,11 +14,13 @@ def test_momentum_paper_trade_uses_ask_to_enter_and_bid_to_exit():
         PaperConfig(
             initial_balance=100000,
             size=1000,
+            price_unit=0.01,
+            move_unit_label="pips",
             momentum_window_seconds=5,
-            momentum_trigger_pips=0.5,
-            max_spread_pips=2,
-            take_profit_pips=1,
-            stop_loss_pips=2,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=1,
+            stop_loss_units=2,
             max_hold_seconds=30,
             cooldown_seconds=0,
         )
@@ -38,8 +39,32 @@ def test_momentum_paper_trade_uses_ask_to_enter_and_bid_to_exit():
     assert broker.snapshot()["balance"] == 100010.0
 
 
+def test_btc_paper_trade_uses_fractional_btc_and_yen_units():
+    broker = PaperBroker(
+        PaperConfig(
+            initial_balance=100000,
+            size=0.001,
+            price_unit=1,
+            move_unit_label="円",
+            momentum_window_seconds=5,
+            momentum_trigger_units=1000,
+            max_spread_units=5000,
+            take_profit_units=3000,
+            stop_loss_units=3000,
+            max_hold_seconds=30,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "17000000", "17001000"))
+    opened = broker.on_tick(tick("2026-09-19T00:00:05+00:00", "17002000", "17003000"))
+    assert opened[0]["side"] == "LONG"
+    assert opened[0]["size"] == 0.001
+    closed = broker.on_tick(tick("2026-09-19T00:00:06+00:00", "17006000", "17007000"))
+    assert closed[0]["pnl"] == 3.0
+
+
 def test_jev_paper_waits_for_recent_signal():
-    broker = PaperBroker(PaperConfig(strategy="jev", max_spread_pips=2))
+    broker = PaperBroker(PaperConfig(strategy="jev", max_spread_units=2))
     broker.on_decision(
         {
             "research_signal": "SHORT",
