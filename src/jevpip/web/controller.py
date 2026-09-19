@@ -203,12 +203,23 @@ class UIController:
         date: str,
     ) -> dict[str, Any]:
         get_instrument(instrument_id)
-        rows = await asyncio.to_thread(fetch_history, instrument_id, date, interval)
+        rows: list[Any] = []
         used_date = date
-        if not rows:
-            previous = datetime.strptime(date, "%Y%m%d") - timedelta(days=1)
-            used_date = previous.strftime("%Y%m%d")
-            rows = await asyncio.to_thread(fetch_history, instrument_id, used_date, interval)
+        requested = datetime.strptime(date, "%Y%m%d")
+        # FX weekends/holidays can have no KLine for the requested local date.
+        # Walk back several days instead of turning the chart into a blank panel.
+        for days_back in range(0, 8):
+            candidate = requested - timedelta(days=days_back)
+            candidate_date = candidate.strftime("%Y%m%d")
+            rows = await asyncio.to_thread(
+                fetch_history,
+                instrument_id,
+                candidate_date,
+                interval,
+            )
+            if rows:
+                used_date = candidate_date
+                break
         return {
             "instrument_id": instrument_id,
             "interval": interval,
