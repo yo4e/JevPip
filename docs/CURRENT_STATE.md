@@ -144,6 +144,9 @@ Jev schemaには含めない:
 実装済み:
 
 - BLS公式ICS adapter / runtime fetch
+- BOJ MPM release schedule adapter
+- Summary of Opinions / MPM Minutesの公式8:50 JST時刻
+- BLS / BOJを独立・並列refresh
 - observer開始時のcontext refresh
 - UIからの手動context refresh
 - deterministic event-window supervisor
@@ -154,7 +157,8 @@ Jev schemaには含めない:
 
 未実装:
 
-- Fed / BOJのtimed source adapter
+- Fedのtimed source adapter
+- BOJ policy decision本体（固定公開時刻がないため未接続）
 - contextの定期refresh / runtime revision log
 - official post-release context
 - Jev supervisor live paper call
@@ -285,7 +289,8 @@ Technical strategy engine + Jev supervisor.
 
 未実装:
 
-- Fed / BOJ timed source adapters
+- Fed timed source adapter
+- BOJ policy decision本体の安全な時刻表現
 - runtime revision log
 - Jev supervisor paper integration
 - A/B/C/D experiment harness
@@ -302,10 +307,11 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. Fed / BOJの「時刻が公式に確定できる」scheduled release adapterを追加
-2. runtime context revision logを保存
-3. contextの定期refreshを追加
-4. Jev supervisorをpaper-onlyで接続
+1. Fedの「時刻が公式に確定できる」scheduled release adapterを追加
+2. BOJ policy decision本体を、固定時刻を捏造せず扱う方法を設計
+3. runtime context revision logを保存
+4. contextの定期refreshを追加
+5. Jev supervisorをpaper-onlyで接続
 6. A: technical only
 7. B: technical + deterministic event supervisor
 8. C: technical + deterministic + Jev supervisor
@@ -336,4 +342,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> Fed / BOJのtimed official eventを追加し、runtime revision log → Jev supervisor → paper-only A/B/C/D experimentへ接続する。
+> Fedのtimed official eventとruntime revision logを追加し、Jev supervisor → paper-only A/B/C/D experimentへ接続する。
