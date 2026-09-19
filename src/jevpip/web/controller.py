@@ -209,9 +209,9 @@ class UIController:
         instrument = get_instrument(instrument_id)
         requested = datetime.strptime(date, "%Y%m%d")
 
-        # TradingView-style behaviour: keep the visible candle count roughly
-        # stable, so a larger timeframe naturally shows a longer time span
-        # instead of repainting the same single day with fewer candles.
+        # Keep the visible candle count roughly stable, so a larger timeframe
+        # naturally shows a longer time span instead of repainting the same
+        # single day with fewer candles.
         target_candles = 180
         max_lookback_days = {
             "1min": 8,
