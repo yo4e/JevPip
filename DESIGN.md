@@ -1150,3 +1150,29 @@ BTC v0.1で行う:
 - BTC注文
 - live trading
 - BTC KLineだけを用いたspread込みscalping backtest
+
+
+### 22.5 Trading-like controls
+
+Paper trading UIは研究用パラメータをそのまま露出せず、一般的な取引端末に近い情報階層へ寄せる。
+
+主画面:
+
+- instrument
+- trading mode
+- strategy
+- order size
+- Take Profit
+- Stop Loss
+- max spread
+- human-readable rule summary
+
+詳細設定:
+
+- momentum observation window
+- entry threshold
+- max holding time
+- re-entry cooldown
+- Jev thresholds / feature settings
+
+JevPipには現時点でmanual market/pending order executionはないため、存在しない注文機能をMT4風に見せかけない。Paper strategyが自動でentry/exitすることを明示する。
