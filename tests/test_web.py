@@ -19,7 +19,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "MAトレンド" in response.text
         assert "RSI/MA入力" in response.text
         assert "戦略比較" in response.text
-        assert "3戦略を比較" in response.text
+        assert "No Trade" in response.text
+        assert "Buy & Hold" in response.text
+        assert "baseline含む5者比較" in response.text
         assert "1分bar" in response.text
         assert "安全監督" in response.text
         assert "tick age" in response.text
@@ -123,7 +125,7 @@ def test_backtest_rejects_btc():
         assert "対円FX" in response.json()["detail"]
 
 
-def test_chart_history_walks_back_until_data_exists(monkeypatch):
+def test_chart_history_collects_multiple_days_for_stable_candle_count(monkeypatch):
     import asyncio
     from types import SimpleNamespace
     import jevpip.web.controller as controller_module
@@ -133,17 +135,20 @@ def test_chart_history_walks_back_until_data_exists(monkeypatch):
 
     def fake_fetch(instrument_id, date, interval):
         calls.append((instrument_id, date, interval))
-        if date != "20260918":
+        if date in {"20260920", "20260919"}:
             return []
-        return [
-            SimpleNamespace(
-                open_time_ms=1758153600000,
-                open=147.0,
-                high=148.0,
-                low=146.5,
-                close=147.5,
-            )
-        ]
+        if date == "20260918":
+            return [
+                SimpleNamespace(
+                    open_time_ms=1758153600000 + i * 60_000,
+                    open=147.0 + i * 0.001,
+                    high=147.1 + i * 0.001,
+                    low=146.9 + i * 0.001,
+                    close=147.05 + i * 0.001,
+                )
+                for i in range(200)
+            ]
+        return []
 
     monkeypatch.setattr(controller_module, "fetch_history", fake_fetch)
     payload = asyncio.run(
@@ -155,9 +160,58 @@ def test_chart_history_walks_back_until_data_exists(monkeypatch):
     )
 
     assert [date for _, date, _ in calls] == ["20260920", "20260919", "20260918"]
-    assert payload["date"] == "20260918"
-    assert payload["candles"][0]["close"] == 147.5
+    assert payload["date"] == "20260920"
+    assert payload["dates"] == ["20260918"]
+    assert payload["target_candles"] == 180
+    assert len(payload["candles"]) == 180
 
+
+def test_longer_chart_interval_looks_back_farther(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    import jevpip.web.controller as controller_module
+    from jevpip.web.app import controller
+
+    calls = []
+
+    def fake_fetch(instrument_id, date, interval):
+        calls.append((date, interval))
+        day = int(date[-2:])
+        count = 24 if interval == "1hour" else 180
+        return [
+            SimpleNamespace(
+                open_time_ms=(day * 86_400_000) + i * 3_600_000,
+                open=100 + i,
+                high=101 + i,
+                low=99 + i,
+                close=100.5 + i,
+            )
+            for i in range(count)
+        ]
+
+    monkeypatch.setattr(controller_module, "fetch_history", fake_fetch)
+
+    one_min = asyncio.run(
+        controller.fetch_chart_history(
+            instrument_id="BTC",
+            interval="1min",
+            date="20260919",
+        )
+    )
+    hourly = asyncio.run(
+        controller.fetch_chart_history(
+            instrument_id="BTC",
+            interval="1hour",
+            date="20260919",
+        )
+    )
+
+    one_min_dates = [date for date, interval in calls if interval == "1min"]
+    hourly_dates = [date for date, interval in calls if interval == "1hour"]
+    assert len(one_min_dates) == 1
+    assert len(hourly_dates) > 1
+    assert len(one_min["candles"]) == 180
+    assert len(hourly["candles"]) == 180
 
 def test_chart_renderer_has_non_finite_and_bid_ask_fallback_guards():
     with TestClient(app) as client:
@@ -213,7 +267,8 @@ def test_raw_dates_and_strategy_compare_api(tmp_path, monkeypatch):
         )
         assert response.status_code == 200
         payload = response.json()
-        assert set(payload["results"]) == {"momentum", "ma_trend"}
+        assert set(payload["results"]) == {"no_trade", "buy_and_hold", "momentum", "ma_trend"}
+        assert payload["results"]["no_trade"]["net_pnl"] == 0.0
         assert payload["source"].endswith("2026-09-19.jsonl")
         assert payload["results"]["momentum"]["ticks"] == 7
 
