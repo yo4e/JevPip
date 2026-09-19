@@ -1714,3 +1714,97 @@ StrategyBacktestConfigはsignal / risk / executionの個別parameterを明示的
 を追加可能にする。
 
 ただしUIへ一度に全て露出せず、simple preset + advanced rulesの二層構造を維持する。
+
+
+---
+
+## 30. External Context / Live Jev Supervisor（2026-09-20）
+
+### 30.1 Official-source-first context
+
+external contextは広いnews scrapingから始めず、scheduled event metadataをofficial sourceから取得する。
+
+初期source:
+
+- BLS official ICS
+- BOJ MPM release schedule
+- Federal Reserve FOMC calendar
+
+runtime取得はsourceごとに独立させ、1 sourceの失敗で他sourceを失わない。
+last known-good contextを保持し、各取得revisionを `data/context/<source>/YYYY-MM-DD.jsonl` へ記録する。
+
+raw HTML / calendar bodyはrevision logへ保存しない。
+
+### 30.2 Look-ahead boundary
+
+Jevへ渡すcontextはdecision時点 `as_of` で既知のrevisionだけ。
+
+- `observed_at <= as_of`
+- published contextは `published_at <= as_of`
+- 同じ `source + source_id` のrevisionは、その時点までに観測済みの最新版だけ
+
+現在の最新calendarで過去decisionを書き換えない。
+
+### 30.3 Deterministic event supervisor
+
+local risk classificationにより:
+
+- high / critical: 前30分〜後15分 `PAUSE_ENTRY`
+- medium: 前10分〜後5分 `CAUTION`
+
+このclassificationはsource公式の市場重要度を意味しない。比較実験用のcode-owned rule。
+
+existing positionはevent windowだけを理由に強制closeしない。
+新規entry gateだけを厳しくする。
+
+### 30.4 Live Jev supervisor
+
+Jev ON + code strategy + deterministic supervisor ON のpaper modeでは、technical feature stateへbounded external contextを追加し、同じJev callでsupervisor questionsも問い合わせる。
+
+Jev出力をそのままcommandとして扱わない。
+
+code側で合成するadvice:
+
+- `NORMAL`
+- `CAUTION`
+- `PAUSE_ENTRY`
+- allowlist済みstrategy、またはnull
+- confidence
+- code-owned TTL
+- code-owned bounded reason
+
+quantity / TP / SL / leverage / order side / arbitrary commandはJev supervisor schemaへ含めない。
+
+### 30.5 TTL
+
+Jev adviceは受信時刻から15〜30秒で失効する。
+
+期限切れadviceはpaper entryへ使わず、自動的にNoneへ戻す。
+invalid / incomplete responseを受けた場合は新しいadviceとして採用しない。
+
+### 30.6 Merge semantics
+
+paper entryは少なくとも次の独立gateを通る。
+
+1. PaperBroker内部のmarket status / stale / spread deterministic supervisor
+2. official scheduled event supervisor
+3. activeなJev supervisor advice
+
+Jevはdeterministic gateを緩和できない。
+
+allowlisted strategy overrideもentry可能なstateでのみ利用する。
+Jev direct signal strategyはresearch controlとして別系統に保ち、supervisor strategy override対象にしない。
+
+### 30.7 UI
+
+UIで次を確認可能:
+
+- official event supervisor state
+- 次のofficial event
+- context source取得警告
+- Jev supervisor state
+- suggested allowlisted strategy
+- confidence
+- TTL expiry
+
+次の実装テーマはA/B/C/D experiment harnessとcounterfactual logging。
