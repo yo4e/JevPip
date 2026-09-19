@@ -170,3 +170,43 @@ def test_jev_can_tighten_and_select_allowlisted_strategy():
     assert plan.state == "CAUTION"
     assert plan.allow_entry is True
     assert plan.strategy == "ma_trend"
+
+
+def test_jev_supervisor_payload_rejects_ambiguous_types():
+    import pytest
+
+    with pytest.raises(ValueError, match="strategy must be"):
+        validate_jev_supervisor_payload(
+            {
+                "state": "NORMAL",
+                "strategy": ["momentum"],
+                "confidence": 0.5,
+                "ttl_seconds": 30,
+                "reason": "bad type",
+            },
+            allowed_strategies={"momentum"},
+        )
+
+    with pytest.raises(ValueError, match="ttl_seconds must be an integer"):
+        validate_jev_supervisor_payload(
+            {
+                "state": "NORMAL",
+                "strategy": "momentum",
+                "confidence": 0.5,
+                "ttl_seconds": 3.7,
+                "reason": "fractional ttl",
+            },
+            allowed_strategies={"momentum"},
+        )
+
+    with pytest.raises(ValueError, match="confidence must be between"):
+        validate_jev_supervisor_payload(
+            {
+                "state": "NORMAL",
+                "strategy": "momentum",
+                "confidence": 1.2,
+                "ttl_seconds": 30,
+                "reason": "too confident",
+            },
+            allowed_strategies={"momentum"},
+        )
