@@ -177,6 +177,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div id="decision" style="display:none">
           <div class="money" id="decision-signal">WAIT</div>
           <div class="decision-grid"><div class="stat"><span>UP</span><strong id="up">-</strong></div><div class="stat"><span>DOWN</span><strong id="down">-</strong></div><div class="stat"><span>FLAT</span><strong id="flat">-</strong></div><div class="stat"><span>latency</span><strong id="latency">-</strong></div></div>
+          <div class="muted" id="signal-detail" style="font-size:10px;margin-top:7px"></div>
         </div>
         <div class="muted" id="jev-token-summary" style="font-size:10px;margin-top:7px">Jev tokens: -</div>
         <div class="notice" id="jev-supervisor" style="margin-top:8px">Jev監督: OFF</div>
@@ -459,6 +460,19 @@ $("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAI
 $("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実BID/ASK"+(p.cost_model?.slippage_units?(" / slippage "+p.cost_model.slippage_units+" "+(instrumentSpec()?.move_unit_label||"")):"")+(p.cost_model?.short_is_synthetic?" / SHORTは仮想ショート":"");
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
+function signalGateSummary(d){
+  const x=d?.signal_detail,p=x?.policy;
+  if(!x||!p)return "";
+  const failures=[];
+  if(Number(x.spread_pips)>Number(p.max_spread_pips))failures.push(`spread ${Number(x.spread_pips).toFixed(1)} > ${Number(p.max_spread_pips).toFixed(1)}`);
+  if(Number(x.noise)>Number(p.max_noise_probability))failures.push(`noise ${pct(x.noise)} > ${pct(p.max_noise_probability)}`);
+  if(Number(x.reversal)>Number(p.max_reversal_probability))failures.push(`reversal ${pct(x.reversal)} > ${pct(p.max_reversal_probability)}`);
+  if(Number(x.trend_strength)<Number(p.min_trend_strength))failures.push(`trend ${Number(x.trend_strength).toFixed(1)} < ${Number(p.min_trend_strength).toFixed(1)}`);
+  const up=Number(x.up),down=Number(x.down),margin=Math.abs(up-down);
+  if(Math.max(up,down)<Number(p.min_direction_probability))failures.push(`direction ${pct(Math.max(up,down))} < ${pct(p.min_direction_probability)}`);
+  if(margin<Number(p.min_direction_margin))failures.push(`margin ${pct(margin)} < ${pct(p.min_direction_margin)}`);
+  return failures.length?"WAIT理由: "+failures.join(" / "):"signal gates: pass";
+}
 function renderDecision(d,sup){
   const supBox=$("jev-supervisor");
   if(supBox){
@@ -471,8 +485,8 @@ function renderDecision(d,sup){
     }else{supBox.textContent="Jev監督: 待機中"}
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
-  if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}
-  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"
+  if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
+  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=signalGateSummary(d)
 }
 
 function chartPrice(p){
