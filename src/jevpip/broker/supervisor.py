@@ -70,7 +70,12 @@ def validate_jev_supervisor_payload(
     state = _state(payload.get("state"))
     allowed = set(allowed_strategies)
     raw_strategy = payload.get("strategy")
-    strategy = None if raw_strategy in {None, "", "NONE"} else str(raw_strategy)
+    if raw_strategy is None or raw_strategy == "" or raw_strategy == "NONE":
+        strategy = None
+    elif not isinstance(raw_strategy, str):
+        raise ValueError("strategy must be a string or null")
+    else:
+        strategy = raw_strategy
     if strategy is not None and strategy not in allowed:
         raise ValueError(f"Strategy is not allowlisted: {strategy!r}")
 
@@ -84,10 +89,12 @@ def validate_jev_supervisor_payload(
     raw_ttl = payload.get("ttl_seconds")
     if isinstance(raw_ttl, bool):
         raise ValueError("ttl_seconds must be an integer")
-    try:
-        ttl_seconds = int(raw_ttl)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("ttl_seconds must be an integer") from exc
+    if isinstance(raw_ttl, int):
+        ttl_seconds = raw_ttl
+    elif isinstance(raw_ttl, str) and raw_ttl.strip().isdigit():
+        ttl_seconds = int(raw_ttl.strip())
+    else:
+        raise ValueError("ttl_seconds must be an integer")
     if ttl_seconds < 1 or ttl_seconds > max_ttl_seconds:
         raise ValueError(f"ttl_seconds must be between 1 and {max_ttl_seconds}")
 
