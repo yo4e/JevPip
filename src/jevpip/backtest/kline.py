@@ -5,7 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from jevpip.gmo.public_rest import fetch_klines
+from jevpip.gmo.public_rest import fetch_klines\nfrom jevpip.instruments import get_instrument
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.market.models import MarketTick
@@ -37,12 +37,17 @@ def replay_kline(
 
     for bid, ask in pairs:
         at = datetime.fromtimestamp(bid.open_time_ms / 1000, tz=timezone.utc) + timedelta(minutes=1)
+        instrument = get_instrument("USD_JPY")
         tick = MarketTick(
-            symbol="USD_JPY",
+            instrument_id=instrument.id,
+            symbol=instrument.api_symbol,
+            display_symbol=instrument.display_symbol,
             bid=bid.close,
             ask=ask.close,
             market_timestamp=at,
             received_at=at,
+            price_unit=instrument.price_unit,
+            move_unit_label=instrument.move_unit_label,
             status="HISTORICAL",
             raw=None,
         )
