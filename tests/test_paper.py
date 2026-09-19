@@ -254,3 +254,91 @@ def test_supervisor_heartbeat_detects_silent_feed():
     assert snapshot["supervisor"]["state"] == "PAUSE_ALL"
     assert snapshot["supervisor"]["reason"] == "stale_market_data"
     assert snapshot["supervisor"]["last_tick_age_seconds"] == 7.0
+
+
+def test_rsi_bar_strategy_waits_for_closed_bars():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="rsi_mean_reversion",
+            size=1000,
+            price_unit=0.01,
+            max_spread_units=2,
+            rsi_period=3,
+            rsi_oversold=30,
+            rsi_overbought=70,
+            take_profit_units=1000,
+            stop_loss_units=1000,
+            max_hold_seconds=1000,
+            strategy_bar_seconds=5,
+        )
+    )
+
+    # Intra-bar ticks alone must not trigger the bar-based strategy.
+    assert broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.099", "150.101")) == []
+    assert broker.on_tick(tick("2026-09-19T00:00:02+00:00", "150.089", "150.091")) == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "bar_wait"
+
+    events = []
+    # Complete four falling 5-second bars. RSI(3) needs four closes.
+    for second, mid in [
+        (5, 150.08),
+        (10, 150.07),
+        (15, 150.06),
+        (20, 150.05),
+        (25, 150.04),
+    ]:
+        events = broker.on_tick(
+            tick(
+                f"2026-09-19T00:00:{second:02d}+00:00",
+                f"{mid - 0.001:.3f}",
+                f"{mid + 0.001:.3f}",
+            )
+        )
+        if events:
+            break
+
+    assert events
+    assert events[0]["side"] == "LONG"
+    snapshot = broker.snapshot()
+    assert snapshot["strategy_bar_seconds"] == 5
+    assert snapshot["strategy_decision"]["metrics"]["semantics"] == "5s_bar_close"
+
+
+def test_ma_bar_strategy_only_decides_on_bar_close():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="ma_trend",
+            size=1000,
+            price_unit=0.01,
+            max_spread_units=2,
+            ma_fast_period=2,
+            ma_slow_period=3,
+            ma_min_gap_units=0.1,
+            take_profit_units=1000,
+            stop_loss_units=1000,
+            max_hold_seconds=1000,
+            strategy_bar_seconds=5,
+        )
+    )
+
+    events = []
+    for second, mid in [
+        (0, 150.00),
+        (5, 150.01),
+        (10, 150.02),
+        (15, 150.03),
+        (20, 150.04),
+    ]:
+        events = broker.on_tick(
+            tick(
+                f"2026-09-19T00:00:{second:02d}+00:00",
+                f"{mid - 0.001:.3f}",
+                f"{mid + 0.001:.3f}",
+            )
+        )
+        if events:
+            break
+
+    assert events
+    assert events[0]["side"] == "LONG"
+    assert broker.snapshot()["strategy_decision"]["metrics"]["semantics"] == "5s_bar_close"
