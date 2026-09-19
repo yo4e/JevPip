@@ -1304,3 +1304,93 @@ Jevの価値評価では、必ず同じcost modelを通す。
 
 「Jevなしで利益が出た」場合も、それを失敗とみなさない。
 単純baselineが強いなら、そのbaselineを基準にJevがdrawdown / bad regime avoidanceへ付加価値を持つかを検証する。
+
+
+---
+
+## 26. Strategy Engine / Deterministic Supervisor（2026-09-19）
+
+### 26.1 StrategyをPaperBrokerから分離
+
+PaperBrokerの責務を、
+
+- execution approximation
+- position lifecycle
+- fee / slippage
+- PnL / drawdown / PF
+
+へ寄せる。
+
+entry方向判断は `broker/strategies.py` へ分離する。
+
+初期strategy:
+
+- `momentum`
+- `rsi_mean_reversion`
+- `ma_trend`
+- `jev`（研究対照）
+
+各strategyは `StrategyDecision` を返す。
+
+```text
+signal: LONG | SHORT | WAIT
+reason: stable string
+metrics: diagnostic values
+```
+
+entry logにはstrategy reasonを残す。
+
+### 26.2 RSI / MA semantics
+
+初期実装のRSI / MAはtick-count based。
+
+- RSI(14) = 直近15 tick midから計算
+- MA 5 / 20 = 直近5 / 20 tick mid
+
+時間足bar RSI / MAとは同じではない。
+
+UI / docsではtick semanticsを明示し、bar-based strategyは別Phaseで実装する。
+
+### 26.3 Deterministic supervisor
+
+Jev supervisorより先にcode-only baselineを置く。
+
+state:
+
+- NORMAL
+- CAUTION
+- PAUSE_ENTRY
+- PAUSE_ALL
+
+初期rule:
+
+- `market_status != OPEN` → PAUSE_ALL
+- market data age > configured seconds → PAUSE_ALL
+- spread > limit → PAUSE_ENTRY
+- spread >= 80% of limit → CAUTION
+- otherwise → NORMAL
+
+このsupervisorはrisk limitを緩和しない。
+
+### 26.4 Issue #3との接続
+
+GMO FX scalp運用制約のうち、paper段階で意味があるものは先行実装する。
+
+実装済み / 一部実装:
+
+- cooldown
+- one-position duplicate guard
+- real BID/ASK spread
+- paper API fee reference
+- optional adverse slippage
+- stale market gate
+- market status gate
+
+live order codeが存在しないため、以下はlive trading導入時まで実装しない。
+
+- Private POST rate limiter
+- order idempotency
+- reconnect後のaccount/order synchronization
+- retry policy for order POST
+
+live orderを追加する前にIssue #3と最新GMO公式仕様を必ず再確認する。
