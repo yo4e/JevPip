@@ -957,3 +957,13 @@ def test_homepage_aggregates_live_ticks_into_selected_chart_interval():
     assert "Math.floor(at/bucketMs)*bucketMs" in response.text
     assert ".slice(-180)" in response.text
     assert "drawChart(activeChartPoints()" in response.text
+
+
+
+def test_homepage_explains_wait_signal_gate_failures():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="signal-detail"' in response.text
+    assert "WAIT理由:" in response.text
+    assert "signalGateSummary" in response.text
