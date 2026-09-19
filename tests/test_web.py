@@ -4,15 +4,17 @@ from jevpip.web.app import app
 from jevpip.web.controller import summarize_backtest
 
 
-def test_web_root_is_japanese():
+def test_web_root_is_japanese_and_has_dashboard_features():
     with TestClient(app) as client:
         response = client.get("/")
         assert response.status_code == 200
-        assert "観測を開始" in response.text
+        assert "リアルタイムチャート" in response.text
+        assert "デモ口座" in response.text
+        assert "実口座（参照専用）" in response.text
         assert "月の満ち欠け" in response.text
 
 
-def test_config_exposes_profiles_and_signal_policies():
+def test_config_exposes_profiles_and_safety_flags():
     with TestClient(app) as client:
         response = client.get("/api/config")
         assert response.status_code == 200
@@ -20,6 +22,14 @@ def test_config_exposes_profiles_and_signal_policies():
         assert "moon_only" in payload["profiles"]
         assert "research_default" in payload["signal_policies"]
         assert payload["live_trading_available"] is False
+        assert "gmo_private_credentials_configured" in payload
+
+
+def test_account_endpoint_requires_local_credentials():
+    with TestClient(app) as client:
+        response = client.get("/api/account")
+        assert response.status_code == 400
+        assert "GMO_FX_API_KEY" in response.json()["detail"]
 
 
 def test_backtest_summary():
