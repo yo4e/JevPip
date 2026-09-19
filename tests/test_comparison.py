@@ -36,7 +36,9 @@ def test_compare_ticks_runs_same_data_through_code_only_strategies():
         instrument_id="USD_JPY",
         strategies=("momentum", "ma_trend"),
     )
-    assert set(results) == {"momentum", "ma_trend"}
+    assert set(results) == {"no_trade", "buy_and_hold", "momentum", "ma_trend"}
+    assert results["no_trade"]["net_pnl"] == 0.0
+    assert results["buy_and_hold"]["closed_trades"] == 1
     assert results["momentum"]["ticks"] == len(ticks)
     assert "net_pnl" in results["momentum"]
     assert "max_drawdown" in results["ma_trend"]
@@ -99,3 +101,46 @@ def test_compare_ticks_records_bar_input_mode():
         bar_seconds=5,
     )
     assert result["ma_trend"]["strategy_bar_seconds"] == 5
+
+
+def test_buy_and_hold_baseline_uses_spread_and_fee():
+    ticks = [
+        {
+            "instrument_id": "BTC",
+            "symbol": "BTC",
+            "market_timestamp": "2026-09-19T00:00:00+00:00",
+            "received_at": "2026-09-19T00:00:00+00:00",
+            "bid": "17000000",
+            "ask": "17001000",
+            "status": "OPEN",
+        },
+        {
+            "instrument_id": "BTC",
+            "symbol": "BTC",
+            "market_timestamp": "2026-09-19T00:01:00+00:00",
+            "received_at": "2026-09-19T00:01:00+00:00",
+            "bid": "17002000",
+            "ask": "17003000",
+            "status": "OPEN",
+        },
+    ]
+    result = compare_ticks(
+        ticks,
+        instrument_id="BTC",
+        strategies=("momentum",),
+        include_baselines=True,
+    )
+    hold = result["buy_and_hold"]
+    assert hold["fees_paid"] > 17
+    assert hold["net_pnl"] < hold["gross_realized_pnl"]
+    assert hold["exit_reasons"]["end_of_sample"]["count"] == 1
+
+
+def test_baselines_can_be_disabled():
+    result = compare_ticks(
+        [_tick(0, 150.0, 150.002)],
+        instrument_id="USD_JPY",
+        strategies=("momentum",),
+        include_baselines=False,
+    )
+    assert set(result) == {"momentum"}
