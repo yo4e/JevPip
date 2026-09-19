@@ -98,6 +98,7 @@ async def observe(
                     jev_state,
                     "5s",
                     supervisor_strategies=jev_supervisor_strategies,
+                    instrument_label=tick.display_symbol,
                 )
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
                 research_signal = None
