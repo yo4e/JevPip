@@ -544,3 +544,79 @@ def test_direction_signal_takes_precedence_over_research_wait():
     opened = broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
     assert opened and opened[0]["action"] == "OPEN"
     assert opened[0]["side"] == "LONG"
+
+
+
+def test_strategy_off_jev_on_uses_jev_direct_signal():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            strategy_enabled=False,
+            jev_direct_enabled=True,
+            size=1000,
+            price_unit=0.01,
+            max_spread_units=2,
+            take_profit_units=100,
+            stop_loss_units=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_decision(
+        {
+            "direction_signal": "SHORT",
+            "recorded_at": "2026-09-20T00:00:00+00:00",
+        }
+    )
+    opened = broker.on_tick(
+        tick("2026-09-20T00:00:01+00:00", "150.000", "150.002")
+    )
+    assert opened and opened[0]["action"] == "OPEN"
+    assert opened[0]["side"] == "SHORT"
+    snapshot = broker.snapshot()
+    assert snapshot["strategy_enabled"] is False
+    assert snapshot["jev_direct_enabled"] is True
+
+
+def test_strategy_off_jev_off_never_opens_new_position():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            strategy_enabled=False,
+            jev_direct_enabled=False,
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.1,
+            max_spread_units=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-20T00:00:00+00:00", "150.000", "150.002"))
+    events = broker.on_tick(
+        tick("2026-09-20T00:00:01+00:00", "150.100", "150.102")
+    )
+    assert events == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "strategy_disabled"
+
+
+def test_safety_off_does_not_apply_spread_entry_gate():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            strategy_enabled=True,
+            deterministic_supervisor_enabled=False,
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.1,
+            max_spread_units=0.1,
+            take_profit_units=100,
+            stop_loss_units=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-20T00:00:00+00:00", "150.000", "150.100"))
+    opened = broker.on_tick(
+        tick("2026-09-20T00:00:01+00:00", "150.200", "150.300")
+    )
+    assert opened and opened[0]["action"] == "OPEN"
