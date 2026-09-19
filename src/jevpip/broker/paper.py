@@ -44,6 +44,7 @@ class PaperConfig:
     ma_slow_period: int = 20
     ma_min_gap_units: float = 0.2
     deterministic_supervisor_enabled: bool = False
+    max_market_age_seconds: float = 5.0
 
 
 @dataclass(slots=True)
@@ -136,6 +137,11 @@ class PaperBroker:
         mid = (bid + ask) / Decimal("2")
         spread_units = (ask - bid) / self.price_unit
         market_status = str(event.get("status") or "")
+        received_raw = event.get("received_at")
+        market_age_seconds: float | None = None
+        if received_raw:
+            received_at = self._dt(str(received_raw))
+            market_age_seconds = max(0.0, (received_at - at).total_seconds())
 
         self._last_bid = bid
         self._last_ask = ask
@@ -148,6 +154,8 @@ class PaperBroker:
                 market_status=market_status,
                 spread_units=float(spread_units),
                 max_spread_units=self.config.max_spread_units,
+                market_age_seconds=market_age_seconds,
+                max_market_age_seconds=self.config.max_market_age_seconds,
             )
         else:
             self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
