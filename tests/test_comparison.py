@@ -85,3 +85,17 @@ def test_read_raw_ticks_reports_bad_line(tmp_path: Path):
     path.write_text('{"ok": 1}\nnot-json\n', encoding="utf-8")
     with pytest.raises(ValueError, match=r"bad\.jsonl:2"):
         read_raw_ticks(path)
+
+
+def test_compare_ticks_records_bar_input_mode():
+    ticks = [
+        _tick(second, 150.0 + second * 0.001, 150.002 + second * 0.001)
+        for second in range(0, 31, 5)
+    ]
+    result = compare_ticks(
+        ticks,
+        instrument_id="USD_JPY",
+        strategies=("ma_trend",),
+        bar_seconds=5,
+    )
+    assert result["ma_trend"]["strategy_bar_seconds"] == 5
