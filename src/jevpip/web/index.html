@@ -3,948 +3,260 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JevPip 実験室</title>
+  <title>JevPip</title>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f4f6fb;
-      --panel: #ffffff;
-      --ink: #172033;
-      --muted: #68738a;
-      --line: #dfe4ef;
-      --accent: #4056d8;
-      --accent-2: #eef1ff;
-      --ok: #137a4f;
-      --warn: #a96600;
-      --bad: #b33a3a;
-      --shadow: 0 16px 44px rgba(29, 41, 73, 0.08);
-      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+      --bg:#f4f6fb; --panel:#fff; --ink:#172033; --muted:#6a748a; --line:#dfe4ef;
+      --accent:#4056d8; --accent-soft:#eef1ff; --ok:#147a50; --bad:#bd4141; --warn:#a76a0a;
+      --shadow:0 15px 38px rgba(29,41,73,.07);
+      font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
     }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background:
-        radial-gradient(circle at 88% 8%, rgba(112, 130, 255, 0.13), transparent 23rem),
-        var(--bg);
-      color: var(--ink);
-    }
-    button, input, select { font: inherit; }
-    button { cursor: pointer; }
-
-    .shell {
-      width: min(1180px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 28px 0 56px;
-    }
-
-    header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 22px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .brand-mark {
-      width: 48px;
-      height: 48px;
-      border-radius: 15px;
-      display: grid;
-      place-items: center;
-      background: #172033;
-      color: white;
-      font-size: 25px;
-      box-shadow: var(--shadow);
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(25px, 4vw, 36px);
-      letter-spacing: -0.03em;
-    }
-    .subtitle {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      min-height: 30px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.8);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .badge.safe { color: var(--ok); border-color: #b9ddce; background: #effaf5; }
-
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
-    }
-    .tab-button {
-      border: 0;
-      background: transparent;
-      color: var(--muted);
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-weight: 750;
-    }
-    .tab-button.active {
-      background: var(--panel);
-      color: var(--accent);
-      box-shadow: 0 4px 16px rgba(29, 41, 73, 0.06);
-    }
-
-    .tab { display: none; }
-    .tab.active { display: block; }
-
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-    .metric {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 15px 16px;
-      box-shadow: 0 8px 24px rgba(29, 41, 73, 0.04);
-    }
-    .metric-label { color: var(--muted); font-size: 12px; font-weight: 700; }
-    .metric-value { font-size: 25px; font-weight: 800; margin-top: 5px; letter-spacing: -0.02em; }
-    .metric-small { font-size: 13px; color: var(--muted); margin-top: 3px; min-height: 18px; }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
-      gap: 18px;
-      align-items: start;
-    }
-    .stack { display: grid; gap: 18px; }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 20px;
-      box-shadow: var(--shadow);
-    }
-    .card h2 {
-      margin: 0;
-      font-size: 18px;
-      letter-spacing: -0.02em;
-    }
-    .card-intro {
-      margin: 6px 0 18px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.7;
-    }
-
-    .field { margin-bottom: 15px; }
-    .field:last-child { margin-bottom: 0; }
-    label.field-label {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      font-weight: 800;
-      margin-bottom: 6px;
-    }
-    select, input[type="text"], input[type="number"], input[type="date"] {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      min-height: 42px;
-      padding: 9px 11px;
-      background: #fff;
-      color: var(--ink);
-      outline: none;
-    }
-    select:focus, input:focus { border-color: #8593ec; box-shadow: 0 0 0 3px var(--accent-2); }
-
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
-      gap: 10px;
-    }
-    .check {
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      padding: 12px;
-      background: #fafbfe;
-    }
-    .check label {
-      display: flex;
-      align-items: flex-start;
-      gap: 9px;
-      font-size: 13px;
-      font-weight: 750;
-    }
-    .check small {
-      display: block;
-      color: var(--muted);
-      margin: 5px 0 0 26px;
-      line-height: 1.5;
-    }
-    input[type="checkbox"] {
-      width: 17px;
-      height: 17px;
-      margin-top: 1px;
-      accent-color: var(--accent);
-    }
-
-    .mini-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
-      gap: 12px;
-    }
-    .signal-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
-      gap: 11px;
-    }
-
-    .action-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 18px;
-      flex-wrap: wrap;
-    }
-    .btn {
-      border: 0;
-      border-radius: 11px;
-      min-height: 42px;
-      padding: 10px 16px;
-      font-weight: 800;
-    }
-    .btn.primary { background: var(--accent); color: white; }
-    .btn.secondary { background: #edf0f7; color: var(--ink); }
-    .btn.danger { background: #fff0f0; color: var(--bad); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-
-    .notice {
-      border-radius: 12px;
-      padding: 11px 12px;
-      font-size: 12px;
-      line-height: 1.6;
-      border: 1px solid #e8d7ae;
-      background: #fff9ea;
-      color: #71501d;
-      margin-top: 14px;
-    }
-    .notice.safe {
-      border-color: #cce4d8;
-      background: #f0faf5;
-      color: #285d48;
-    }
-
-    .pill-row { display: flex; flex-wrap: wrap; gap: 7px; }
-    .pill {
-      display: inline-flex;
-      padding: 6px 9px;
-      border-radius: 999px;
-      background: var(--accent-2);
-      color: #3547b2;
-      font-size: 11px;
-      font-weight: 800;
-    }
-
-    .decision {
-      border: 1px solid var(--line);
-      background: #fafbff;
-      border-radius: 14px;
-      padding: 14px;
-    }
-    .signal {
-      font-weight: 900;
-      font-size: 25px;
-      letter-spacing: .04em;
-    }
-    .signal.LONG { color: var(--ok); }
-    .signal.SHORT { color: var(--bad); }
-    .signal.WAIT { color: var(--warn); }
-
-    .prob-row {
-      display: grid;
-      grid-template-columns: 50px 1fr 54px;
-      gap: 8px;
-      align-items: center;
-      margin-top: 8px;
-      font-size: 12px;
-    }
-    .bar {
-      height: 8px;
-      border-radius: 999px;
-      background: #e9edf5;
-      overflow: hidden;
-    }
-    .bar > span {
-      display: block;
-      height: 100%;
-      background: var(--accent);
-      width: 0%;
-    }
-
-    .backtest-result {
-      margin-top: 16px;
-      display: none;
-    }
-    .result-grid {
-      display: grid;
-      grid-template-columns: repeat(3,minmax(0,1fr));
-      gap: 10px;
-    }
-    .result-item {
-      padding: 13px;
-      border-radius: 12px;
-      background: #f7f8fc;
-      border: 1px solid var(--line);
-    }
-    .result-item strong { display: block; font-size: 19px; margin-top: 4px; }
-    .result-item span { color: var(--muted); font-size: 11px; }
-
-    .log-list { display: grid; gap: 8px; }
-    .log-row {
-      display: grid;
-      grid-template-columns: 110px 82px 1fr;
-      gap: 10px;
-      align-items: start;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      background: #fff;
-      font-size: 12px;
-    }
-    .log-time { color: var(--muted); font-variant-numeric: tabular-nums; }
-    .log-kind { font-weight: 800; color: var(--accent); }
-    .empty {
-      color: var(--muted);
-      text-align: center;
-      padding: 28px 12px;
-      border: 1px dashed var(--line);
-      border-radius: 12px;
-    }
-
-    .toast {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      max-width: min(420px, calc(100vw - 40px));
-      padding: 12px 15px;
-      border-radius: 12px;
-      background: #172033;
-      color: white;
-      box-shadow: var(--shadow);
-      display: none;
-      z-index: 20;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .toast.error { background: #7b2828; }
-
-    @media (max-width: 860px) {
-      .status-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-      .layout { grid-template-columns: 1fr; }
-      header { flex-direction: column; }
-      .badges { justify-content: flex-start; }
-    }
-    @media (max-width: 560px) {
-      .shell { width: min(100% - 20px, 1180px); padding-top: 18px; }
-      .feature-grid, .mini-grid, .signal-grid, .result-grid { grid-template-columns: 1fr; }
-      .status-grid { grid-template-columns: 1fr 1fr; }
-      .metric-value { font-size: 20px; }
-      .log-row { grid-template-columns: 1fr; gap: 3px; }
-    }
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 90% 0,rgba(92,112,240,.12),transparent 27rem),var(--bg);color:var(--ink)}
+    button,input,select{font:inherit} button{cursor:pointer}
+    .shell{width:min(1200px,calc(100% - 28px));margin:auto;padding:26px 0 60px}
+    header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
+    .brand{display:flex;gap:13px;align-items:center}.logo{width:48px;height:48px;border-radius:15px;background:#172033;color:#fff;display:grid;place-items:center;font-size:25px;box-shadow:var(--shadow)}
+    h1{margin:0;font-size:34px;letter-spacing:-.04em}.sub{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .badges{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.badge{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:11px;font-weight:800}.badge.safe{color:var(--ok);border-color:#bce0cf;background:#f0faf5}
+    .tabs{display:flex;gap:7px;margin-bottom:16px}.tabbtn{border:0;background:transparent;padding:10px 14px;border-radius:10px;color:var(--muted);font-weight:800}.tabbtn.active{background:#fff;color:var(--accent);box-shadow:0 4px 15px rgba(29,41,73,.05)}
+    .tab{display:none}.tab.active{display:block}
+    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:16px}.metric,.card{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}.metric{border-radius:15px;padding:14px 15px}.mlabel{font-size:11px;color:var(--muted);font-weight:800}.mvalue{font-size:24px;font-weight:900;margin-top:5px;letter-spacing:-.02em}.msmall{font-size:11px;color:var(--muted);margin-top:3px}
+    .card{border-radius:18px;padding:19px}.card h2{font-size:18px;margin:0}.intro{font-size:12px;line-height:1.65;color:var(--muted);margin:6px 0 15px}
+    .main-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.75fr);gap:16px;align-items:start}.stack{display:grid;gap:16px}
+    .chart-wrap{height:360px;position:relative;border:1px solid var(--line);border-radius:15px;background:linear-gradient(180deg,#fcfdff,#f7f9fd);overflow:hidden}.chart-wrap canvas{width:100%;height:100%;display:block}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:13px;pointer-events:none}
+    .chart-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.quote-big{font-size:30px;font-weight:900;letter-spacing:-.04em}.quote-big small{font-size:12px;color:var(--muted);font-weight:700;margin-left:8px}
+    .mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.field{margin-bottom:12px}.field:last-child{margin-bottom:0}.label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px}
+    input[type=text],input[type=number],input[type=date],select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:11px;background:#fff;padding:9px 11px;color:var(--ink);outline:none}input:focus,select:focus{border-color:#8795e9;box-shadow:0 0 0 3px var(--accent-soft)}
+    input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+    .toggle{display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fafbfe;font-size:13px;font-weight:800}.toggle small{display:block;font-weight:500;color:var(--muted);margin-top:3px;line-height:1.45}
+    .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.btn{border:0;border-radius:11px;padding:10px 15px;min-height:42px;font-weight:850}.btn.primary{background:var(--accent);color:#fff}.btn.secondary{background:#edf0f7;color:var(--ink)}.btn.danger{background:#fff0f0;color:var(--bad)}.btn:disabled{opacity:.45;cursor:not-allowed}
+    details{border-top:1px solid var(--line);margin-top:16px;padding-top:13px}summary{cursor:pointer;font-size:12px;font-weight:850;color:var(--accent)}.details-body{padding-top:14px}.feature-grid,.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .pillrow{display:flex;gap:6px;flex-wrap:wrap}.pill{font-size:10px;font-weight:800;color:#394ab3;background:var(--accent-soft);border-radius:999px;padding:5px 8px}
+    .account-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.account-card{min-height:220px}.account-top{display:flex;justify-content:space-between;gap:8px;align-items:start}.money{font-size:29px;font-weight:900;margin:10px 0 2px}.pnl.pos{color:var(--ok)}.pnl.neg{color:var(--bad)}.account-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.stat{padding:10px;border-radius:11px;background:#f7f8fc;border:1px solid var(--line)}.stat span{display:block;font-size:10px;color:var(--muted)}.stat strong{font-size:15px;margin-top:3px;display:block}
+    .position{margin-top:11px;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fbfcff;font-size:12px;line-height:1.55}
+    .notice{margin-top:12px;padding:10px 11px;border:1px solid #e8d8ad;background:#fff9ec;color:#71501d;border-radius:11px;font-size:11px;line-height:1.55}.notice.safe{background:#f0faf5;border-color:#cbe4d7;color:#275d48}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:9px 7px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:10px}.scroll{overflow:auto}
+    .back-result{display:none;margin-top:16px}.results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.result{background:#f7f8fc;border:1px solid var(--line);border-radius:11px;padding:11px}.result span{font-size:10px;color:var(--muted)}.result strong{display:block;font-size:17px;margin-top:4px}
+    .loglist{display:grid;gap:7px}.logrow{display:grid;grid-template-columns:100px 90px 1fr;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:11px}.logtime{color:var(--muted)}.logkind{font-weight:900;color:var(--accent)}.empty{padding:25px;text-align:center;border:1px dashed var(--line);border-radius:11px;color:var(--muted);font-size:12px}
+    .toast{position:fixed;right:18px;bottom:18px;max-width:min(420px,calc(100vw - 36px));background:#172033;color:#fff;border-radius:11px;padding:11px 14px;box-shadow:var(--shadow);font-size:12px;display:none;z-index:20}.toast.error{background:#7d2929}
+    @media(max-width:900px){.main-grid,.account-grid{grid-template-columns:1fr}.grid4{grid-template-columns:1fr 1fr}header{flex-direction:column}.badges{justify-content:flex-start}}
+    @media(max-width:560px){.shell{width:calc(100% - 18px);padding-top:16px}.grid4{grid-template-columns:1fr 1fr}.mode-grid,.feature-grid,.detail-grid,.results{grid-template-columns:1fr}.chart-wrap{height:280px}.logrow{grid-template-columns:1fr}.mvalue{font-size:20px}}
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header>
-      <div class="brand">
-        <div class="brand-mark">◐</div>
-        <div>
-          <h1>JevPip 実験室</h1>
-          <p class="subtitle">USD/JPY × Jev。何を見せるかから実験する、ローカル研究アプリ。</p>
-        </div>
-      </div>
-      <div class="badges">
-        <span class="badge safe">実売買なし</span>
-        <span class="badge">GMO 外国為替FX</span>
-        <span class="badge" id="key-badge">Jevキー確認中</span>
-      </div>
-    </header>
+<div class="shell">
+  <header>
+    <div class="brand"><div class="logo">◐</div><div><h1>JevPip</h1><p class="sub">USD/JPYを眺め、試し、仮想で走らせるローカル実験室。</p></div></div>
+    <div class="badges"><span class="badge safe">実注文なし</span><span class="badge">GMO 外国為替FX</span><span class="badge" id="jev-badge">Jev確認中</span><span class="badge" id="gmo-badge">実口座キー確認中</span></div>
+  </header>
 
-    <nav class="tabs" aria-label="画面切り替え">
-      <button class="tab-button active" data-tab="observe">観測</button>
-      <button class="tab-button" data-tab="backtest">バックテスト</button>
-      <button class="tab-button" data-tab="logs">ログ</button>
-    </nav>
+  <nav class="tabs">
+    <button class="tabbtn active" data-tab="dashboard">ダッシュボード</button>
+    <button class="tabbtn" data-tab="backtest">バックテスト</button>
+    <button class="tabbtn" data-tab="logs">ログ</button>
+  </nav>
 
-    <main>
-      <section class="tab active" id="tab-observe">
-        <div class="status-grid">
-          <div class="metric">
-            <div class="metric-label">観測状態</div>
-            <div class="metric-value" id="metric-status">停止中</div>
-            <div class="metric-small" id="metric-profile">未開始</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">BID</div>
-            <div class="metric-value" id="metric-bid">-</div>
-            <div class="metric-small">USD/JPY</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">ASK</div>
-            <div class="metric-value" id="metric-ask">-</div>
-            <div class="metric-small" id="metric-spread">spread -</div>
-          </div>
-          <div class="metric">
-            <div class="metric-label">研究シグナル</div>
-            <div class="metric-value" id="metric-signal">-</div>
-            <div class="metric-small" id="metric-jev">Jev未使用</div>
-          </div>
+  <section class="tab active" id="tab-dashboard">
+    <div class="grid4">
+      <div class="metric"><div class="mlabel">観測</div><div class="mvalue" id="status">停止中</div><div class="msmall" id="status-sub">未開始</div></div>
+      <div class="metric"><div class="mlabel">USD/JPY MID</div><div class="mvalue" id="mid">-</div><div class="msmall" id="spread">spread -</div></div>
+      <div class="metric"><div class="mlabel">デモ口座</div><div class="mvalue" id="paper-equity">-</div><div class="msmall" id="paper-pnl">デモOFF</div></div>
+      <div class="metric"><div class="mlabel">Jevシグナル</div><div class="mvalue" id="signal">-</div><div class="msmall" id="signal-sub">Jev OFF</div></div>
+    </div>
+
+    <div class="main-grid">
+      <div class="stack">
+        <div class="card">
+          <div class="chart-head"><div><h2>リアルタイムチャート</h2><p class="intro" style="margin-bottom:0">実際のGMO BID/ASKからMIDを描画。デモ売買のOPEN/CLOSEも印を付けます。</p></div><div class="quote-big" id="quote-big">-<small>USD/JPY</small></div></div>
+          <div class="chart-wrap"><canvas id="chart"></canvas><div class="chart-empty" id="chart-empty">観測を開始すると、ここにチャートが流れます。</div></div>
         </div>
 
-        <div class="layout">
-          <div class="stack">
-            <section class="card">
-              <h2>Jevに見せる情報</h2>
-              <p class="card-intro">プリセットを選んでから、好きに崩してOK。ここで選んだ情報だけがJevのstateに入ります。</p>
-
-              <div class="field">
-                <label class="field-label" for="profile-select">プリセット</label>
-                <select id="profile-select"></select>
+        <div class="account-grid">
+          <div class="card account-card">
+            <div class="account-top"><div><h2>デモ口座</h2><p class="intro">リアルレートで仮想スキャ。実際の注文は出ません。</p></div><button class="btn secondary" id="paper-reset" disabled>リセット</button></div>
+            <div class="empty" id="paper-empty">「デモ取引」を選んで観測を開始すると動きます。</div>
+            <div id="paper-body" style="display:none">
+              <div class="money" id="paper-money">¥0</div><div class="pnl" id="paper-total-pnl">±¥0</div>
+              <div class="account-stats">
+                <div class="stat"><span>確定損益</span><strong id="paper-realized">-</strong></div>
+                <div class="stat"><span>含み損益</span><strong id="paper-unrealized">-</strong></div>
+                <div class="stat"><span>決済回数</span><strong id="paper-trades">-</strong></div>
+                <div class="stat"><span>勝率</span><strong id="paper-winrate">-</strong></div>
               </div>
-              <div class="pill-row" id="profile-pills"></div>
+              <div class="position" id="paper-position">建玉なし</div>
+              <div class="notice">実spreadは反映。API手数料とslippageはまだ未モデルです。</div>
+            </div>
+          </div>
 
-              <div class="feature-grid" style="margin-top:14px;">
-                <div class="check">
-                  <label><input id="feature-quote" type="checkbox"> 現在価格・スプレッド</label>
-                  <small>BID / ASK / MID / spread / market status</small>
-                </div>
-                <div class="check">
-                  <label><input id="feature-moon" type="checkbox"> 月の満ち欠け 🌙</label>
-                  <small>月齢・照度・月相。月だけで戦うことも可能。</small>
-                </div>
-                <div class="check">
-                  <label><input id="feature-random" type="checkbox"> ランダム対照特徴</label>
-                  <small>決定論的な無意味データ。Jevの思い込み検出用。</small>
-                </div>
-                <div class="check">
-                  <label><input id="feature-rsi-enabled" type="checkbox"> RSI</label>
-                  <small>ON時は右側の期間を利用。</small>
-                </div>
+          <div class="card account-card">
+            <div class="account-top"><div><h2>実口座（参照専用）</h2><p class="intro">残高・評価損益・USD/JPY建玉だけをGETで読みます。</p></div><button class="btn secondary" id="account-refresh">更新</button></div>
+            <div id="account-unconfigured" class="empty">GMO Private APIキー未設定。設定しても注文機能は有効になりません。</div>
+            <div id="account-body" style="display:none">
+              <div class="money" id="account-equity">-</div><div class="pnl" id="account-pnl">-</div>
+              <div class="account-stats">
+                <div class="stat"><span>現金残高</span><strong id="account-balance">-</strong></div>
+                <div class="stat"><span>取引余力</span><strong id="account-available">-</strong></div>
+                <div class="stat"><span>証拠金維持率</span><strong id="account-ratio">-</strong></div>
+                <div class="stat"><span>未決済スワップ</span><strong id="account-swap">-</strong></div>
               </div>
+              <div id="positions"></div>
+              <div class="notice safe">JevPipのPrivateクライアントはGET専用です。注文系POSTは実装していません。</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-              <div class="mini-grid" style="margin-top:14px;">
-                <div class="field">
-                  <label class="field-label" for="returns-seconds">価格変化の時間窓（秒、カンマ区切り）</label>
-                  <input id="returns-seconds" type="text" placeholder="1, 3, 5, 30">
-                </div>
-                <div class="field">
-                  <label class="field-label" for="range-seconds">値幅の時間窓（秒）</label>
-                  <input id="range-seconds" type="text" placeholder="5, 30, 60">
-                </div>
-                <div class="field">
-                  <label class="field-label" for="tick-seconds">tick数の時間窓（秒）</label>
-                  <input id="tick-seconds" type="text" placeholder="5, 30">
-                </div>
-                <div class="field">
-                  <label class="field-label" for="vol-seconds">実現ボラの時間窓（秒）</label>
-                  <input id="vol-seconds" type="text" placeholder="30, 60">
-                </div>
-                <div class="field">
-                  <label class="field-label" for="rsi-period">RSI期間</label>
-                  <input id="rsi-period" type="number" min="1" max="500" value="14">
-                </div>
-                <div class="field">
-                  <label class="field-label" for="sma-periods">SMA期間（カンマ区切り）</label>
-                  <input id="sma-periods" type="text" placeholder="5, 10, 20">
-                </div>
-              </div>
-            </section>
+      <aside class="stack">
+        <div class="card">
+          <h2>まずはここだけ</h2><p class="intro">難しい設定は下の「詳細設定」にしまいました。</p>
+          <div class="field"><label class="label">使い方</label><select id="mode"><option value="observe">観測だけ</option><option value="paper">デモ取引</option></select></div>
+          <div class="field"><label class="label">実験プリセット</label><select id="profile"></select></div>
+          <div class="pillrow" id="feature-summary"></div>
+          <div class="field" style="margin-top:13px"><label class="toggle"><input id="with-jev" type="checkbox"><span>Jevも使う<small>確率判断を追加します。TypeSafeのAPI利用料が発生し得ます。</small></span></label></div>
+          <div id="paper-basic" style="display:none">
+            <div class="field"><label class="label">デモの売買ロジック</label><select id="paper-strategy"><option value="momentum">5秒モメンタム（Jevなしでも動く）</option><option value="jev">Jevシグナル</option></select></div>
+            <div class="mode-grid">
+              <div class="field"><label class="label">仮想資金</label><input id="paper-balance" type="number" value="100000" min="1"></div>
+              <div class="field"><label class="label">1回の数量（通貨）</label><input id="paper-size" type="number" value="1000" min="1"></div>
+            </div>
+          </div>
+          <div class="actions"><button class="btn primary" id="start">観測を開始</button><button class="btn danger" id="stop" disabled>停止</button></div>
+          <div class="notice safe">「デモ取引」でもお金は動きません。実売買経路はありません。</div>
 
-            <section class="card">
-              <h2>観測を開始</h2>
-              <p class="card-intro">GMOのPublic WebSocketからUSD/JPYを受け取り、raw tickをローカル保存します。Jevは必要なときだけONにできます。</p>
-
+          <details>
+            <summary>詳細設定を開く</summary>
+            <div class="details-body">
+              <h3 style="font-size:13px">Jevに見せる情報</h3>
               <div class="feature-grid">
-                <div class="check">
-                  <label><input id="with-jev" type="checkbox"> Jevも使う</label>
-                  <small>TypeSafe API利用料金が発生し得ます。APIキーはブラウザへ返しません。</small>
-                </div>
-                <div class="field">
-                  <label class="field-label" for="jev-every">Jev判定間隔（秒）</label>
-                  <input id="jev-every" type="number" min="0.25" max="60" step="0.25" value="1">
+                <label class="toggle"><input id="f-quote" type="checkbox"><span>価格・spread</span></label>
+                <label class="toggle"><input id="f-moon" type="checkbox"><span>月の満ち欠け 🌙</span></label>
+                <label class="toggle"><input id="f-random" type="checkbox"><span>ランダム対照</span></label>
+                <label class="toggle"><input id="f-rsi-on" type="checkbox"><span>RSI</span></label>
+              </div>
+              <div class="detail-grid" style="margin-top:10px">
+                <div class="field"><label class="label">価格変化（秒）</label><input id="returns" type="text"></div>
+                <div class="field"><label class="label">値幅（秒）</label><input id="ranges" type="text"></div>
+                <div class="field"><label class="label">tick数（秒）</label><input id="ticks" type="text"></div>
+                <div class="field"><label class="label">実現ボラ（秒）</label><input id="vols" type="text"></div>
+                <div class="field"><label class="label">RSI期間</label><input id="rsi" type="number" value="14"></div>
+                <div class="field"><label class="label">SMA期間</label><input id="sma" type="text"></div>
+              </div>
+              <h3 style="font-size:13px">Jevシグナル</h3>
+              <div class="field"><label class="label">シグナルプリセット</label><select id="signal-policy"></select></div>
+              <div class="detail-grid">
+                <div class="field"><label class="label">方向確率 最低</label><input id="s-dir" type="number" step=".01"></div>
+                <div class="field"><label class="label">方向差 最低</label><input id="s-margin" type="number" step=".01"></div>
+                <div class="field"><label class="label">ノイズ 上限</label><input id="s-noise" type="number" step=".01"></div>
+                <div class="field"><label class="label">反転 上限</label><input id="s-rev" type="number" step=".01"></div>
+                <div class="field"><label class="label">trend強度 最低</label><input id="s-trend" type="number" step=".1"></div>
+                <div class="field"><label class="label">spread上限</label><input id="s-spread" type="number" step=".1"></div>
+                <div class="field"><label class="label">Jev判定間隔（秒）</label><input id="jev-every" type="number" value="1" min=".25" step=".25"></div>
+              </div>
+              <div id="paper-advanced">
+                <h3 style="font-size:13px">デモスキャ</h3>
+                <div class="detail-grid">
+                  <div class="field"><label class="label">momentum窓（秒）</label><input id="p-window" type="number" value="5" step=".5"></div>
+                  <div class="field"><label class="label">entry変化（pips）</label><input id="p-trigger" type="number" value=".6" step=".1"></div>
+                  <div class="field"><label class="label">spread上限</label><input id="p-spread" type="number" value="1.5" step=".1"></div>
+                  <div class="field"><label class="label">利確（pips）</label><input id="p-tp" type="number" value="1" step=".1"></div>
+                  <div class="field"><label class="label">損切り（pips）</label><input id="p-sl" type="number" value="1" step=".1"></div>
+                  <div class="field"><label class="label">最大保有（秒）</label><input id="p-hold" type="number" value="8" step="1"></div>
+                  <div class="field"><label class="label">再entry待ち（秒）</label><input id="p-cool" type="number" value="2" step=".5"></div>
                 </div>
               </div>
-
-              <div class="action-row">
-                <button class="btn primary" id="start-button">観測を開始</button>
-                <button class="btn danger" id="stop-button" disabled>停止</button>
-              </div>
-
-              <div class="notice safe">このUIには注文機能がありません。GMO Private APIにも接続しません。</div>
-            </section>
-          </div>
-
-          <aside class="stack">
-            <section class="card">
-              <h2>シグナル設定</h2>
-              <p class="card-intro">Jevの確率をLONG / SHORT / WAIT候補へ変えるルール。Jev自身には売買判断を直接させません。</p>
-
-              <div class="field">
-                <label class="field-label" for="signal-select">プリセット</label>
-                <select id="signal-select"></select>
-              </div>
-              <div class="signal-grid">
-                <div class="field">
-                  <label class="field-label">方向確率 最低</label>
-                  <input id="sig-direction" type="number" min="0" max="1" step="0.01">
-                </div>
-                <div class="field">
-                  <label class="field-label">UP/DOWN差 最低</label>
-                  <input id="sig-margin" type="number" min="0" max="1" step="0.01">
-                </div>
-                <div class="field">
-                  <label class="field-label">ノイズ確率 上限</label>
-                  <input id="sig-noise" type="number" min="0" max="1" step="0.01">
-                </div>
-                <div class="field">
-                  <label class="field-label">反転確率 上限</label>
-                  <input id="sig-reversal" type="number" min="0" max="1" step="0.01">
-                </div>
-                <div class="field">
-                  <label class="field-label">トレンド強度 最低</label>
-                  <input id="sig-trend" type="number" min="0" max="3" step="0.1">
-                </div>
-                <div class="field">
-                  <label class="field-label">spread 上限（pips）</label>
-                  <input id="sig-spread" type="number" min="0" max="100" step="0.1">
-                </div>
-              </div>
-            </section>
-
-            <section class="card">
-              <h2>最新のJev判断</h2>
-              <p class="card-intro">ローカル観測中の最新decision。数値は公開用レポートではなく、自分の実験ログとして扱います。</p>
-              <div id="decision-empty" class="empty">まだJev判断はありません。</div>
-              <div id="decision-box" class="decision" style="display:none;">
-                <div class="signal WAIT" id="decision-signal">WAIT</div>
-                <div class="prob-row"><span>UP</span><div class="bar"><span id="bar-up"></span></div><strong id="prob-up">0%</strong></div>
-                <div class="prob-row"><span>DOWN</span><div class="bar"><span id="bar-down"></span></div><strong id="prob-down">0%</strong></div>
-                <div class="prob-row"><span>FLAT</span><div class="bar"><span id="bar-flat"></span></div><strong id="prob-flat">0%</strong></div>
-                <div class="metric-small" id="decision-meta" style="margin-top:11px;"></div>
-              </div>
-            </section>
-          </aside>
+            </div>
+          </details>
         </div>
-      </section>
 
-      <section class="tab" id="tab-backtest">
         <div class="card">
-          <h2>GMO公式1分足リプレイ</h2>
-          <p class="card-intro">BID / ASKの1分足を同じFeature pipelineへ流します。これは特徴量と粗い売買可能性の確認用で、5秒・30秒スキャルピングの性能検証ではありません。</p>
-
-          <div class="mini-grid">
-            <div class="field">
-              <label class="field-label" for="backtest-date">日付</label>
-              <input id="backtest-date" type="date">
+          <h2>最新のJev判断</h2><p class="intro">Jev OFFなら空のままです。</p>
+          <div class="empty" id="decision-empty">まだ判断はありません。</div>
+          <div id="decision" style="display:none">
+            <div class="money" id="decision-signal">WAIT</div>
+            <div class="account-stats">
+              <div class="stat"><span>UP</span><strong id="up">-</strong></div>
+              <div class="stat"><span>DOWN</span><strong id="down">-</strong></div>
+              <div class="stat"><span>FLAT</span><strong id="flat">-</strong></div>
+              <div class="stat"><span>latency</span><strong id="latency">-</strong></div>
             </div>
-            <div class="field">
-              <label class="field-label" for="backtest-limit">最大本数（空欄で全件）</label>
-              <input id="backtest-limit" type="number" min="1" max="10000" placeholder="例: 300">
-            </div>
-          </div>
-
-          <div class="pill-row" id="backtest-feature-summary"></div>
-
-          <div class="action-row">
-            <button class="btn primary" id="backtest-button">1分足をリプレイ</button>
-          </div>
-
-          <div class="notice">バックテスト結果は <code>data/backtests/</code> に保存され、Gitでは無視されます。Jevの性能値を公開リポジトリへcommitしない方針です。</div>
-
-          <div class="backtest-result" id="backtest-result">
-            <h3>結果</h3>
-            <div class="result-grid">
-              <div class="result-item"><span>リプレイ本数</span><strong id="bt-rows">-</strong></div>
-              <div class="result-item"><span>平均MID変化</span><strong id="bt-mid">-</strong></div>
-              <div class="result-item"><span>平均LONG edge</span><strong id="bt-long">-</strong></div>
-              <div class="result-item"><span>平均SHORT edge</span><strong id="bt-short">-</strong></div>
-              <div class="result-item"><span>LONG正edge比率</span><strong id="bt-long-ratio">-</strong></div>
-              <div class="result-item"><span>SHORT正edge比率</span><strong id="bt-short-ratio">-</strong></div>
-            </div>
-            <p class="metric-small" id="bt-output" style="margin-top:12px;"></p>
           </div>
         </div>
-      </section>
+      </aside>
+    </div>
+  </section>
 
-      <section class="tab" id="tab-logs">
-        <div class="card">
-          <h2>最新ログ</h2>
-          <p class="card-intro">この起動中にUIが受け取った直近イベントです。raw tickとdecision本体はdataディレクトリにも保存されます。</p>
-          <div id="log-list" class="log-list">
-            <div class="empty">まだイベントはありません。</div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
+  <section class="tab" id="tab-backtest">
+    <div class="card">
+      <h2>GMO公式1分足リプレイ</h2><p class="intro">実データのBID/ASK 1分足。5秒・30秒の性能検証ではありません。</p>
+      <div class="mode-grid"><div class="field"><label class="label">日付</label><input id="bt-date" type="date"></div><div class="field"><label class="label">最大本数（空欄で全件）</label><input id="bt-limit" type="number"></div></div>
+      <div class="pillrow" id="bt-summary"></div><div class="actions"><button class="btn primary" id="bt-run">1分足をリプレイ</button></div>
+      <div class="back-result" id="bt-result"><div class="results">
+        <div class="result"><span>本数</span><strong id="bt-rows">-</strong></div><div class="result"><span>平均MID変化</span><strong id="bt-mid">-</strong></div><div class="result"><span>平均LONG edge</span><strong id="bt-long">-</strong></div>
+        <div class="result"><span>平均SHORT edge</span><strong id="bt-short">-</strong></div><div class="result"><span>LONG正edge比率</span><strong id="bt-lr">-</strong></div><div class="result"><span>SHORT正edge比率</span><strong id="bt-sr">-</strong></div>
+      </div><p class="msmall" id="bt-output"></p></div>
+    </div>
+  </section>
 
-  <div class="toast" id="toast"></div>
+  <section class="tab" id="tab-logs"><div class="card"><h2>最新ログ</h2><p class="intro">tick、Jev、デモ売買イベントの直近分。</p><div class="loglist" id="logs"><div class="empty">まだイベントはありません。</div></div></div></section>
+</div>
+<div class="toast" id="toast"></div>
 
-  <script>
-    const appState = { config: null };
+<script>
+const $=id=>document.getElementById(id);
+const state={config:null,lastStatus:null,lastAccountAt:0};
 
-    const el = (id) => document.getElementById(id);
+function toast(msg,error=false){const n=$("toast");n.textContent=msg;n.className="toast"+(error?" error":"");n.style.display="block";clearTimeout(n.t);n.t=setTimeout(()=>n.style.display="none",4200)}
+async function api(path,opt={}){const r=await fetch(path,{headers:{"Content-Type":"application/json",...(opt.headers||{})},...opt});let d=null;try{d=await r.json()}catch{}if(!r.ok)throw new Error(d?.detail||`HTTP ${r.status}`);return d}
+const yen=v=>v==null?"-":new Intl.NumberFormat("ja-JP",{style:"currency",currency:"JPY",maximumFractionDigits:1}).format(Number(v));
+const pct=v=>v==null?"-":(Number(v)*100).toFixed(1)+"%";
+const pips=v=>v==null?"-":Number(v).toFixed(3)+" pips";
+const list=v=>(v||[]).join(", ");
+function parseList(id){const r=$(id).value.trim();if(!r)return [];return [...new Set(r.split(",").map(x=>Number(x.trim())).filter(x=>Number.isInteger(x)&&x>0))]}
+function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
 
-    function toast(message, error = false) {
-      const node = el("toast");
-      node.textContent = message;
-      node.className = "toast" + (error ? " error" : "");
-      node.style.display = "block";
-      clearTimeout(node._timer);
-      node._timer = setTimeout(() => node.style.display = "none", 4200);
-    }
+const profileLabels={minimal:"基本",technical:"テクニカル",moon_only:"月だけ 🌙",price_and_moon:"価格＋月 🌙",random_control:"ランダム対照",kitchen_sink:"全部入り"};
+function applyProfile(name){const p=state.config.profiles[name];if(!p)return;$("f-quote").checked=!!p.quote;$("f-moon").checked=!!p.moon_phase;$("f-random").checked=!!p.random_control;$("f-rsi-on").checked=Number(p.rsi_period||0)>0;$("returns").value=list(p.returns_seconds);$("ranges").value=list(p.range_seconds);$("ticks").value=list(p.tick_count_seconds);$("vols").value=list(p.realized_vol_seconds);$("rsi").value=Number(p.rsi_period||14)||14;$("sma").value=list(p.sma_periods);renderFeatures()}
+function features(){return{quote:$("f-quote").checked,returns_seconds:parseList("returns"),range_seconds:parseList("ranges"),tick_count_seconds:parseList("ticks"),realized_vol_seconds:parseList("vols"),moon_phase:$("f-moon").checked,rsi_period:$("f-rsi-on").checked?Number($("rsi").value||14):0,sma_periods:parseList("sma"),random_control:$("f-random").checked}}
+function featureNames(){const p=features(),a=[];if(p.quote)a.push("価格");if(p.returns_seconds.length)a.push("短期変化");if(p.rsi_period)a.push("RSI");if(p.sma_periods.length)a.push("SMA");if(p.moon_phase)a.push("月相 🌙");if(p.random_control)a.push("対照");return a.length?a:["時刻のみ"]}
+function renderFeatures(){const h=featureNames().map(x=>`<span class="pill">${esc(x)}</span>`).join("");$("feature-summary").innerHTML=h;$("bt-summary").innerHTML=h}
+function applySignal(name){const p=state.config.signal_policies[name];if(!p)return;$("s-dir").value=p.min_direction_probability;$("s-margin").value=p.min_direction_margin;$("s-noise").value=p.max_noise_probability;$("s-rev").value=p.max_reversal_probability;$("s-trend").value=p.min_trend_strength;$("s-spread").value=p.max_spread_pips}
+function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
+function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,momentum_window_seconds:Number($("p-window").value),momentum_trigger_pips:Number($("p-trigger").value),max_spread_pips:Number($("p-spread").value),take_profit_pips:Number($("p-tp").value),stop_loss_pips:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3}}
 
-    async function api(path, options = {}) {
-      const response = await fetch(path, {
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-        ...options,
-      });
-      let data = null;
-      try { data = await response.json(); } catch (_) {}
-      if (!response.ok) {
-        const detail = data && data.detail ? data.detail : `HTTP ${response.status}`;
-        throw new Error(detail);
-      }
-      return data;
-    }
+function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none"}
+function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true}
 
-    function listValue(values) {
-      return (values || []).join(", ");
-    }
+async function start(){const payload={profile_name:$("profile").value+" / UI",profile:features(),with_jev:$("with-jev").checked,jev_every_seconds:Number($("jev-every").value||1),signal_policy_name:$("signal-policy").value+" / UI",signal_policy:signalPolicy(),paper_demo:paperConfig()};try{await api("/api/observer/start",{method:"POST",body:JSON.stringify(payload)});toast(payload.paper_demo?"デモ取引を開始しました。":"観測を開始しました。");refresh()}catch(e){toast(e.message,true)}}
+async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}"});toast("停止しました。");refresh()}catch(e){toast(e.message,true)}}
+async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
-    function parseList(id) {
-      const raw = el(id).value.trim();
-      if (!raw) return [];
-      return [...new Set(raw.split(",").map(x => Number(x.trim())).filter(x => Number.isInteger(x) && x > 0))];
-    }
+function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
+function renderPaper(p){if(!p){$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+$("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;$("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;$("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);$("paper-equity").textContent=yen(p.equity);$("paper-pnl").textContent="損益 "+(total>=0?"+":"")+yen(total);$("paper-realized").textContent=yen(p.realized_pnl);$("paper-unrealized").textContent=yen(p.unrealized_pnl);$("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.win_rate==null?"-":pct(p.win_rate);$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${p.position.size.toLocaleString()}通貨</strong><br>建値 ${esc(p.position.entry_price)} / 含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_pips} pips`:"建玉なし"}
 
-    function featurePayload() {
-      const rsiEnabled = el("feature-rsi-enabled").checked;
-      return {
-        quote: el("feature-quote").checked,
-        returns_seconds: parseList("returns-seconds"),
-        range_seconds: parseList("range-seconds"),
-        tick_count_seconds: parseList("tick-seconds"),
-        realized_vol_seconds: parseList("vol-seconds"),
-        moon_phase: el("feature-moon").checked,
-        rsi_period: rsiEnabled ? Number(el("rsi-period").value || 14) : 0,
-        sma_periods: parseList("sma-periods"),
-        random_control: el("feature-random").checked,
-      };
-    }
+function renderDecision(d){if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}$("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"}
 
-    function signalPayload() {
-      return {
-        min_direction_probability: Number(el("sig-direction").value),
-        min_direction_margin: Number(el("sig-margin").value),
-        max_noise_probability: Number(el("sig-noise").value),
-        max_reversal_probability: Number(el("sig-reversal").value),
-        min_trend_strength: Number(el("sig-trend").value),
-        max_spread_pips: Number(el("sig-spread").value),
-      };
-    }
+function drawChart(points,trades=[]){const canvas=$("chart"),wrap=canvas.parentElement,rect=wrap.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.floor(rect.width*dpr);canvas.height=Math.floor(rect.height*dpr);const c=canvas.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,rect.width,rect.height);if(!points?.length){$("chart-empty").style.display="grid";return}$("chart-empty").style.display="none";const pad={l:54,r:12,t:18,b:28},w=rect.width-pad.l-pad.r,h=rect.height-pad.t-pad.b;const vals=points.map(x=>Number(x.mid)),min=Math.min(...vals),max=Math.max(...vals),span=Math.max(max-min,.002);const lo=min-span*.15,hi=max+span*.15;const x=i=>pad.l+(i/(points.length-1||1))*w,y=v=>pad.t+(hi-v)/(hi-lo)*h;
+c.strokeStyle="#e4e8f1";c.lineWidth=1;for(let i=0;i<5;i++){const yy=pad.t+h*i/4;c.beginPath();c.moveTo(pad.l,yy);c.lineTo(pad.l+w,yy);c.stroke();const value=hi-(hi-lo)*i/4;c.fillStyle="#778196";c.font="10px sans-serif";c.fillText(value.toFixed(3),4,yy+3)}
+c.strokeStyle="#4056d8";c.lineWidth=2;c.beginPath();points.forEach((p,i)=>i?c.lineTo(x(i),y(Number(p.mid))):c.moveTo(x(i),y(Number(p.mid))));c.stroke();
+const times=points.map(p=>new Date(p.timestamp).getTime());for(const t of trades||[]){const tt=new Date(t.timestamp).getTime();let idx=0,best=Infinity;times.forEach((v,i)=>{const d=Math.abs(v-tt);if(d<best){best=d;idx=i}});if(best>15000)continue;const xx=x(idx),yy=y(Number(points[idx].mid));c.fillStyle=t.action==="OPEN"?(t.side==="LONG"?"#147a50":"#bd4141"):"#a76a0a";c.beginPath();if(t.action==="OPEN"){c.moveTo(xx,yy-8);c.lineTo(xx-5,yy+2);c.lineTo(xx+5,yy+2)}else{c.arc(xx,yy,4,0,Math.PI*2)}c.fill()}
+c.fillStyle="#778196";c.font="10px sans-serif";const first=new Date(points[0].timestamp),last=new Date(points.at(-1).timestamp);c.fillText(first.toLocaleTimeString("ja-JP"),pad.l,pad.t+h+18);const txt=last.toLocaleTimeString("ja-JP");c.fillText(txt,pad.l+w-c.measureText(txt).width,pad.t+h+18)}
+window.addEventListener("resize",()=>state.lastStatus&&drawChart(state.lastStatus.chart,state.lastStatus.paper?.trades));
 
-    function applyProfile(name) {
-      const p = appState.config.profiles[name];
-      if (!p) return;
-      el("feature-quote").checked = !!p.quote;
-      el("feature-moon").checked = !!p.moon_phase;
-      el("feature-random").checked = !!p.random_control;
-      el("returns-seconds").value = listValue(p.returns_seconds);
-      el("range-seconds").value = listValue(p.range_seconds);
-      el("tick-seconds").value = listValue(p.tick_count_seconds);
-      el("vol-seconds").value = listValue(p.realized_vol_seconds);
-      el("feature-rsi-enabled").checked = Number(p.rsi_period || 0) > 0;
-      el("rsi-period").value = Number(p.rsi_period || 14) || 14;
-      el("sma-periods").value = listValue(p.sma_periods);
-      renderFeatureSummary();
-    }
+function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
 
-    function applySignal(name) {
-      const p = appState.config.signal_policies[name];
-      if (!p) return;
-      el("sig-direction").value = p.min_direction_probability;
-      el("sig-margin").value = p.min_direction_margin;
-      el("sig-noise").value = p.max_noise_probability;
-      el("sig-reversal").value = p.max_reversal_probability;
-      el("sig-trend").value = p.min_trend_strength;
-      el("sig-spread").value = p.max_spread_pips;
-    }
+async function refresh(){try{const s=await api("/api/status");state.lastStatus=s;$("status").textContent=s.running?"観測中":(s.status==="error"?"エラー":"停止中");$("status-sub").textContent=s.profile_name||"未開始";$("start").disabled=s.running;$("stop").disabled=!s.running;const m=s.latest_market;if(m){const mid=(Number(m.bid)+Number(m.ask))/2;$("mid").textContent=mid.toFixed(3);$("quote-big").innerHTML=mid.toFixed(3)+"<small>USD/JPY</small>";$("spread").textContent="spread "+m.spread_pips+" pips"}const d=s.latest_decision;$("signal").textContent=d?.research_signal||"-";$("signal-sub").textContent=s.with_jev?"Jev ON":"Jev OFF";renderPaper(s.paper);renderDecision(d);drawChart(s.chart,s.paper?.trades);renderLogs(s.events);if(s.last_error&&s.last_error!==refresh.err){refresh.err=s.last_error;toast(s.last_error,true)}}catch(e){console.error(e)}}
 
-    function enabledFeatures() {
-      const p = featurePayload();
-      const items = [];
-      if (p.quote) items.push("価格・spread");
-      if (p.returns_seconds.length) items.push("価格変化");
-      if (p.range_seconds.length) items.push("値幅");
-      if (p.tick_count_seconds.length) items.push("tick数");
-      if (p.realized_vol_seconds.length) items.push("実現ボラ");
-      if (p.rsi_period) items.push(`RSI ${p.rsi_period}`);
-      if (p.sma_periods.length) items.push("SMA");
-      if (p.moon_phase) items.push("月相 🌙");
-      if (p.random_control) items.push("ランダム対照");
-      return items;
-    }
+async function refreshAccount(force=false){if(!state.config?.gmo_private_credentials_configured)return;try{const a=await api("/api/account"+(force?"?force=true":""));$("account-unconfigured").style.display="none";$("account-body").style.display="block";const x=a.assets||{};$("account-equity").textContent=yen(x.equity);$("account-pnl").textContent="評価損益 "+(Number(x.positionLossGain||0)>=0?"+":"")+yen(x.positionLossGain);pnlClass($("account-pnl"),x.positionLossGain);$("account-balance").textContent=yen(x.balance);$("account-available").textContent=yen(x.availableAmount);$("account-ratio").textContent=x.marginRatio==null?"-":Number(x.marginRatio).toFixed(1)+"%";$("account-swap").textContent=yen(x.totalSwap);const p=a.positions||[];$("positions").innerHTML=p.length?p.map(z=>`<div class="position"><strong>${esc(z.side)} ${Number(z.size||0).toLocaleString()}通貨</strong><br>建値 ${esc(z.price)} / 評価損益 ${yen(z.lossGain)} / swap ${yen(z.totalSwap)}</div>`).join(""):'<div class="position">USD/JPY建玉なし</div>';state.lastAccountAt=Date.now()}catch(e){toast(e.message,true)}}
 
-    function renderFeatureSummary() {
-      const items = enabledFeatures();
-      const html = items.length
-        ? items.map(item => `<span class="pill">${escapeHtml(item)}</span>`).join("")
-        : '<span class="pill">時刻情報のみ</span>';
-      el("profile-pills").innerHTML = html;
-      el("backtest-feature-summary").innerHTML = html;
-    }
+async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=pips(s.mean_delta_mid_pips);$("bt-long").textContent=pips(s.mean_long_edge_pips);$("bt-short").textContent=pips(s.mean_short_edge_pips);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足をリプレイ"}}
 
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;");
-    }
+async function init(){try{state.config=await api("/api/config");const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const d=new Date();d.setDate(d.getDate()-1);$("bt-date").value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;modeChanged();refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
 
-    function fmtPercent(value) {
-      if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
-      return (Number(value) * 100).toFixed(1) + "%";
-    }
-
-    function fmtPips(value) {
-      if (value === null || value === undefined) return "-";
-      return Number(value).toFixed(3) + " pips";
-    }
-
-    function renderDecision(decision) {
-      if (!decision || !decision.jev) {
-        el("decision-empty").style.display = "block";
-        el("decision-box").style.display = "none";
-        return;
-      }
-      el("decision-empty").style.display = "none";
-      el("decision-box").style.display = "block";
-
-      const signal = decision.research_signal || "WAIT";
-      const signalEl = el("decision-signal");
-      signalEl.textContent = signal;
-      signalEl.className = "signal " + signal;
-
-      const answers = decision.jev.answers || {};
-      const probs = (answers.direction && answers.direction.probabilities) || {};
-      for (const key of ["up", "down", "flat"]) {
-        const value = Number(probs[key.toUpperCase()] || 0);
-        el("prob-" + key).textContent = fmtPercent(value);
-        el("bar-" + key).style.width = Math.max(0, Math.min(100, value * 100)) + "%";
-      }
-
-      const latency = decision.jev_latency_ms == null ? "-" : decision.jev_latency_ms + " ms";
-      el("decision-meta").textContent = `Jev latency: ${latency} / policy: ${decision.signal_policy || "-"}`;
-    }
-
-    function renderLogs(events) {
-      const list = el("log-list");
-      if (!events || !events.length) {
-        list.innerHTML = '<div class="empty">まだイベントはありません。</div>';
-        return;
-      }
-      list.innerHTML = events.map(event => {
-        const rawTime = event.recorded_at || event.received_at || event.market_timestamp;
-        const time = rawTime ? new Date(rawTime).toLocaleTimeString("ja-JP") : "-";
-        let kind = event.kind || "event";
-        let detail = "";
-        if (kind === "tick") {
-          detail = `bid ${event.bid} / ask ${event.ask} / spread ${event.spread_pips} pips`;
-          kind = "TICK";
-        } else if (kind === "decision") {
-          detail = `signal ${event.research_signal || "WAIT"} / latency ${event.jev_latency_ms || "-"} ms`;
-          kind = "JEV";
-        } else if (kind === "error") {
-          detail = event.message || "error";
-          kind = "ERROR";
-        }
-        return `<div class="log-row"><span class="log-time">${escapeHtml(time)}</span><span class="log-kind">${escapeHtml(kind)}</span><span>${escapeHtml(detail)}</span></div>`;
-      }).join("");
-    }
-
-    async function refreshStatus() {
-      try {
-        const status = await api("/api/status");
-        const running = !!status.running;
-        el("metric-status").textContent = running ? "観測中" : (status.status === "error" ? "エラー" : "停止中");
-        el("metric-profile").textContent = status.profile_name || "未開始";
-        el("start-button").disabled = running;
-        el("stop-button").disabled = !running;
-
-        const market = status.latest_market;
-        if (market) {
-          el("metric-bid").textContent = market.bid ?? "-";
-          el("metric-ask").textContent = market.ask ?? "-";
-          el("metric-spread").textContent = "spread " + (market.spread_pips ?? "-") + " pips";
-        }
-
-        const decision = status.latest_decision;
-        el("metric-signal").textContent = decision ? (decision.research_signal || "WAIT") : "-";
-        el("metric-jev").textContent = status.with_jev ? "Jev ON" : "Jev OFF";
-        renderDecision(decision);
-        renderLogs(status.events);
-
-        if (status.last_error && status.last_error !== refreshStatus._lastError) {
-          refreshStatus._lastError = status.last_error;
-          toast(status.last_error, true);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
-
-    async function startObserver() {
-      const payload = {
-        profile_name: el("profile-select").value + " / UI",
-        profile: featurePayload(),
-        with_jev: el("with-jev").checked,
-        jev_every_seconds: Number(el("jev-every").value || 1),
-        signal_policy_name: el("signal-select").value + " / UI",
-        signal_policy: signalPayload(),
-      };
-      try {
-        await api("/api/observer/start", { method: "POST", body: JSON.stringify(payload) });
-        toast("観測を開始しました。");
-        await refreshStatus();
-      } catch (error) {
-        toast(error.message, true);
-      }
-    }
-
-    async function stopObserver() {
-      try {
-        await api("/api/observer/stop", { method: "POST", body: "{}" });
-        toast("観測を停止しました。");
-        await refreshStatus();
-      } catch (error) {
-        toast(error.message, true);
-      }
-    }
-
-    async function runBacktest() {
-      const dateRaw = el("backtest-date").value;
-      if (!dateRaw) {
-        toast("日付を選んでください。", true);
-        return;
-      }
-      const limitRaw = el("backtest-limit").value.trim();
-      const payload = {
-        date: dateRaw.replaceAll("-", ""),
-        profile_name: el("profile-select").value + " / UI",
-        profile: featurePayload(),
-        limit: limitRaw ? Number(limitRaw) : null,
-      };
-      const button = el("backtest-button");
-      button.disabled = true;
-      button.textContent = "リプレイ中…";
-      try {
-        const result = await api("/api/backtest", { method: "POST", body: JSON.stringify(payload) });
-        const s = result.summary;
-        el("backtest-result").style.display = "block";
-        el("bt-rows").textContent = s.rows ?? "-";
-        el("bt-mid").textContent = fmtPips(s.mean_delta_mid_pips);
-        el("bt-long").textContent = fmtPips(s.mean_long_edge_pips);
-        el("bt-short").textContent = fmtPips(s.mean_short_edge_pips);
-        el("bt-long-ratio").textContent = fmtPercent(s.long_positive_ratio);
-        el("bt-short-ratio").textContent = fmtPercent(s.short_positive_ratio);
-        el("bt-output").textContent = "保存先: " + result.output;
-        toast("1分足リプレイが完了しました。");
-      } catch (error) {
-        toast(error.message, true);
-      } finally {
-        button.disabled = false;
-        button.textContent = "1分足をリプレイ";
-      }
-    }
-
-    function setDefaultBacktestDate() {
-      const date = new Date();
-      date.setDate(date.getDate() - 1);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, "0");
-      const dd = String(date.getDate()).padStart(2, "0");
-      el("backtest-date").value = `${yyyy}-${mm}-${dd}`;
-    }
-
-    async function init() {
-      try {
-        appState.config = await api("/api/config");
-        const profiles = appState.config.profiles;
-        const policies = appState.config.signal_policies;
-
-        el("profile-select").innerHTML = Object.entries(profiles)
-          .map(([name, p]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)} | ${escapeHtml(p.description_ja || "")}</option>`)
-          .join("");
-        el("signal-select").innerHTML = Object.entries(policies)
-          .map(([name, p]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)} | ${escapeHtml(p.description_ja || "")}</option>`)
-          .join("");
-
-        el("profile-select").value = profiles.minimal ? "minimal" : Object.keys(profiles)[0];
-        el("signal-select").value = policies.research_default ? "research_default" : Object.keys(policies)[0];
-        applyProfile(el("profile-select").value);
-        applySignal(el("signal-select").value);
-
-        const hasKey = appState.config.typesafe_api_key_configured;
-        el("key-badge").textContent = hasKey ? "Jevキー設定済み" : "Jevキー未設定";
-        if (hasKey) el("key-badge").classList.add("safe");
-
-        setDefaultBacktestDate();
-        await refreshStatus();
-      } catch (error) {
-        toast("初期化に失敗しました: " + error.message, true);
-      }
-    }
-
-    document.querySelectorAll(".tab-button").forEach(button => {
-      button.addEventListener("click", () => {
-        document.querySelectorAll(".tab-button").forEach(x => x.classList.remove("active"));
-        document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
-        button.classList.add("active");
-        el("tab-" + button.dataset.tab).classList.add("active");
-      });
-    });
-
-    el("profile-select").addEventListener("change", event => applyProfile(event.target.value));
-    el("signal-select").addEventListener("change", event => applySignal(event.target.value));
-    el("start-button").addEventListener("click", startObserver);
-    el("stop-button").addEventListener("click", stopObserver);
-    el("backtest-button").addEventListener("click", runBacktest);
-
-    [
-      "feature-quote","feature-moon","feature-random","feature-rsi-enabled",
-      "returns-seconds","range-seconds","tick-seconds","vol-seconds","rsi-period","sma-periods"
-    ].forEach(id => el(id).addEventListener("input", renderFeatureSummary));
-
-    init();
-    setInterval(refreshStatus, 1000);
-  </script>
+document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")}));
+$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
+["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
+init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
+</script>
 </body>
 </html>
