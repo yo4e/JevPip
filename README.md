@@ -155,7 +155,7 @@ CPI / PPI / Employment Situation等のrisk分類はBLS公式の重要度では�
 
 supervisorはリスクを**厳しくする方向にしか動けません**。
 
-将来のJev supervisorも同じ境界へ接続し、code側のPAUSEをJevが解除できない設計にしています。
+Jev supervisorも同じ境界へ接続済みです。Jev ON + code strategy + 安全監督ONでは、external contextを含むbounded questionsから `NORMAL / CAUTION / PAUSE_ENTRY` とallowlist済みstrategy候補を作り、paper entry gateへ反映します。Jevのadviceには15〜30秒のTTLがあり、期限切れで自動失効します。code側の `PAUSE_ENTRY / PAUSE_ALL` をJevが解除することはできません。
 
 ## 3つの検証機能
 
@@ -286,7 +286,7 @@ Jev supervisor用には固定schemaを実装済みです。
 
 Jevは数量、TP / SL、レバレッジ、任意commandを指定できません。
 
-ニュース・経済指標などのexternal context接続はまだ未実装です。
+external contextはBLS / BOJ / Fedのofficial scheduled eventへ接続済みです。Jev supervisorへ渡すcontextはdecision時点で既知のrevisionだけに限定し、future observationや後日訂正を過去へ逆流させません。
 
 ## Jevを使う場合
 
@@ -369,6 +369,8 @@ data/
 │   └── <instrument>/
 ├── decisions/
 │   └── <instrument>/
+├── context/
+│   └── <source>/
 └── backtests/
 ```
 
@@ -401,4 +403,4 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-次の大きなテーマは、**公式scheduled eventをlook-aheadなしで取り込み、deterministic event supervisorとJev supervisorをpaper環境で比較すること**です。
+次の大きなテーマは、**同じmarket path / cost modelで technical only・deterministic event supervisor・Jev supervisor・Jev direct signal を比較するexperiment harnessを作ること**です。
