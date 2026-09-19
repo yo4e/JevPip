@@ -104,6 +104,27 @@ supervisorは**リスクを厳しくする方向にしか動けません**。数
 
 これは将来のJev supervisorと比較するbaselineでもあります。
 
+### Jev supervisor schema
+
+将来Jevを「売買方向を直接決める人」ではなく、strategyを監督する管制塔として使うため、固定schemaとvalidatorを先に実装しています。
+
+Jevが返せるのは次だけです。
+
+- `NORMAL`
+- `CAUTION`
+- `PAUSE_ENTRY`
+- `PAUSE_ALL`
+- allowlist済みstrategyの提案
+- confidence
+- TTL
+- reason
+
+Jevから、注文方向・数量・TP/SL・レバレッジ・任意コードは受け取りません。
+
+さらにcode-only safety supervisorとmergeするとき、Jevは**安全側へ厳しくすることはできても、code側のPAUSEを解除することはできません**。
+
+現時点ではこのschema / validation / mergeまで実装済みで、ニュースや経済指標などの外部context取得はまだ接続していません。
+
 ## Jevなしでも使える
 
 Jevは必須ではありません。
