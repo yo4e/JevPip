@@ -8,10 +8,13 @@ from jevpip.broker.strategies import (
 )
 from jevpip.broker.supervisor import (
     SupervisorDecision,
+    combine_code_supervisors,
     combine_supervisors,
+    deterministic_event_supervisor,
     deterministic_supervisor,
     validate_jev_supervisor_payload,
 )
+from jevpip.context import ExternalContextItem
 
 
 def prices(values):
@@ -210,3 +213,58 @@ def test_jev_supervisor_payload_rejects_ambiguous_types():
             },
             allowed_strategies={"momentum"},
         )
+
+
+def test_event_supervisor_pauses_high_risk_window():
+    event = ExternalContextItem(
+        source="bls",
+        source_id="cpi",
+        kind="scheduled_event",
+        title="Consumer Price Index",
+        observed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        source_url="https://example.test/cpi",
+        scheduled_at=datetime(2026, 9, 11, 12, 30, tzinfo=timezone.utc),
+        currencies=("USD",),
+        risk="high",
+    )
+    before = deterministic_event_supervisor(
+        [event],
+        as_of=datetime(2026, 9, 11, 11, 59, tzinfo=timezone.utc),
+    )
+    active = deterministic_event_supervisor(
+        [event],
+        as_of=datetime(2026, 9, 11, 12, 5, tzinfo=timezone.utc),
+    )
+    assert before.state == "NORMAL"
+    assert active.state == "PAUSE_ENTRY"
+    assert active.allow_entry is False
+
+
+def test_event_supervisor_marks_medium_window_caution():
+    event = ExternalContextItem(
+        source="bls",
+        source_id="jolts",
+        kind="scheduled_event",
+        title="Job Openings and Labor Turnover Survey",
+        observed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        source_url="https://example.test/jolts",
+        scheduled_at=datetime(2026, 9, 29, 14, 0, tzinfo=timezone.utc),
+        currencies=("USD",),
+        risk="medium",
+    )
+    decision = deterministic_event_supervisor(
+        [event],
+        as_of=datetime(2026, 9, 29, 13, 55, tzinfo=timezone.utc),
+    )
+    assert decision.state == "CAUTION"
+    assert decision.allow_entry is True
+
+
+def test_combine_code_supervisors_keeps_strictest_gate():
+    plan = combine_code_supervisors(
+        SupervisorDecision("CAUTION", "spread_near_limit", True),
+        SupervisorDecision("PAUSE_ENTRY", "scheduled_event_high:cpi", False),
+    )
+    assert plan.state == "PAUSE_ENTRY"
+    assert plan.allow_entry is False
+    assert "scheduled_event_high" in plan.reason
