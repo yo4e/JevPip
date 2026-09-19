@@ -19,7 +19,8 @@ def test_kline_replay_keeps_spread_and_future_edges(monkeypatch):
 
     monkeypatch.setattr(module, "fetch_klines", fake_fetch)
     rows = module.replay_kline("20260919", {"quote": True})
-    assert rows[0]["features"]["quote"]["spread_units"] == 2.0\n    assert rows[0]["features"]["quote"]["spread_unit"] == "pips"
+    assert rows[0]["features"]["quote"]["spread_units"] == 2.0
+    assert rows[0]["features"]["quote"]["spread_unit"] == "pips"
     assert round(rows[0]["outcome_1m"]["delta_mid_pips"], 6) == 3.0
     assert round(rows[0]["outcome_1m"]["long_edge_pips"], 6) == 1.0
     assert round(rows[0]["outcome_1m"]["short_edge_pips"], 6) == -5.0
