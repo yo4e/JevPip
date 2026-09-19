@@ -69,6 +69,7 @@ def test_btc_taker_fee_can_turn_small_gross_profit_into_net_loss():
     assert snapshot["realized_pnl"] < 0
     assert snapshot["fees_paid"] > 17.0
     assert snapshot["max_drawdown"] > 0
+    assert snapshot["cost_model"]["estimated_fee_break_even_units"] > 3000
 
 
 def test_slippage_is_applied_adversely_on_both_sides():
@@ -741,3 +742,41 @@ def test_jev_direct_close_never_reverses_on_the_same_tick():
     )
     assert [event["action"] for event in next_tick] == ["OPEN"]
     assert next_tick[0]["side"] == "SHORT"
+
+
+
+def test_breakeven_trade_is_not_counted_as_a_loss():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy_enabled=False,
+            jev_direct_enabled=True,
+            price_unit=0.01,
+            max_spread_units=2,
+            take_profit_units=100,
+            stop_loss_units=100,
+            max_hold_seconds=1,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_decision(
+        {
+            "direction_signal": "LONG",
+            "recorded_at": "2026-09-20T00:00:00+00:00",
+        }
+    )
+    opened = broker.on_tick(
+        tick("2026-09-20T00:00:00.500000+00:00", "150.000", "150.000")
+    )
+    assert opened and opened[0]["action"] == "OPEN"
+
+    closed = broker.on_tick(
+        tick("2026-09-20T00:00:01.500000+00:00", "150.000", "150.000")
+    )
+    assert closed and closed[0]["action"] == "CLOSE"
+    assert closed[0]["pnl"] == 0.0
+
+    snapshot = broker.snapshot()
+    assert snapshot["closed_trades"] == 1
+    assert snapshot["wins"] == 0
+    assert snapshot["losses"] == 0
+    assert snapshot["average_loss_pnl"] is None
