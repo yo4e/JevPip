@@ -74,7 +74,8 @@ uv run jevpip ui
 - Featureプリセットを「基本」「テクニカル」「月だけ」などから選択
 - Jev利用のON/OFF
 - 詳細設定でFeature / Signal / Paper scalpingパラメータを変更
-- 対円FXのBID/ASK 1分足、BTCのhistorical closeによる粗い履歴リプレイ
+- 対円FX / BTCの1分足統計リプレイ
+- historical 1分足をPaperBrokerへ流す戦略バックテスト
 - tick / Jev / デモ売買イベントのログ表示
 
 デスクトップUIでは、チャートと下部ターミナルの境界を上下へドラッグして、バックテスト / 戦略比較 / ログ領域の高さを変更できます。ダブルクリックで標準サイズへ戻ります。高さはブラウザのlocalStorageへ保存します。
@@ -323,6 +324,57 @@ uv run jevpip observe --profile minimal --with-jev
 uv run jevpip observe --profile moon_only --with-jev
 ```
 
+## 戦略バックテスト
+
+ブラウザUI下部の **「戦略BT」** では、選択した過去日付の1分足を、実際のPaperBrokerへ時系列で流してcode-only strategyを検証できます。
+
+対応strategy:
+
+- Momentum
+- RSI mean reversion
+- MA trend
+
+Jev direct signalは、historical時点のJev contextが保存されていないためこのバックテストでは使いません。
+
+戦略BTは右側の現在の自動売買設定から次を読み込みます。
+
+- 注文数量
+- Momentum threshold
+- RSI period / oversold / overbought
+- MA fast / slow / minimum gap
+- Take Profit
+- Stop Loss
+- max spread
+- slippage
+- instrument固有のreference fee
+
+historical専用として、次は「秒」ではなく**1分足の本数**で設定します。
+
+- Momentum参照本数
+- 最大保有本数
+- 再entry待機本数
+
+たとえばMomentum参照本数3なら、現在の1分足closeと3本前のcloseを比較します。
+
+結果:
+
+- net PnL
+- Profit Factor
+- max drawdown
+- trade count
+- win rate
+- fee
+- average trade PnL
+- exit reason
+- No Trade baseline
+- Buy & Hold baseline
+
+FXはhistorical BID / ASK closeを使うためspreadを反映できます。BTC historical KLineにはBID / ASKがないため、BTCは `bid = ask = close` の近似で、reference feeとconfigured slippageを反映します。BTC SHORTは引き続きsynthetic shortです。
+
+> 戦略BTは1分足の**closeだけ**でentry / exit条件を評価します。1分の途中でTP / SLへ触れたか、その中でどちらへ先に触れたかは復元できません。したがってtick-level execution backtestの代替ではありません。
+
+右側の「RSI/MA入力」で選ぶtick / 5秒bar / 15秒bar等はlive paper用です。historical戦略BTのRSI / MAは1分足close系列を使います。
+
 ## Raw tickで戦略比較
 
 ライブ観測で保存したraw tickを、**同じデータ・同じpaper cost model**で複数のcode-only strategyへ流して比較できます。
@@ -393,9 +445,9 @@ uv run jevpip compare \
 
 このcompareはJev APIを呼びません。Jev direct / Jev supervisorとの比較は、code-only baselineを固めた後の別Phaseです。
 
-## 1分足リプレイ
+## 統計リプレイ（1分足）
 
-バックテストの日付欄は**過去日付を自由に選択**できます。UIの初期値は前日です。
+「統計リプレイ」の日付欄は**過去日付を自由に選択**できます。UIの初期値は前日です。これは売買戦略のPnLを測る機能ではなく、Featureと次の1分の値動きを調べる研究用リプレイです。
 
 対円FXではGMO公式のBID / ASK 1分足KLineを使い、同じFeature pipelineへ流します。このため1分後のMID変化に加えて、historical spreadを含むLONG / SHORT edgeも確認できます。
 
@@ -488,6 +540,6 @@ JevPipは現在、次の四つを同じローカルアプリへまとめてい�
 1. **Market Terminal** : 対円FX 12ペア / BTC/JPY の過去チャート + live market表示
 2. **Paper Broker** : Jevなしのルール戦略でも動く仮想売買・PnL
 3. **Observer / Feature Lab** : raw tickを保存し、Jevへ見せる情報を組み替えて比較
-4. **Backtester** : 対円FX BID/ASK KLine replay、BTC close-only KLine replay、raw tick replayで設定を再検証
+4. **Backtester** : 1分足統計リプレイ、historical 1分足の戦略BT、保存raw tickの戦略比較で設定を再検証
 
 Jevはこの土台を利用する任意コンポーネントです。将来、ETHや他のFX通貨ペアを追加しても、market / chart / paperの基本構造を再利用できる設計にします。
