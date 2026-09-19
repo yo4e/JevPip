@@ -107,6 +107,9 @@ class UIController:
             normalized["fee_rate"] = float(instrument.paper_fee_rate)
             normalized["fee_label"] = instrument.paper_fee_label
             normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
+            normalized["jev_direction_gate_enabled"] = bool(
+                with_jev and normalized.get("strategy") != "jev"
+            )
             config = PaperConfig(**normalized)
             if config.strategy == "jev" and not with_jev:
                 raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
@@ -155,7 +158,7 @@ class UIController:
                 on_update=self._on_update,
                 emit_console=False,
                 jev_state_context_provider=(
-                    self._jev_context_state if jev_supervisor_strategies else None
+                    self._jev_state_context if with_jev else None
                 ),
                 jev_supervisor_strategies=jev_supervisor_strategies,
             ),
@@ -331,6 +334,50 @@ class UIController:
             currencies=self._context_currencies(instrument_id),
         )
         return to_jev_context_state(selected, as_of=as_of)
+
+    def _jev_state_context(
+        self,
+        as_of: datetime,
+        instrument_id: str,
+    ) -> dict[str, Any]:
+        """Context visible to Jev without exposing account credentials or commands."""
+
+        state = self._jev_context_state(as_of, instrument_id)
+        if self._paper is None or self._paper_config is None:
+            return state
+
+        snapshot = self._paper.snapshot()
+        position = snapshot.get("position")
+        position_state: dict[str, Any] | None = None
+        if isinstance(position, dict):
+            opened_raw = position.get("opened_at")
+            age_seconds: float | None = None
+            if opened_raw:
+                try:
+                    opened_at = self._parse_timestamp(str(opened_raw))
+                    age_seconds = round(max(0.0, (as_of - opened_at).total_seconds()), 3)
+                except (TypeError, ValueError):
+                    age_seconds = None
+            position_state = {
+                "side": position.get("side"),
+                "age_seconds": age_seconds,
+            }
+
+        strategy_decision = snapshot.get("strategy_decision")
+        state["paper_context"] = {
+            "configured_strategy": self._paper_config.strategy,
+            "jev_direction_gate_enabled": self._paper_config.jev_direction_gate_enabled,
+            "latest_strategy_decision": (
+                {
+                    "signal": strategy_decision.get("signal"),
+                    "reason": strategy_decision.get("reason"),
+                }
+                if isinstance(strategy_decision, dict)
+                else None
+            ),
+            "position": position_state,
+        }
+        return state
 
     @staticmethod
     def _usage_token(value: Any) -> int | None:
