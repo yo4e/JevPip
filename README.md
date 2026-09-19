@@ -1,6 +1,6 @@
 # JevPip
 
-JevPip は、**GMOの市場データを使うローカル・マーケットターミナル兼研究アプリ**です。USD/JPYに加えてBTC/JPYへ対応し、TypeSafe AI の Jev は必要なときだけ追加できる判断レイヤーとして扱います。
+JevPip は、**GMOの市場データを使うローカル・マーケットターミナル兼研究アプリ**です。GMO外国為替FXの対円12ペアとBTC/JPYへ対応し、TypeSafe AI の Jev は必要なときだけ追加できる判断レイヤーとして扱います。
 
 目的は、いきなり自動売買をすることではありません。まず市場を観測し、raw tick、特徴量、Jevの確率判断、将来価格を保存して、「Jevに何を見せると、どんな判断になり、その判断は実際の値動きとどう対応するか」を検証します。
 
@@ -59,7 +59,7 @@ uv run jevpip ui
 
 現在のUIは日本語です。主画面は **簡単なMT4 + TradingView** を意識した1画面ターミナルに整理し、難しい研究用パラメータは「詳細設定」に畳んでいます。中央をチャート、右を自動売買設定、下を口座・建玉・Jev・ログ系のターミナルとして使います。
 
-- USD/JPY と BTC/JPY を切り替えてリアルタイム観測
+- GMO外国為替FXの対円12ペアと BTC/JPY を切り替えてリアルタイム観測
 - GMOの過去KLineを自動で読み込み、live tickを末尾へ接続
 - 1分 / 5分 / 15分 / 1時間のチャート切替
 - 過去KLineをローソク足表示し、live MIDを末尾へ接続
@@ -84,16 +84,37 @@ Jevは必須ではありません。
 
 JevをOFFにしても、次の機能は使えます。
 
-- USD/JPY / BTC/JPY のチャート
+- 対円FX 12ペア / BTC/JPY のチャート
 - 過去KLineの表示
 - live market観測
 - raw tick保存
 - 5秒モメンタム等のcode-based paper strategy
 - デモ口座の残高・PnL・仮想建玉
-- USD/JPYの粗いKLine replay
+- 対円FXペアの粗いBID/ASK KLine replay
 - 外国為替FX実口座のread-only表示（認証情報を設定した場合）
 
 つまりJevPip本体は、チャート・データ収集・paper broker・研究機能を持つ小さなターミナルとして動きます。Jevはその上に追加できるstrategy / research componentの一つです。
+
+## 対応FXペア
+
+現在paper PnLを日本円のまま正しく扱える、以下の対円12ペアを有効にしています。
+
+- USD/JPY
+- EUR/JPY
+- GBP/JPY
+- AUD/JPY
+- NZD/JPY
+- CAD/JPY
+- CHF/JPY
+- TRY/JPY
+- ZAR/JPY
+- MXN/JPY
+- HUF/JPY
+- SEK/JPY
+
+GMO外国為替FX自体は非対円ペアを含む21通貨ペアを扱っていますが、EUR/USDなどはPnLをJPYへ換算するcross-rate modelが必要です。JevPipでは計算を誤魔化さず、円換算モデルを入れてから対応します。
+
+対円FXはライブ観測・過去チャート・paper trading・1分足BID/ASK replayに利用できます。
 
 ## BTC/JPY
 
@@ -215,7 +236,18 @@ uv run jevpip signals list
 
 初期版では単一ポジションとし、利確・損切り・最大保有時間・cooldownを設定できます。
 
-> デモ取引は将来の利益を示すものではありません。現在はAPI手数料とslippageをまだモデル化していないため、実取引より有利に見える場合があります。
+デモ損益は次のコストを含めます。
+
+- 実際のBID / ASK spread
+- BTC: 取引所現物のTaker 0.05% / 約定を参考にしたpaper fee
+- 対円FX: 外国為替FX APIの約定金額 × 0.002% / 約定を参考にしたpaper fee
+- 任意のadverse slippage（詳細設定。初期値0）
+
+UIには **コスト後確定損益 / 粗利益 / 手数料 / Profit Factor / 最大ドローダウン / 勝率** を表示します。
+
+BTCのPublic tickerは現物市場ですが、paper engineは比較研究のためLONG / SHORT両方向を許可しています。したがってBTCのSHORTは**仮想ショート**であり、現物売買そのものを再現したものではありません。
+
+> デモ取引は将来の利益を示すものではありません。約定板の深さ、部分約定、動的slippage、資金・証拠金制約などはまだ完全にはモデル化していません。
 
 ## CLIで観測する
 
@@ -241,7 +273,7 @@ uv run jevpip observe --profile moon_only --with-jev
 
 ## 1分足リプレイ
 
-GMO公式のBID / ASK KLineを取得し、同じFeature pipelineへ流します。
+選択中の対円FXペアについて、GMO公式のBID / ASK KLineを取得し、同じFeature pipelineへ流します。BTCのhistorical KLineはBID/ASK履歴ではないため、この統計リプレイには使いません。
 
 ブラウザUIから実行するほか、CLIでも動かせます。
 
@@ -316,9 +348,9 @@ FastAPIのWeb UIはローカルホストで動きます。UI/APIのテストに�
 
 JevPipは現在、次の四つを同じローカルアプリへまとめている段階です。
 
-1. **Market Terminal** : USD/JPY / BTC/JPY の過去チャート + live market表示
+1. **Market Terminal** : 対円FX 12ペア / BTC/JPY の過去チャート + live market表示
 2. **Paper Broker** : Jevなしのルール戦略でも動く仮想売買・PnL
 3. **Observer / Feature Lab** : raw tickを保存し、Jevへ見せる情報を組み替えて比較
-4. **Backtester** : USD/JPY KLine replayと、今後のraw tick replayで設定を再検証
+4. **Backtester** : 対円FX BID/ASK KLine replayと、今後のraw tick replayで設定を再検証
 
 Jevはこの土台を利用する任意コンポーネントです。将来、ETHや他のFX通貨ペアを追加しても、market / chart / paperの基本構造を再利用できる設計にします。
