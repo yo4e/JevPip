@@ -3,23 +3,26 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import datetime, timezone
-from pathlib import Path
 from statistics import fmean
+import time
 from typing import Any
 
 from jevpip.backtest.kline import replay_kline
+from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.config import Settings
+from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.observer import observe
 from jevpip.signals import SignalPolicy
 
 
 class UIController:
-    """ローカルWeb UIからObserverと粗いKLine replayを操作する。"""
+    """ローカルWeb UIからObserver、paper trading、口座参照を操作する。"""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings()
         self._task: asyncio.Task[None] | None = None
-        self._events: deque[dict[str, Any]] = deque(maxlen=100)
+        self._events: deque[dict[str, Any]] = deque(maxlen=120)
+        self._chart: deque[dict[str, Any]] = deque(maxlen=900)
         self._status = "stopped"
         self._started_at: str | None = None
         self._profile_name: str | None = None
@@ -28,6 +31,9 @@ class UIController:
         self._latest_market: dict[str, Any] | None = None
         self._latest_decision: dict[str, Any] | None = None
         self._last_error: str | None = None
+        self._paper: PaperBroker | None = None
+        self._paper_config: PaperConfig | None = None
+        self._real_account_cache: tuple[float, dict[str, Any]] | None = None
 
     @property
     def running(self) -> bool:
@@ -42,6 +48,7 @@ class UIController:
         jev_every_seconds: float,
         signal_policy_name: str,
         signal_policy: SignalPolicy,
+        paper_config: dict[str, Any] | None = None,
     ) -> None:
         if self.running:
             raise RuntimeError("観測はすでに実行中です。")
@@ -54,6 +61,16 @@ class UIController:
 
             jev_client = JevClient(self.settings.typesafe_api_key)
 
+        if paper_config is not None:
+            config = PaperConfig(**paper_config)
+            if config.strategy == "jev" and not with_jev:
+                raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
+            self._paper_config = config
+            self._paper = PaperBroker(config)
+        else:
+            self._paper_config = None
+            self._paper = None
+
         self._status = "running"
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._profile_name = profile_name
@@ -62,6 +79,8 @@ class UIController:
         self._last_error = None
         self._latest_market = None
         self._latest_decision = None
+        self._chart.clear()
+        self._events.clear()
 
         self._task = asyncio.create_task(
             observe(
@@ -97,14 +116,30 @@ class UIController:
         await self.stop_observer()
 
     async def _on_update(self, event: dict[str, Any]) -> None:
-        self._events.appendleft(event)
         kind = event.get("kind")
         if kind == "tick":
             self._latest_market = event
+            bid = float(event["bid"])
+            ask = float(event["ask"])
+            self._chart.append(
+                {
+                    "timestamp": event["market_timestamp"],
+                    "bid": bid,
+                    "ask": ask,
+                    "mid": (bid + ask) / 2,
+                }
+            )
+            if self._paper is not None:
+                for paper_event in self._paper.on_tick(event):
+                    self._events.appendleft(paper_event)
         elif kind == "decision":
             self._latest_decision = event
+            if self._paper is not None:
+                self._paper.on_decision(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
+
+        self._events.appendleft(event)
 
     def _observer_done(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
@@ -121,6 +156,12 @@ class UIController:
         else:
             self._status = "stopped"
 
+    def reset_paper(self) -> dict[str, Any]:
+        if self._paper_config is None:
+            raise RuntimeError("デモ口座は有効になっていません。")
+        self._paper = PaperBroker(self._paper_config)
+        return self._paper.snapshot()
+
     def snapshot(self) -> dict[str, Any]:
         if self._task is not None and self._task.done() and self._status == "running":
             self._status = "stopped"
@@ -134,8 +175,32 @@ class UIController:
             "latest_market": self._latest_market,
             "latest_decision": self._latest_decision,
             "last_error": self._last_error,
-            "events": list(self._events)[:30],
+            "chart": list(self._chart),
+            "paper": None if self._paper is None else self._paper.snapshot(),
+            "events": list(self._events)[:40],
         }
+
+    async def fetch_real_account(self, *, force: bool = False) -> dict[str, Any]:
+        if not self.settings.gmo_private_read_configured:
+            raise ValueError(
+                "実口座を表示するには .env に GMO_FX_API_KEY と GMO_FX_API_SECRET を設定してください。"
+            )
+        now = time.monotonic()
+        if not force and self._real_account_cache is not None:
+            cached_at, payload = self._real_account_cache
+            if now - cached_at < 3.0:
+                return payload
+
+        assert self.settings.gmo_fx_api_key is not None
+        assert self.settings.gmo_fx_api_secret is not None
+        client = GMOPrivateReadClient(
+            self.settings.gmo_fx_api_key,
+            self.settings.gmo_fx_api_secret,
+        )
+        payload = await asyncio.to_thread(client.fetch_snapshot, "USD_JPY")
+        payload["fetched_at"] = datetime.now(timezone.utc).isoformat()
+        self._real_account_cache = (now, payload)
+        return payload
 
     async def run_backtest(
         self,
