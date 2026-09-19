@@ -342,3 +342,31 @@ def test_ma_bar_strategy_only_decides_on_bar_close():
     assert events
     assert events[0]["side"] == "LONG"
     assert broker.snapshot()["strategy_decision"]["metrics"]["semantics"] == "5s_bar_close"
+
+
+def test_trade_diagnostics_include_averages_and_exit_reasons():
+    broker = PaperBroker(
+        PaperConfig(
+            initial_balance=100000,
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=1,
+            stop_loss_units=2,
+            max_hold_seconds=30,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
+    broker.on_tick(tick("2026-09-19T00:00:02+00:00", "150.022", "150.024"))
+
+    snapshot = broker.snapshot()
+    assert snapshot["closed_trades"] == 1
+    assert snapshot["average_trade_pnl"] == 10.0
+    assert snapshot["average_win_pnl"] == 10.0
+    assert snapshot["average_loss_pnl"] is None
+    assert snapshot["exit_reasons"]["take_profit"]["count"] == 1
+    assert snapshot["exit_reasons"]["take_profit"]["net_pnl"] == 10.0
