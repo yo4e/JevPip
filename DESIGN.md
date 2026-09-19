@@ -1176,3 +1176,47 @@ Paper trading UIは研究用パラメータをそのまま露出せず、一般�
 - Jev thresholds / feature settings
 
 JevPipには現時点でmanual market/pending order executionはないため、存在しない注文機能をMT4風に見せかけない。Paper strategyが自動でentry/exitすることを明示する。
+
+
+---
+
+## 24. Simple Trading Terminal UI（2026-09-19）
+
+TradingView / MT4の情報階層を参考にしつつ、JevPipでは機能を絞った単純な取引端末UIを採用する。
+
+### 24.1 Layout
+
+- top bar: instrument / timeframe / current price / status / start-stop
+- center: main chart
+- right: paper auto-trading controls / Jev toggle / advanced settings
+- bottom terminal: demo account / real FX read-only account / Jev decision / backtest / logs
+
+Webアプリ的なカード一覧より、チャートを常に主役にする。
+
+### 24.2 Chart
+
+historical KLineはOHLC candlestickとして描画し、観測開始後のlive tickはその末尾へlineとして接続する。
+
+初期indicatorは表示専用として、
+
+- MA20
+- MA200
+
+をON/OFF可能にする。
+
+indicatorはpaper strategyの売買条件とは独立する。表示しただけで戦略へ自動適用しない。
+
+RSI / ATR等のsub-panel indicatorは、main terminal layoutが安定した後に追加を検討する。
+
+### 24.3 Simplicity
+
+TradingViewの描画ツール群やMT4の全注文機能を再現することを目的にしない。
+
+優先するのは、
+
+- chartを大きく見る
+- current position / PnLをすぐ確認できる
+- strategy / size / TP / SLがすぐ分かる
+- advanced research controlsは普段隠す
+
+こと。
