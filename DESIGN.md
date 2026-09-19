@@ -1535,3 +1535,64 @@ comparison resultは追加で次を持つ。
 
 PaperBrokerのPF / win rate / averages / exit reason集計は、UI用に保持する有限trade logではなく全closed tradeのaggregateから計算する。
 これにより長時間runでも古いtradeがdequeから落ちたことで統計が変質しない。
+
+
+---
+
+## 28. BTC Historical Replay / Resizable Terminal（2026-09-19）
+
+### 28.1 Backtest date
+
+Web UIのbacktest dateは固定日ではない。
+
+- 任意の過去日付を選択可能
+- 初期値は前日
+- UIでは未来日を選びにくくするため `max=today`
+- 実際のhistorical availabilityはGMO API responseに従う
+
+### 28.2 FX historical replay
+
+対円FXはBID / ASK 1min KLineをpairし、closeをFeature pipelineへreplayする。
+
+outcome:
+
+- `delta_units`
+- `long_edge_units = future_bid - current_ask`
+- `short_edge_units = current_bid - future_ask`
+
+instrumentのmove unitで表現する。
+
+### 28.3 BTC historical replay
+
+BTC historical KLineはOHLCのみでhistorical BID / ASKを持たない。
+
+そのためBTC backtestは、
+
+- 1min closeをsynthetic midpointとしてFeature pipelineへreplay
+- close-to-close `delta_units`
+- up / down ratio
+- max / min 1min move
+
+を扱う。
+
+次は算出しない。
+
+- historical spread
+- LONG edge
+- SHORT edge
+
+BTC KLineだけからspread込みscalping profitabilityを示すことは禁止する。
+
+### 28.4 Resizable bottom terminal
+
+Desktop UIのbottom terminalは固定225pxを廃止する。
+
+- default 300px
+- chart / terminal境界をpointer dragで上下resize
+- minimum 180px
+- viewportに応じたmaximum
+- double-clickで300pxへreset
+- chosen heightをlocalStorageへ保存
+- resize時にCanvas chartを再描画
+
+mobile layoutではresizerを表示せず、terminalは通常flowで表示する。
