@@ -154,7 +154,16 @@ class PaperBroker:
         event: dict[str, Any],
         *,
         allow_entry: bool = True,
+        strategy_override: StrategyName | None = None,
     ) -> list[dict[str, Any]]:
+        if strategy_override not in {
+            None,
+            "momentum",
+            "rsi_mean_reversion",
+            "ma_trend",
+        }:
+            raise ValueError(f"Unsupported supervisor strategy override: {strategy_override!r}")
+
         at = self._dt(str(event["market_timestamp"]))
         bid = Decimal(str(event["bid"]))
         ask = Decimal(str(event["ask"]))
@@ -200,7 +209,11 @@ class PaperBroker:
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
         if allow_entry and self.position is None and self._can_enter(at, spread_units):
-            decision = self._strategy_decision(at, mid)
+            decision = self._strategy_decision(
+                at,
+                mid,
+                strategy_override=strategy_override,
+            )
             self._latest_strategy_decision = decision
             if decision.signal in {"LONG", "SHORT"}:
                 trade = self._open(decision.signal, at, bid, ask, decision.reason)
@@ -272,8 +285,15 @@ class PaperBroker:
             return True
         return (at - self._last_exit_at).total_seconds() >= self.config.cooldown_seconds
 
-    def _strategy_decision(self, at: datetime, mid: Decimal) -> StrategyDecision:
-        if self.config.strategy == "jev":
+    def _strategy_decision(
+        self,
+        at: datetime,
+        mid: Decimal,
+        *,
+        strategy_override: StrategyName | None = None,
+    ) -> StrategyDecision:
+        strategy = strategy_override or self.config.strategy
+        if strategy == "jev":
             if self._latest_jev_at is None:
                 return StrategyDecision("WAIT", "jev_warmup", {})
             age = abs((at - self._latest_jev_at).total_seconds())
@@ -286,7 +306,7 @@ class PaperBroker:
 
         strategy_prices = self._prices
         semantics = "tick_count"
-        if self._bar_builder is not None and self.config.strategy in {
+        if self._bar_builder is not None and strategy in {
             "rsi_mean_reversion",
             "ma_trend",
         }:
@@ -302,7 +322,7 @@ class PaperBroker:
                 )
             strategy_prices = self._bar_prices
 
-        if self.config.strategy == "rsi_mean_reversion":
+        if strategy == "rsi_mean_reversion":
             decision = rsi_mean_reversion_signal(
                 strategy_prices,
                 period=self.config.rsi_period,
@@ -315,7 +335,7 @@ class PaperBroker:
                 {**decision.metrics, "semantics": semantics},
             )
 
-        if self.config.strategy == "ma_trend":
+        if strategy == "ma_trend":
             decision = ma_trend_signal(
                 strategy_prices,
                 price_unit=self.price_unit,
