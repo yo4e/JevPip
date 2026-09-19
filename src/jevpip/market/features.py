@@ -60,10 +60,9 @@ def rsi(values: list[Decimal], period: int) -> float | None:
 
 
 def build_features(tick: MarketTick, buffer: TickBuffer, profile: dict[str, Any]) -> dict[str, Any]:
-    state: dict[str, Any] = {
-        "symbol": tick.symbol,
-        "timestamp": tick.market_timestamp.astimezone(timezone.utc).isoformat(),
-    }
+    # Instrument/timestamp belong to the surrounding observation event.
+    # Keep Jev state limited to explicitly selected experiment features.
+    state: dict[str, Any] = {}
 
     if profile.get("quote", False):
         state["quote"] = {
