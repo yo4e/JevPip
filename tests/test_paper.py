@@ -370,3 +370,56 @@ def test_trade_diagnostics_include_averages_and_exit_reasons():
     assert snapshot["average_loss_pnl"] is None
     assert snapshot["exit_reasons"]["take_profit"]["count"] == 1
     assert snapshot["exit_reasons"]["take_profit"]["net_pnl"] == 10.0
+
+
+
+def test_supervisor_strategy_override_changes_entry_strategy():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            momentum_trigger_units=9999,
+            max_spread_units=10,
+            take_profit_units=100,
+            stop_loss_units=100,
+            max_hold_seconds=100,
+            cooldown_seconds=0,
+            ma_fast_period=2,
+            ma_slow_period=3,
+            ma_min_gap_units=0,
+        )
+    )
+
+    events = []
+    for second, mid in enumerate([100.00, 100.02, 100.04, 100.06]):
+        at = f"2026-09-19T00:00:{second:02d}+00:00"
+        events.extend(
+            broker.on_tick(
+                {
+                    "market_timestamp": at,
+                    "received_at": at,
+                    "bid": mid,
+                    "ask": mid + 0.001,
+                    "status": "OPEN",
+                },
+                strategy_override="ma_trend",
+            )
+        )
+
+    opens = [event for event in events if event["action"] == "OPEN"]
+    assert len(opens) == 1
+    assert opens[0]["reason"] == "ma_trend"
+
+
+def test_supervisor_strategy_override_rejects_jev_and_unknown_values():
+    import pytest
+
+    broker = PaperBroker(PaperConfig())
+    event = {
+        "market_timestamp": "2026-09-19T00:00:00+00:00",
+        "received_at": "2026-09-19T00:00:00+00:00",
+        "bid": 100,
+        "ask": 100.01,
+        "status": "OPEN",
+    }
+    with pytest.raises(ValueError, match="Unsupported"):
+        broker.on_tick(event, strategy_override="jev")
