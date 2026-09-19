@@ -141,10 +141,21 @@ Jev schemaには含めない:
 - leverage
 - arbitrary command / code
 
+実装済み:
+
+- BLS公式ICS adapter / runtime fetch
+- observer開始時のcontext refresh
+- UIからの手動context refresh
+- deterministic event-window supervisor
+- high/critical: 前30分〜後15分 PAUSE_ENTRY
+- medium: 前10分〜後5分 CAUTION
+- paper新規entry gateへの接続
+- UI上のevent supervisor / 次イベント表示
+
 未実装:
 
-- BLS / Fed / BOJのsource adapterとruntime fetch
-- deterministic event-window supervisor
+- Fed / BOJのtimed source adapter
+- contextの定期refresh / runtime revision log
 - official post-release context
 - Jev supervisor live paper call
 - TTL expiration scheduling
@@ -266,10 +277,16 @@ Technical strategy engine + Jev supervisor.
 - provenance-first context schema
 - look-ahead-safe context selection
 
+実装済み:
+
+- BLS official calendar adapter
+- deterministic event-window supervisor
+- paper entry gate / UI integration
+
 未実装:
 
-- BLS / Fed / BOJ source adapters
-- deterministic event-window supervisor
+- Fed / BOJ timed source adapters
+- runtime revision log
 - Jev supervisor paper integration
 - A/B/C/D experiment harness
 
@@ -285,11 +302,10 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. BLS ICS adapterを実装
-2. Fed / BOJ scheduled-event adapterを追加
-3. deterministic event-window supervisorをbaselineとして実装
-4. runtime context logを保存
-5. Jev supervisorをpaper-onlyで接続
+1. Fed / BOJの「時刻が公式に確定できる」scheduled release adapterを追加
+2. runtime context revision logを保存
+3. contextの定期refreshを追加
+4. Jev supervisorをpaper-onlyで接続
 6. A: technical only
 7. B: technical + deterministic event supervisor
 8. C: technical + deterministic + Jev supervisor
@@ -320,4 +336,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> BLS / Fed / BOJのscheduled-event adapterとdeterministic event-window supervisorを実装し、paper-only A/B/C/D experimentへ接続する。
+> Fed / BOJのtimed official eventを追加し、runtime revision log → Jev supervisor → paper-only A/B/C/D experimentへ接続する。
