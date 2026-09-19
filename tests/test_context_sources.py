@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from jevpip.context_sources import bls_risk, parse_bls_ics
+from jevpip.context_sources import bls_risk, parse_bls_ics, parse_boj_mpm_html
 
 
 UTC = timezone.utc
@@ -63,3 +63,44 @@ def test_bls_risk_is_local_classification():
     assert bls_risk("Employment Situation for August 2026") == "high"
     assert bls_risk("Employment Cost Index for Third Quarter 2026") == "medium"
     assert bls_risk("Employee Benefits in the United States") == "low"
+
+
+def test_parse_boj_timed_summary_and_minutes():
+    html = """
+    <html><body>
+      <h2>2026</h2>
+      <table>
+        <tr><th>Date of MPM</th><th>Outlook</th><th>Summary of Opinions</th><th>MPM Minutes</th></tr>
+        <tr>
+          <td>Sept. 17 (Thurs.), 18 (Fri.)</td>
+          <td>-</td>
+          <td>Oct. 1 (Thurs.)</td>
+          <td>Nov. 5 (Thurs.)</td>
+        </tr>
+        <tr>
+          <td>Dec. 17 (Thurs.), 18 (Fri.)</td>
+          <td>-</td>
+          <td>Dec. 28 (Mon.)</td>
+          <td>Jan. 27 (Wed.), 2027</td>
+        </tr>
+      </table>
+      <h2>2027</h2>
+    </body></html>
+    """
+    items = parse_boj_mpm_html(
+        html,
+        observed_at=datetime(2026, 9, 19, tzinfo=UTC),
+        year=2026,
+    )
+
+    assert [item.source_id for item in items] == [
+        "summary-opinions-2026-10-01",
+        "mpm-minutes-2026-11-05",
+        "summary-opinions-2026-12-28",
+        "mpm-minutes-2027-01-27",
+    ]
+    assert all(item.source == "boj" for item in items)
+    assert all(item.currencies == ("JPY",) for item in items)
+    assert all(item.risk == "medium" for item in items)
+    # 08:50 JST = 23:50 UTC on the previous calendar day.
+    assert items[0].scheduled_at == datetime(2026, 9, 30, 23, 50, tzinfo=UTC)
