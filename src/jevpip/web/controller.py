@@ -71,6 +71,9 @@ class UIController:
             normalized = dict(paper_config)
             normalized["price_unit"] = float(instrument.price_unit)
             normalized["move_unit_label"] = instrument.move_unit_label
+            normalized["fee_rate"] = float(instrument.paper_fee_rate)
+            normalized["fee_label"] = instrument.paper_fee_label
+            normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
             config = PaperConfig(**normalized)
             if config.strategy == "jev" and not with_jev:
                 raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
