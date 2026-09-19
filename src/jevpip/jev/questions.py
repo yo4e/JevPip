@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 
-def question_specs(horizon: str = "5s") -> dict:
+def question_specs(
+    horizon: str = "5s",
+    instrument_label: str = "the instrument",
+) -> dict:
     """Raw TypeSafe question definitions, kept atomic and composable in code."""
     return {
         "direction": {
             "type": "choice",
-            "instructions": f"Based only on the supplied state, where is USD/JPY most likely to be after {horizon}?",
+            "instructions": f"Based only on the supplied state, where is {instrument_label} most likely to be after {horizon}?",
             "criteria": {
                 "UP": "Meaningfully higher than now, beyond ordinary short-term noise.",
                 "DOWN": "Meaningfully lower than now, beyond ordinary short-term noise.",
