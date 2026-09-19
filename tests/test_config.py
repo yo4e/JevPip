@@ -1,4 +1,4 @@
-from jevpip.config import list_profiles, load_profile
+from jevpip.config import Settings, list_profiles, load_profile
 
 
 def test_builtin_profiles_include_moon_only():
