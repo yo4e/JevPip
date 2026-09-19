@@ -10,6 +10,10 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert response.status_code == 200
         assert "チャート" in response.text
         assert "BTC/JPY" in response.text
+        assert "デモ自動売買" in response.text
+        assert "利確幅 / Take Profit" in response.text
+        assert "損切り幅 / Stop Loss" in response.text
+        assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月の満ち欠け" in response.text
