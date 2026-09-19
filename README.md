@@ -147,8 +147,9 @@ Jevとは独立したdeterministic supervisorがあります。
 - BLS公式scheduled event（local risk=high/critical）→ 前30分〜後15分 `PAUSE_ENTRY`
 - BLS公式scheduled event（local risk=medium）→ 前10分〜後5分 `CAUTION`
 - BOJ Summary of Opinions / MPM Minutes → 原則8:50 JSTの公式時刻を使い `CAUTION`
+- Fed定例FOMC statement → 公式14:00 ETの公開時刻を使い `PAUSE_ENTRY`
 
-BLS calendarとBOJ MPM release scheduleはObserver開始時とUIの「公式イベント更新」から取得します。
+BLS calendar、BOJ MPM release schedule、Fed FOMC calendarはObserver開始時とUIの「公式イベント更新」から取得します。
 CPI / PPI / Employment Situation等のrisk分類はBLS公式の重要度ではなく、JevPip側の比較実験用local classificationです。
 
 supervisorはリスクを**厳しくする方向にしか動けません**。
