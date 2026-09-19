@@ -34,6 +34,7 @@ async def observe(
     signal_policy: SignalPolicy | None = None,
     signal_policy_name: str | None = None,
     *,
+    instrument_id: str = "USD_JPY",
     on_update: UpdateCallback | None = None,
     emit_console: bool = True,
 ) -> None:
@@ -41,23 +42,27 @@ async def observe(
     count = 0
     last_jev_at = 0.0
 
-    async for tick in stream_ticker("USD_JPY"):
+    async for tick in stream_ticker(instrument_id):
         count += 1
         buffer.append(tick)
 
         day = tick.received_at.astimezone(timezone.utc).date().isoformat()
-        raw_path = data_dir / "raw_ticks" / f"{day}.jsonl"
+        raw_path = data_dir / "raw_ticks" / tick.instrument_id / f"{day}.jsonl"
         append_jsonl(raw_path, tick.as_json_dict())
 
         features = build_features(tick, buffer, profile)
         tick_event = {
             "kind": "tick",
+            "instrument_id": tick.instrument_id,
+            "display_symbol": tick.display_symbol,
             "received_at": tick.received_at.isoformat(),
             "market_timestamp": tick.market_timestamp.isoformat(),
             "symbol": tick.symbol,
             "bid": str(tick.bid),
             "ask": str(tick.ask),
-            "spread_pips": float(tick.spread_pips),
+            "spread_units": float(tick.spread_units),
+            "spread_pips": float(tick.spread_units),
+            "move_unit_label": tick.move_unit_label,
             "status": tick.status,
             "features": features,
         }
@@ -65,8 +70,8 @@ async def observe(
 
         if emit_console:
             print(
-                f"USD_JPY bid={tick.bid} ask={tick.ask} "
-                f"spread={tick.spread_pips:.3f}p status={tick.status}"
+                f"{tick.display_symbol} bid={tick.bid} ask={tick.ask} "
+                f"spread={tick.spread_units:.3f}{tick.move_unit_label} status={tick.status}"
             )
 
         now = time.monotonic()
@@ -80,16 +85,20 @@ async def observe(
                 if signal_policy is not None:
                     research_signal, signal_detail = classify_research_signal(
                         answer,
-                        float(tick.spread_pips),
+                        float(tick.spread_units),
                         signal_policy,
                     )
                 event = {
                     "kind": "decision",
+                    "instrument_id": tick.instrument_id,
+                    "display_symbol": tick.display_symbol,
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                     "market_timestamp": tick.market_timestamp.isoformat(),
                     "bid": str(tick.bid),
                     "ask": str(tick.ask),
-                    "spread_pips": float(tick.spread_pips),
+                    "spread_units": float(tick.spread_units),
+                    "spread_pips": float(tick.spread_units),
+                    "move_unit_label": tick.move_unit_label,
                     "profile": profile,
                     "state": features,
                     "jev": answer,
@@ -98,7 +107,10 @@ async def observe(
                     "signal_policy": signal_policy_name,
                     "signal_detail": signal_detail,
                 }
-                append_jsonl(data_dir / "decisions" / f"{day}.jsonl", event)
+                append_jsonl(
+                    data_dir / "decisions" / tick.instrument_id / f"{day}.jsonl",
+                    event,
+                )
                 await _notify(on_update, event)
                 if emit_console:
                     suffix = f" signal={research_signal}" if research_signal else ""
@@ -108,6 +120,7 @@ async def observe(
             except Exception as exc:
                 error_event = {
                     "kind": "error",
+                    "instrument_id": tick.instrument_id,
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                     "message": f"Jev error: {type(exc).__name__}: {exc}",
                 }
