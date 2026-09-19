@@ -501,10 +501,9 @@ def test_controller_event_supervisor_blocks_paper_entry():
             )
 
     asyncio.run(feed())
-    snapshot = controller.snapshot()
 
-    assert snapshot["external_context"]["supervisor"]["state"] == "PAUSE_ENTRY"
+    assert controller._event_supervisor.state == "PAUSE_ENTRY"
     assert not any(
         event.get("kind") == "paper_trade" and event.get("action") == "OPEN"
-        for event in snapshot["events"]
+        for event in controller._events
     )
