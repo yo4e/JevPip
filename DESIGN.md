@@ -1837,3 +1837,72 @@ TypeSafe SDKのSystem One responseに含まれる `usage.input_tokens` / `usage.
 - latest callのtoken数
 
 usageが欠けるcallは推定しない。runtime表示だけに使い、実測値をpublic repoへcommitしない。
+
+
+---
+
+## 32. Jev direction gate / paper state（2026-09-20）
+
+UIの **Jev判断を追加** は、paper modeでは単なる表示オプションではなく新規entryへ作用する。
+
+### 32.1 Direction gate
+
+code strategy（Momentum / RSI mean reversion / MA trend）が `LONG` または `SHORT` candidateを出したあと、freshなJev research signalと方向一致した場合だけentry候補を通す。
+
+- code LONG + Jev LONG → pass
+- code SHORT + Jev SHORT → pass
+- Jev WAIT → block
+- code / Jev direction disagreement → block
+- Jev未取得 → block
+- Jev signalが `jev_signal_max_age_seconds` を超過 → block
+
+このgateは**新規entryだけ**へ作用する。
+
+existing positionのTP / SL / max holdによるexitはJev WAIT / stale / disagreementで止めない。AI出力欠落でpositionを閉じられなくなる構造を作らない。
+
+Jev direct signal strategy（`strategy=jev`）は研究対照として従来どおり別系統で、二重direction gateは掛けない。
+
+### 32.2 Jevへ渡すtrade state
+
+Jev ON時は選択Featureとlook-ahead-safe external contextに加え、boundedな `paper_context` を同じstateへ含める。
+
+現在含めるもの:
+
+- configured strategy
+- Jev direction gate enabled flag
+- latest strategy decisionのsignal / reason
+- current positionのside
+- current position age seconds
+
+含めないもの:
+
+- API key / secret
+- GMO credential
+- order command
+- 任意code
+- position sizeを変更する指示
+- TP / SL / leverageを変更する指示
+
+目的は、Jev supervisorの `KEEP_CURRENT` 判断やdirection judgementへ現在のpaper状況を与えることであり、execution controlをJevへ委譲することではない。
+
+### 32.3 External context
+
+external contextはJev supervisor有効時だけでなく、Jev ONならdirection questionsにも渡す。
+
+これによりJev direction judgementは、
+
+- selected technical Feature
+- scheduled official context
+- bounded paper state
+
+を同じdecision時点のstateとして参照する。
+
+### 32.4 UI
+
+UIは次を明示する。
+
+- Jev ON + code strategyでは「Jev方向一致必須」
+- WAITの場合はSignal Policyのどのgateで落ちたかを表示
+- Jev supervisor stateはdirection gateと別表示
+
+direction gateとsupervisorを混同しない。
