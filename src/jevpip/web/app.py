@@ -268,9 +268,7 @@ async def compare_raw(request: RawCompareRequest) -> dict[str, Any]:
 @app.post("/api/backtest")
 async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
     try:
-        instrument = get_instrument(request.instrument_id)
-        if instrument.market_kind != "fx" or instrument.quote_currency != "JPY":
-            raise ValueError("統計リプレイは現在、対円FXペアのみ対応しています。")
+        get_instrument(request.instrument_id)
         return await controller.run_backtest(
             date=request.date,
             instrument_id=request.instrument_id,
