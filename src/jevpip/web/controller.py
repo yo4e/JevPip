@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from jevpip.backtest.kline import replay_kline
+from jevpip.broker.comparison import compare_raw_file
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.config import Settings
 from jevpip.gmo.history import fetch_history
@@ -239,6 +240,54 @@ class UIController:
                 }
                 for item in rows
             ],
+        }
+
+    def raw_tick_dates(self, instrument_id: str) -> list[str]:
+        get_instrument(instrument_id)
+        directory = self.settings.data_dir / "raw_ticks" / instrument_id
+        if not directory.exists():
+            return []
+        return sorted(
+            (
+                path.stem
+                for path in directory.glob("*.jsonl")
+                if path.is_file()
+            ),
+            reverse=True,
+        )
+
+    async def compare_raw_date(
+        self,
+        *,
+        instrument_id: str,
+        date: str,
+        strategies: tuple[str, ...],
+        initial_balance: float,
+        size: float | None,
+        supervisor: bool,
+        bar_seconds: int,
+    ) -> dict[str, Any]:
+        get_instrument(instrument_id)
+        path = self.settings.data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
+        if not path.is_file():
+            raise ValueError(f"raw tick data がありません: {instrument_id} / {date}")
+        results = await asyncio.to_thread(
+            compare_raw_file,
+            path,
+            instrument_id=instrument_id,
+            strategies=strategies,
+            initial_balance=initial_balance,
+            size=size,
+            supervisor=supervisor,
+            bar_seconds=bar_seconds,
+        )
+        return {
+            "instrument_id": instrument_id,
+            "date": date,
+            "source": str(path),
+            "bar_seconds": bar_seconds,
+            "supervisor": supervisor,
+            "results": results,
         }
 
     async def fetch_real_account(self, *, force: bool = False) -> dict[str, Any]:
