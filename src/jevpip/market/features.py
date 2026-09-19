@@ -10,7 +10,6 @@ from typing import Any
 from .buffer import TickBuffer
 from .models import MarketTick
 
-PIP = Decimal("0.01")
 SYNODIC_MONTH_DAYS = 29.530588853
 REFERENCE_NEW_MOON = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)
 
@@ -71,16 +70,17 @@ def build_features(tick: MarketTick, buffer: TickBuffer, profile: dict[str, Any]
             "bid": _round(tick.bid, 5),
             "ask": _round(tick.ask, 5),
             "mid": _round(tick.mid, 5),
-            "spread_pips": _round(tick.spread_pips, 4),
+            "spread_units": _round(tick.spread_units, 4),
+            "spread_unit": tick.move_unit_label,
             "market_status": tick.status,
         }
 
     returns: dict[str, float | None] = {}
     for seconds in profile.get("returns_seconds", []):
         previous = buffer.at_or_before(tick.market_timestamp - timedelta(seconds=int(seconds)))
-        returns[f"{seconds}s"] = None if previous is None else _round((tick.mid - previous.mid) / PIP, 4)
+        returns[f"{seconds}s"] = None if previous is None else _round((tick.mid - previous.mid) / tick.price_unit, 4)
     if returns:
-        state["move_pips"] = returns
+        state["move_units"] = {"unit": tick.move_unit_label, "values": returns}
 
     ranges: dict[str, float | None] = {}
     for seconds in profile.get("range_seconds", []):
@@ -89,9 +89,9 @@ def build_features(tick: MarketTick, buffer: TickBuffer, profile: dict[str, Any]
             ranges[f"{seconds}s"] = None
         else:
             mids = [x.mid for x in window]
-            ranges[f"{seconds}s"] = _round((max(mids) - min(mids)) / PIP, 4)
+            ranges[f"{seconds}s"] = _round((max(mids) - min(mids)) / tick.price_unit, 4)
     if ranges:
-        state["range_pips"] = ranges
+        state["range_units"] = {"unit": tick.move_unit_label, "values": ranges}
 
     counts: dict[str, int] = {}
     for seconds in profile.get("tick_count_seconds", []):
@@ -102,10 +102,10 @@ def build_features(tick: MarketTick, buffer: TickBuffer, profile: dict[str, Any]
     vols: dict[str, float | None] = {}
     for seconds in profile.get("realized_vol_seconds", []):
         window = buffer.ticks_since(tick.market_timestamp, int(seconds))
-        changes = [float(b.mid - a.mid) / 0.01 for a, b in zip(window, window[1:])]
+        changes = [float((b.mid - a.mid) / tick.price_unit) for a, b in zip(window, window[1:])]
         vols[f"{seconds}s"] = round(pstdev(changes), 6) if len(changes) >= 2 else None
     if vols:
-        state["realized_tick_vol_pips"] = vols
+        state["realized_tick_vol_units"] = {"unit": tick.move_unit_label, "values": vols}
 
     period = int(profile.get("rsi_period", 0) or 0)
     if period:
