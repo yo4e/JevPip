@@ -946,3 +946,14 @@ def test_homepage_has_local_api_settings_ui():
     assert "settings-jev-key" in response.text
     assert "settings-gmo-secret" in response.text
     assert "Jev API使用量" in response.text
+
+
+
+def test_homepage_aggregates_live_ticks_into_selected_chart_interval():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "function mergeChartPoints(history,live,interval=" in response.text
+    assert "Math.floor(at/bucketMs)*bucketMs" in response.text
+    assert ".slice(-180)" in response.text
+    assert "drawChart(activeChartPoints()" in response.text
