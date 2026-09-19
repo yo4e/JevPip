@@ -68,7 +68,7 @@ uv run jevpip ui
 - 「観測だけ」と「デモ取引」を切り替え
 - 仮想資金・仮想ポジション・確定/含み損益をリアルタイム表示
 - チャート上へデモのOPEN / CLOSEマーカーを表示
-- デモ戦略を「5秒モメンタム」または「Jevシグナル」から選択
+- デモ戦略を Momentum / RSI mean reversion / MA trend / Jev signal から選択
 - 外国為替FX実口座の時価評価総額・残高・取引余力・評価損益・証拠金維持率・USD/JPY建玉を参照専用で表示
 - Featureプリセットを「基本」「テクニカル」「月だけ」などから選択
 - Jev利用のON/OFF
@@ -253,10 +253,12 @@ uv run jevpip signals list
 
 売買設定は、一般的な売買画面に近い順番で **銘柄 / 注文数量 / Take Profit / Stop Loss / 最大スプレッド** を前面に出します。JevPip固有の判定時間、エントリー判定幅、再エントリー待機などは詳細設定へ分け、現在の条件を日本語の文章でも要約表示します。
 
-初期状態では次の2戦略を選べます。
+現在は次の4戦略を選べます。
 
-- **5秒モメンタム**: 直近5秒のMID変化が設定値を超えた方向へ仮想エントリー。Jev不要
-- **Jevシグナル**: Jevの研究用 `LONG / SHORT / WAIT` シグナルで仮想エントリー
+- **Momentum**: 直近のMID変化が設定値を超えた方向へ仮想エントリー。Jev不要
+- **RSI mean reversion**: tick-count RSIがoversoldならLONG、overboughtならSHORT
+- **MA trend**: tick-count short / long MAの差がthresholdを超えた方向へentry
+- **Jev signal**: Jevの研究用 `LONG / SHORT / WAIT` シグナルで仮想エントリー
 
 仮想LONGはASKで入りBIDで決済し、仮想SHORTはBIDで入りASKで決済します。そのため実際のspreadは最初から損益へ反映されます。
 
@@ -297,6 +299,53 @@ uv run jevpip observe --profile minimal --with-jev
 uv run jevpip observe --profile moon_only --with-jev
 ```
 
+## Raw tickで戦略比較
+
+ライブ観測で保存したraw tickを、**同じデータ・同じpaper cost model**で複数のcode-only strategyへ流して比較できます。
+
+例:
+
+```bash
+uv run jevpip compare \
+  --instrument BTC \
+  --file data/raw_ticks/BTC/2026-09-19.jsonl
+```
+
+標準では次を比較します。
+
+- momentum
+- rsi_mean_reversion
+- ma_trend
+
+出力:
+
+- net PnL
+- Profit Factor
+- max drawdown
+- closed trades
+- win rate
+- fees paid
+
+JSONが必要なら:
+
+```bash
+uv run jevpip compare \
+  --instrument BTC \
+  --file data/raw_ticks/BTC/2026-09-19.jsonl \
+  --json
+```
+
+安全監督の有無も比較できます。
+
+```bash
+uv run jevpip compare \
+  --instrument BTC \
+  --file data/raw_ticks/BTC/2026-09-19.jsonl \
+  --no-supervisor
+```
+
+このcompareはJev APIを呼びません。Jev direct / Jev supervisorとの比較は、code-only baselineを固めた後の別Phaseです。
+
 ## 1分足リプレイ
 
 選択中の対円FXペアについて、GMO公式のBID / ASK KLineを取得し、同じFeature pipelineへ流します。BTCのhistorical KLineはBID/ASK履歴ではないため、この統計リプレイには使いません。
@@ -320,11 +369,9 @@ runtime dataは `data/` 以下へ保存します。
 ```text
 data/
 ├── raw_ticks/
-│   ├── USD_JPY/
-│   └── BTC/
+│   └── <instrument>/
 ├── decisions/
-│   ├── USD_JPY/
-│   └── BTC/
+│   └── <instrument>/
 └── backtests/
 ```
 
