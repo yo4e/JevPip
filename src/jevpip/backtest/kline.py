@@ -19,82 +19,57 @@ def _pair(date: str, symbol: str) -> list[tuple[Any, Any]]:
     return [(bid[key], ask[key]) for key in sorted(bid.keys() & ask.keys())]
 
 
-def replay_kline(
+def load_historical_ticks(
     date: str,
-    profile: dict[str, Any],
-    output: Path | None = None,
-    limit: int | None = None,
+    *,
     instrument_id: str = "USD_JPY",
-) -> list[dict[str, Any]]:
-    """Replay 1-minute historical closes through the feature pipeline.
+    limit: int | None = None,
+) -> tuple[list[MarketTick], str]:
+    """Load 1-minute historical market points for replay/backtest.
 
-    FX uses paired BID/ASK closes, so spread-aware 1-minute edge can be measured.
-    Crypto historical KLine is OHLC-only, so it is replayed as close-to-close
-    midpoint research data and does not pretend to contain historical spread.
+    FX retains historical BID/ASK closes. Crypto historical KLine is OHLC-only,
+    so close is used as a synthetic midpoint (bid == ask) and the returned mode
+    makes that limitation explicit.
     """
     instrument = get_instrument(instrument_id)
-
-    rows: list[dict[str, Any]] = []
     ticks: list[MarketTick] = []
-    buffer = TickBuffer(max_age_seconds=86_400)
 
     if instrument.market_kind == "fx":
         pairs = _pair(date, instrument.api_symbol)
         if limit is not None:
             pairs = pairs[:limit]
-
         for bid, ask in pairs:
             at = datetime.fromtimestamp(
                 bid.open_time_ms / 1000,
                 tz=timezone.utc,
             ) + timedelta(minutes=1)
-            tick = MarketTick(
-                instrument_id=instrument.id,
-                symbol=instrument.api_symbol,
-                display_symbol=instrument.display_symbol,
-                bid=bid.close,
-                ask=ask.close,
-                market_timestamp=at,
-                received_at=at,
-                price_unit=instrument.price_unit,
-                move_unit_label=instrument.move_unit_label,
-                status="HISTORICAL",
-                raw=None,
+            ticks.append(
+                MarketTick(
+                    instrument_id=instrument.id,
+                    symbol=instrument.api_symbol,
+                    display_symbol=instrument.display_symbol,
+                    bid=bid.close,
+                    ask=ask.close,
+                    market_timestamp=at,
+                    received_at=at,
+                    price_unit=instrument.price_unit,
+                    move_unit_label=instrument.move_unit_label,
+                    status="HISTORICAL",
+                    raw=None,
+                )
             )
-            buffer.append(tick)
-            ticks.append(tick)
-            rows.append(
-                {
-                    "timestamp": at.isoformat(),
-                    "features": build_features(tick, buffer, profile),
-                    "replay_mode": "fx_bid_ask_close",
-                }
-            )
+        return ticks, "fx_bid_ask_close"
 
-        for idx, row in enumerate(rows[:-1]):
-            current = ticks[idx]
-            future = ticks[idx + 1]
-            delta = (future.mid - current.mid) / instrument.price_unit
-            long_edge = (future.bid - current.ask) / instrument.price_unit
-            short_edge = (current.bid - future.ask) / instrument.price_unit
-            row["outcome_1m"] = {
-                "delta_units": float(delta),
-                "long_edge_units": float(long_edge),
-                "short_edge_units": float(short_edge),
-            }
-    else:
-        candles = fetch_history(instrument_id, date, "1min")
-        if limit is not None:
-            candles = candles[:limit]
-
-        for candle in candles:
-            at = datetime.fromtimestamp(
-                candle.open_time_ms / 1000,
-                tz=timezone.utc,
-            ) + timedelta(minutes=1)
-            # Crypto public historical KLine has OHLC but no historical BID/ASK.
-            # Use close as a synthetic midpoint only for feature / direction replay.
-            tick = MarketTick(
+    candles = fetch_history(instrument_id, date, "1min")
+    if limit is not None:
+        candles = candles[:limit]
+    for candle in candles:
+        at = datetime.fromtimestamp(
+            candle.open_time_ms / 1000,
+            tz=timezone.utc,
+        ) + timedelta(minutes=1)
+        ticks.append(
+            MarketTick(
                 instrument_id=instrument.id,
                 symbol=instrument.api_symbol,
                 display_symbol=instrument.display_symbol,
@@ -107,20 +82,50 @@ def replay_kline(
                 status="HISTORICAL",
                 raw=None,
             )
-            buffer.append(tick)
-            ticks.append(tick)
-            rows.append(
-                {
-                    "timestamp": at.isoformat(),
-                    "features": build_features(tick, buffer, profile),
-                    "replay_mode": "crypto_close_only",
-                }
-            )
+        )
+    return ticks, "crypto_close_only"
 
-        for idx, row in enumerate(rows[:-1]):
-            current = ticks[idx]
-            future = ticks[idx + 1]
-            delta = (future.mid - current.mid) / instrument.price_unit
+
+def replay_kline(
+    date: str,
+    profile: dict[str, Any],
+    output: Path | None = None,
+    limit: int | None = None,
+    instrument_id: str = "USD_JPY",
+) -> list[dict[str, Any]]:
+    """Replay 1-minute historical closes through the feature pipeline."""
+    ticks, replay_mode = load_historical_ticks(
+        date,
+        instrument_id=instrument_id,
+        limit=limit,
+    )
+    instrument = get_instrument(instrument_id)
+    rows: list[dict[str, Any]] = []
+    buffer = TickBuffer(max_age_seconds=86_400)
+
+    for tick in ticks:
+        buffer.append(tick)
+        rows.append(
+            {
+                "timestamp": tick.market_timestamp.isoformat(),
+                "features": build_features(tick, buffer, profile),
+                "replay_mode": replay_mode,
+            }
+        )
+
+    for idx, row in enumerate(rows[:-1]):
+        current = ticks[idx]
+        future = ticks[idx + 1]
+        delta = (future.mid - current.mid) / instrument.price_unit
+        if replay_mode == "fx_bid_ask_close":
+            long_edge = (future.bid - current.ask) / instrument.price_unit
+            short_edge = (current.bid - future.ask) / instrument.price_unit
+            row["outcome_1m"] = {
+                "delta_units": float(delta),
+                "long_edge_units": float(long_edge),
+                "short_edge_units": float(short_edge),
+            }
+        else:
             row["outcome_1m"] = {
                 "delta_units": float(delta),
                 "long_edge_units": None,
