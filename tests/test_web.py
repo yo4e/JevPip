@@ -31,6 +31,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "デモ口座" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月相" in response.text
+        assert "過去日付を自由に選べます" in response.text
+        assert "terminal-resizer" in response.text
 
 
 def test_config_exposes_btc_profiles_and_safety_flags():
@@ -86,30 +88,64 @@ def test_account_endpoint_requires_local_credentials(monkeypatch):
 def test_backtest_summary():
     rows = [
         {
+            "replay_mode": "fx_bid_ask_close",
             "outcome_1m": {
-                "delta_mid_pips": 2.0,
-                "long_edge_pips": 1.0,
-                "short_edge_pips": -3.0,
-            }
+                "delta_units": 2.0,
+                "long_edge_units": 1.0,
+                "short_edge_units": -3.0,
+            },
         },
         {
+            "replay_mode": "fx_bid_ask_close",
             "outcome_1m": {
-                "delta_mid_pips": -1.0,
-                "long_edge_pips": -2.0,
-                "short_edge_pips": 0.5,
-            }
+                "delta_units": -1.0,
+                "long_edge_units": -2.0,
+                "short_edge_units": 0.5,
+            },
         },
-        {"outcome_1m": None},
+        {"replay_mode": "fx_bid_ask_close", "outcome_1m": None},
     ]
     summary = summarize_backtest(rows)
     assert summary["rows"] == 3
     assert summary["outcomes"] == 2
-    assert summary["mean_delta_mid_pips"] == 0.5
+    assert summary["mode"] == "fx_bid_ask_close"
+    assert summary["mean_change_units"] == 0.5
+    assert summary["max_change_units"] == 2.0
+    assert summary["min_change_units"] == -1.0
+    assert summary["up_ratio"] == 0.5
+    assert summary["down_ratio"] == 0.5
     assert summary["long_positive_ratio"] == 0.5
     assert summary["short_positive_ratio"] == 0.5
 
 
-def test_backtest_rejects_btc():
+def test_btc_backtest_api_is_allowed(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_run_backtest(**kwargs):
+        assert kwargs["instrument_id"] == "BTC"
+        assert kwargs["date"] == "20260919"
+        return {
+            "date": "20260919",
+            "instrument_id": "BTC",
+            "profile_name": "test",
+            "output": "data/backtests/test.jsonl",
+            "summary": {
+                "rows": 2,
+                "outcomes": 1,
+                "mode": "crypto_close_only",
+                "mean_change_units": 1200.0,
+                "max_change_units": 1200.0,
+                "min_change_units": 1200.0,
+                "mean_long_edge_units": None,
+                "mean_short_edge_units": None,
+                "long_positive_ratio": None,
+                "short_positive_ratio": None,
+                "up_ratio": 1.0,
+                "down_ratio": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(controller, "run_backtest", fake_run_backtest)
     with TestClient(app) as client:
         response = client.post(
             "/api/backtest",
@@ -121,8 +157,8 @@ def test_backtest_rejects_btc():
                 "limit": 2,
             },
         )
-        assert response.status_code == 400
-        assert "対円FX" in response.json()["detail"]
+        assert response.status_code == 200
+        assert response.json()["summary"]["mode"] == "crypto_close_only"
 
 
 def test_chart_history_collects_multiple_days_for_stable_candle_count(monkeypatch):
