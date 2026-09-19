@@ -997,3 +997,156 @@ API keyはGMO会員ページで必要最小限の参照permissionに限定する
 - demo tradeはlocal simulation
 - UIのLONG / SHORTはresearch / paper label
 - real account cardはread-only
+
+
+---
+
+## 23. Multi-Instrument Terminal / BTC（2026-09-19）
+
+### 23.1 Jevをoptional componentへ位置づける
+
+JevPipのcoreをJevそのものへ依存させない。
+
+core:
+
+```text
+instrument
+  ↓
+GMO public market data
+  ↓
+history + live chart
+  ↓
+feature / data collection
+  ↓
+paper broker
+```
+
+optional:
+
+```text
+feature state
+  ↓
+Jev
+  ↓
+research signal
+  ↓
+paper broker
+```
+
+これにより、Jev OFFでもmarket terminal / paper trading / data collectionとして利用できる。
+
+Jevの有効性は、同じ土台でcode-only baselineと比較する。
+
+### 23.2 Instrument registry
+
+銘柄固有情報は `instruments.py` に集約する。
+
+初期instrument:
+
+- `USD_JPY`
+  - GMO外国為替FX
+  - display: `USD/JPY`
+  - move unit: pips
+  - price unit: 0.01 JPY
+- `BTC`
+  - GMOコイン取引所現物 Public API
+  - display: `BTC/JPY`
+  - move unit: JPY
+  - price unit: 1 JPY
+
+instrumentは少なくとも次を所有する。
+
+- API symbol
+- market kind
+- WebSocket endpoint
+- display symbol
+- price/move unit
+- price decimals
+- paper quantity label
+- paper experiment defaults
+
+今後のETHや他FX pairはregistry追加を基本とし、Observer/UI/Paper brokerへ個別分岐を散らさない。
+
+### 23.3 BTC Public API
+
+BTC現物ticker:
+
+```text
+wss://api.coin.z.com/ws/public/v1
+channel=ticker
+symbol=BTC
+```
+
+historical KLine:
+
+```text
+GET https://api.coin.z.com/public/v1/klines
+symbol=BTC
+interval=1min|5min|15min|1hour
+date=YYYYMMDD
+```
+
+BTCはGMOのメンテナンス時間を除き24時間365日取引されるため、週末のlive observation targetとしても利用できる。
+
+### 23.4 Historical chart backfill
+
+Dashboard chartは観測開始時点からのtickだけにしない。
+
+```text
+GMO KLine history
+       ↓
+canvas chart
+       ↓
+latest candle
+       ↓
+live WebSocket MID
+```
+
+UI初期interval:
+
+- 1min
+- 5min
+- 15min
+- 1hour
+
+history APIが指定日に空の場合は、まず前日へ1回fallbackする。
+
+BTCのhistorical KLineはOHLC取引データでありBID/ASK履歴ではないため、これだけでspread込みscalping backtestを行わない。
+
+### 23.5 Generic move units
+
+USD/JPYのpipsを全marketへ流用しない。
+
+`MarketTick` はinstrument固有の `price_unit` / `move_unit_label` を持つ。
+
+- USD/JPY: 0.01 JPY = 1 pip
+- BTC: 1 JPY = 1 move unit
+
+Feature stateも `move_units` / `range_units` 等のgeneric schemaへ移行し、unit labelを明示する。
+
+Paper brokerも同じprice unitでmomentum / take profit / stop lossを評価する。
+
+### 23.6 Strict feature isolation
+
+instrument / timestampはobserver event metadataとして保存する。
+
+Jevへ渡すstateへは、Feature profileで明示的にONにした情報だけを入れる。
+
+したがって `moon_only` は実際にmoon featureのみ、`random_control` はrandom controlのみとなる。
+
+### 23.7 Scope boundary
+
+BTC v0.1で行う:
+
+- Public ticker
+- historical chart
+- paper trading
+- Jev optional research
+
+まだ行わない:
+
+- crypto Private API
+- BTC実残高表示
+- BTC注文
+- live trading
+- BTC KLineだけを用いたspread込みscalping backtest
