@@ -89,3 +89,26 @@ def test_compare_cli_rejects_unknown_strategy(tmp_path: Path):
                 "banana",
             ]
         )
+
+
+def test_compare_cli_bar_seconds(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    path = tmp_path / "ticks.jsonl"
+    _write_ticks(path)
+
+    rc = main(
+        [
+            "compare",
+            "--instrument",
+            "USD_JPY",
+            "--file",
+            str(path),
+            "--strategies",
+            "ma_trend",
+            "--bar-seconds",
+            "5",
+            "--json",
+        ]
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ma_trend"]["strategy_bar_seconds"] == 5
