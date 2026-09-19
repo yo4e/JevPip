@@ -22,10 +22,11 @@ class JevClient:
         horizon: str = "5s",
         *,
         supervisor_strategies: tuple[str, ...] = (),
+        instrument_label: str = "the instrument",
     ) -> dict[str, Any]:
         from typesafe_sdk import TypeSafeClient
 
-        questions = question_specs(horizon)
+        questions = question_specs(horizon, instrument_label)
         if supervisor_strategies:
             questions.update(supervisor_question_specs(supervisor_strategies))
         with TypeSafeClient(api_key=self.api_key) as client:
