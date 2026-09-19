@@ -1031,3 +1031,16 @@ def test_homepage_describes_jev_as_direction_gate():
     assert response.status_code == 200
     assert "Jev方向一致必須" in response.text
     assert "WAIT・反対方向・古い判断ではentryしません" in response.text
+
+
+
+def test_homepage_has_independent_strategy_safety_and_jev_toggles():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="paper-strategy-enabled"' in response.text
+    assert 'id="paper-supervisor"' in response.text
+    assert 'id="with-jev"' in response.text
+    assert "コード戦略OFF。Jev方向" in response.text
+    assert "コード戦略OFF / Jev OFF。新規entryは行いません。" in response.text
+    assert '<option value="jev">Jevシグナル</option>' not in response.text
