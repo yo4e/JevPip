@@ -1492,3 +1492,46 @@ uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.json
 
 raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
 
+
+
+### 24.4 Timeframe changes visible range
+
+chart interval切替は、同じ1日を粗く再描画するだけにしない。
+
+UI historyは各intervalで概ね180 candleをtargetとし、必要に応じて複数日を遡って取得する。
+
+目安:
+
+- 1min: 約3時間
+- 5min: 約15時間
+- 15min: 約45時間
+- 1hour: 約180時間
+
+FXはweekend / holiday gapを跨いで遡る。
+cryptoは連続市場なので、複数日のKLineを連結する。
+
+同じ本数を保つことで、長いtimeframeほど自然に長い期間が見えるTradingView / MT4型の操作感へ寄せる。
+
+UI上にも candle本数とvisible spanを表示する。
+
+
+### 27.1 Baselines and diagnostics
+
+raw tick strategy comparisonにはtrade strategyだけでなくbaselineを必ず含められる。
+
+baseline:
+
+- `no_trade`: PnL 0
+- `buy_and_hold`: sample先頭ASKでLONGしsample末尾BIDでclose
+
+Buy & Holdも同じinstrument cost modelを通す。
+
+comparison resultは追加で次を持つ。
+
+- average trade PnL
+- average winning trade PnL
+- average losing trade PnL
+- exit reason count / net PnL / gross PnL / average net PnL
+
+PaperBrokerのPF / win rate / averages / exit reason集計は、UI用に保持する有限trade logではなく全closed tradeのaggregateから計算する。
+これにより長時間runでも古いtradeがdequeから落ちたことで統計が変質しない。
