@@ -149,7 +149,12 @@ class PaperBroker:
         raw_at = event.get("recorded_at") or event.get("market_timestamp")
         self._latest_jev_at = self._dt(str(raw_at)) if raw_at else None
 
-    def on_tick(self, event: dict[str, Any]) -> list[dict[str, Any]]:
+    def on_tick(
+        self,
+        event: dict[str, Any],
+        *,
+        allow_entry: bool = True,
+    ) -> list[dict[str, Any]]:
         at = self._dt(str(event["market_timestamp"]))
         bid = Decimal(str(event["bid"]))
         ask = Decimal(str(event["ask"]))
@@ -194,7 +199,7 @@ class PaperBroker:
                 trade = self._close(at, bid, ask, exit_reason)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
-        if self.position is None and self._can_enter(at, spread_units):
+        if allow_entry and self.position is None and self._can_enter(at, spread_units):
             decision = self._strategy_decision(at, mid)
             self._latest_strategy_decision = decision
             if decision.signal in {"LONG", "SHORT"}:
