@@ -78,6 +78,32 @@ uv run jevpip ui
 
 UI上で変更したカスタム設定は、現時点では恒久保存しません。
 
+## Paper strategy
+
+デモ自動売買では現在、次のstrategyを選べます。
+
+- **Momentum**: 指定秒数のMID変化がthresholdを超えた方向へentry
+- **RSI mean reversion**: RSIがoversoldならLONG、overboughtならSHORT
+- **MA trend**: short MAとlong MAの差がthresholdを超えた方向へentry
+- **Jev signal**: Jevの研究用LONG / SHORT / WAITを利用
+
+RSI / MAのstrategy計算は、現時点では**tick本数ベース**です。MT4等で一般的な時間足barベースのRSI / MAとは意味が異なるため、UIでもtick semanticsであることを明示しています。今後bar-based strategyへ発展させます。
+
+### Code-only safety supervisor
+
+Paper strategyの前に、Jevを使わないdeterministic supervisorを置けます。
+
+現在見るもの:
+
+- market statusがOPENでない → `PAUSE_ALL`
+- market timestampが古すぎる → `PAUSE_ALL`
+- spreadが設定上限を超える → `PAUSE_ENTRY`
+- spreadが上限の80%以上 → `CAUTION`
+
+supervisorは**リスクを厳しくする方向にしか動けません**。数量を増やしたり、TP / SLやspread limitを緩めたりはしません。
+
+これは将来のJev supervisorと比較するbaselineでもあります。
+
 ## Jevなしでも使える
 
 Jevは必須ではありません。
