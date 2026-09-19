@@ -462,17 +462,22 @@ $("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実B
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
 function signalGateSummary(d){
-  const x=d?.signal_detail,p=x?.policy;
+  const x=d?.direction_detail,p=x?.policy;
   if(!x||!p)return "";
   const failures=[];
-  if(Number(x.spread_pips)>Number(p.max_spread_pips))failures.push(`spread ${Number(x.spread_pips).toFixed(1)} > ${Number(p.max_spread_pips).toFixed(1)}`);
-  if(Number(x.noise)>Number(p.max_noise_probability))failures.push(`noise ${pct(x.noise)} > ${pct(p.max_noise_probability)}`);
-  if(Number(x.reversal)>Number(p.max_reversal_probability))failures.push(`reversal ${pct(x.reversal)} > ${pct(p.max_reversal_probability)}`);
-  if(Number(x.trend_strength)<Number(p.min_trend_strength))failures.push(`trend ${Number(x.trend_strength).toFixed(1)} < ${Number(p.min_trend_strength).toFixed(1)}`);
   const up=Number(x.up),down=Number(x.down),margin=Math.abs(up-down);
   if(Math.max(up,down)<Number(p.min_direction_probability))failures.push(`direction ${pct(Math.max(up,down))} < ${pct(p.min_direction_probability)}`);
   if(margin<Number(p.min_direction_margin))failures.push(`margin ${pct(margin)} < ${pct(p.min_direction_margin)}`);
-  return failures.length?"WAIT理由: "+failures.join(" / "):"signal gates: pass";
+  let text=failures.length?"方向WAIT: "+failures.join(" / "):"方向ゲート: pass";
+  const q=d?.signal_detail,qp=q?.policy,quality=[];
+  if(q&&qp&&d.research_signal==="WAIT"){
+    if(Number(q.spread_pips)>Number(qp.max_spread_pips))quality.push(`spread ${Number(q.spread_pips).toFixed(1)} > ${Number(qp.max_spread_pips).toFixed(1)}`);
+    if(Number(q.noise)>Number(qp.max_noise_probability))quality.push(`noise ${pct(q.noise)} > ${pct(qp.max_noise_probability)}`);
+    if(Number(q.reversal)>Number(qp.max_reversal_probability))quality.push(`reversal ${pct(q.reversal)} > ${pct(qp.max_reversal_probability)}`);
+    if(Number(q.trend_strength)<Number(qp.min_trend_strength))quality.push(`trend ${Number(q.trend_strength).toFixed(1)} < ${Number(qp.min_trend_strength).toFixed(1)}`);
+  }
+  if(quality.length)text+=" / 研究フィルタWAIT: "+quality.join(" / ");
+  return text;
 }
 function renderDecision(d,sup){
   const supBox=$("jev-supervisor");
@@ -487,7 +492,7 @@ function renderDecision(d,sup){
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
   if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
-  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=signalGateSummary(d)
+  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=signalGateSummary(d)
 }
 
 function chartPrice(p){
@@ -687,7 +692,7 @@ async function refreshContext(){
   }catch(e){toast(e.message,true)}
   finally{$("context-refresh").disabled=false}
 }
-function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
+function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.direction_signal||e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
 
 async function refresh(){
   try{
@@ -715,7 +720,7 @@ async function refresh(){
       $("quote-big").innerHTML="-<small>"+esc(spec?.display_symbol||"USD/JPY")+"</small>";
     }
     const d=activeInstrument?s.latest_decision:null;
-    $("signal").textContent=d?.research_signal||"-";
+    $("signal").textContent=d?.direction_signal||d?.research_signal||"-";
     $("signal-sub").textContent=activeInstrument&&s.with_jev?"Jev ON":"Jev OFF";
     renderPaper($("mode").value==="paper"&&activeInstrument?s.paper:null);
     renderEventContext(activeInstrument?s.external_context:null);
