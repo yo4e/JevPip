@@ -1908,3 +1908,35 @@ UIは次を明示する。
 - Jev supervisor stateはdirection gateと別表示
 
 direction gateとsupervisorを混同しない。
+
+
+---
+
+## 33. Independent paper decision layers（2026-09-20）
+
+paper modeの意思決定を3つの独立スイッチへ分離する。
+
+1. **コード戦略**
+   - Momentum / RSI mean reversion / MA trend
+2. **安全監督**
+   - market status / stale data / spread / official scheduled event
+   - code-owned deterministic gate
+3. **Jev**
+   - direction judgement
+   - code strategy ON時はdirection agreement gate
+   - code strategy OFF時はJev direct direction
+
+許可する組み合わせ:
+
+| コード戦略 | 安全監督 | Jev | 新規entry |
+| --- | --- | --- | --- |
+| ON | 任意 | OFF | code strategy |
+| ON | 任意 | ON | code strategy + Jev direction一致 |
+| OFF | 任意 | ON | Jev direction単独 |
+| OFF | 任意 | OFF | なし |
+
+安全監督は他2レイヤーと独立する。OFF時はmarket status / stale / spread / official eventによるentry vetoを適用しない。
+
+一方、既存positionのTP / SL / max hold等のexit管理は戦略・安全監督・JevのON/OFFと切り離し、open positionが判断レイヤー停止によって取り残されないようにする。
+
+Jev bounded supervisorによるallowlisted strategy overrideは、コード戦略ONかつ安全監督ONの場合だけ有効とする。コード戦略OFF + Jev ONのJev direct modeへcode strategy overrideを混ぜない。
