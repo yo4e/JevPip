@@ -38,3 +38,24 @@ def list_profiles(config_path: Path | None = None) -> dict[str, dict[str, Any]]:
         config_path = Path(__file__).with_name("profiles.toml")
     with config_path.open("rb") as fh:
         return dict(tomllib.load(fh).get("profile", {}))
+
+
+def load_signal_policy(name: str, config_path: Path | None = None) -> tuple[dict[str, Any], str]:
+    if config_path is None:
+        config_path = Path(__file__).with_name("signals.toml")
+    with config_path.open("rb") as fh:
+        raw = tomllib.load(fh)
+    policies = raw.get("signal", {})
+    if name not in policies:
+        available = ", ".join(sorted(policies))
+        raise ValueError(f"Unknown signal policy {name!r}. Available: {available}")
+    policy = dict(policies[name])
+    description = str(policy.pop("description_ja", ""))
+    return policy, description
+
+
+def list_signal_policies(config_path: Path | None = None) -> dict[str, dict[str, Any]]:
+    if config_path is None:
+        config_path = Path(__file__).with_name("signals.toml")
+    with config_path.open("rb") as fh:
+        return dict(tomllib.load(fh).get("signal", {}))
