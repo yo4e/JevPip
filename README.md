@@ -13,7 +13,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 を1つのローカルUIへまとめています。
 
-> **現時点では実売買しません。** GMO Private APIは、設定した場合も口座・建玉のGET参照だけです。注文POSTは実装していません。
+> **現時点では実売買しません。** まずpaper tradingで戦略・Jev・安全監督・cost modelを検証しています。安全機構と注文同期を整えたうえで、GMO Private APIによる実売買対応を予定しています。現在のPrivate API利用は口座・建玉のGET参照だけで、注文POSTはまだ実装していません。
 
 Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
 
