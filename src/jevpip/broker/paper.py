@@ -115,6 +115,12 @@ class PaperBroker:
         self._peak_equity = self.initial_balance
         self._max_drawdown = Decimal("0")
         self._max_drawdown_pct = Decimal("0")
+        self._closed_trade_count = 0
+        self._win_count = 0
+        self._sum_wins = Decimal("0")
+        self._sum_losses_abs = Decimal("0")
+        self._sum_closed_net = Decimal("0")
+        self._exit_reason_stats: dict[str, dict[str, Decimal | int]] = {}
         self._latest_strategy_decision = StrategyDecision("WAIT", "not_started", {})
         self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
@@ -405,6 +411,20 @@ class PaperBroker:
         self.closed_net_pnl += net_pnl
         self.fees_paid += exit_fee
         self.slippage_cost += exit_slippage
+        self._closed_trade_count += 1
+        self._sum_closed_net += net_pnl
+        if net_pnl > 0:
+            self._win_count += 1
+            self._sum_wins += net_pnl
+        elif net_pnl < 0:
+            self._sum_losses_abs += abs(net_pnl)
+        stats = self._exit_reason_stats.setdefault(
+            reason,
+            {"count": 0, "net_pnl": Decimal("0"), "gross_pnl": Decimal("0")},
+        )
+        stats["count"] = int(stats["count"]) + 1
+        stats["net_pnl"] = Decimal(stats["net_pnl"]) + net_pnl
+        stats["gross_pnl"] = Decimal(stats["gross_pnl"]) + gross_pnl
         self.position = None
         self._last_exit_at = at
 
@@ -450,13 +470,35 @@ class PaperBroker:
 
         balance = self.initial_balance + self.closed_net_pnl
         equity = balance + unrealized_net
-        closed = [trade for trade in self.trades if trade.action == "CLOSE"]
-        wins = sum(1 for trade in closed if (trade.pnl or 0) > 0)
-        gross_profit = sum(Decimal(str(trade.pnl or 0)) for trade in closed if (trade.pnl or 0) > 0)
-        gross_loss = abs(sum(Decimal(str(trade.pnl or 0)) for trade in closed if (trade.pnl or 0) < 0))
+        closed_count = self._closed_trade_count
+        wins = self._win_count
         profit_factor = None
-        if gross_loss > 0:
-            profit_factor = gross_profit / gross_loss
+        if self._sum_losses_abs > 0:
+            profit_factor = self._sum_wins / self._sum_losses_abs
+
+        average_trade_pnl = None
+        if closed_count:
+            average_trade_pnl = self._sum_closed_net / Decimal(closed_count)
+        average_win_pnl = None
+        if wins:
+            average_win_pnl = self._sum_wins / Decimal(wins)
+        losses = closed_count - wins
+        average_loss_pnl = None
+        if losses:
+            average_loss_pnl = -(self._sum_losses_abs / Decimal(losses))
+
+        exit_reason_stats = {
+            reason: {
+                "count": int(stats["count"]),
+                "net_pnl": round(float(Decimal(stats["net_pnl"])), 3),
+                "gross_pnl": round(float(Decimal(stats["gross_pnl"])), 3),
+                "average_net_pnl": round(
+                    float(Decimal(stats["net_pnl"]) / Decimal(int(stats["count"]))),
+                    3,
+                ),
+            }
+            for reason, stats in sorted(self._exit_reason_stats.items())
+        }
 
         position: dict[str, Any] | None = None
         if self.position is not None:
@@ -495,10 +537,14 @@ class PaperBroker:
             "fees_paid": round(float(self.fees_paid), 3),
             "slippage_cost": round(float(self.slippage_cost), 3),
             "position": position,
-            "closed_trades": len(closed),
+            "closed_trades": closed_count,
             "wins": wins,
-            "win_rate": None if not closed else round(wins / len(closed), 4),
+            "win_rate": None if not closed_count else round(wins / closed_count, 4),
             "profit_factor": None if profit_factor is None else round(float(profit_factor), 4),
+            "average_trade_pnl": None if average_trade_pnl is None else round(float(average_trade_pnl), 3),
+            "average_win_pnl": None if average_win_pnl is None else round(float(average_win_pnl), 3),
+            "average_loss_pnl": None if average_loss_pnl is None else round(float(average_loss_pnl), 3),
+            "exit_reasons": exit_reason_stats,
             "max_drawdown": round(float(self._max_drawdown), 3),
             "max_drawdown_pct": round(float(self._max_drawdown_pct), 6),
             "config": asdict(self.config),
