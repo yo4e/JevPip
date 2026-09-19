@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import datetime
 from importlib.resources import files
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -54,6 +54,20 @@ class SignalPolicyInput(BaseModel):
     max_spread_pips: float = Field(default=2.0, ge=0, le=100)
 
 
+class PaperDemoInput(BaseModel):
+    initial_balance: float = Field(default=100000, gt=0, le=1000000000)
+    size: int = Field(default=1000, ge=1, le=10000000)
+    strategy: Literal["momentum", "jev"] = "momentum"
+    momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
+    momentum_trigger_pips: float = Field(default=0.6, gt=0, le=100)
+    max_spread_pips: float = Field(default=1.5, ge=0, le=100)
+    take_profit_pips: float = Field(default=1.0, gt=0, le=100)
+    stop_loss_pips: float = Field(default=1.0, gt=0, le=100)
+    max_hold_seconds: float = Field(default=8.0, ge=1, le=600)
+    cooldown_seconds: float = Field(default=2.0, ge=0, le=600)
+    jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)
+
+
 class ObserverStartRequest(BaseModel):
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
@@ -61,6 +75,7 @@ class ObserverStartRequest(BaseModel):
     jev_every_seconds: float = Field(default=1.0, ge=0.25, le=60)
     signal_policy_name: str = Field(default="custom", min_length=1, max_length=80)
     signal_policy: SignalPolicyInput
+    paper_demo: PaperDemoInput | None = None
 
 
 class BacktestRequest(BaseModel):
@@ -108,6 +123,7 @@ async def get_config() -> dict[str, Any]:
         "profiles": list_profiles(),
         "signal_policies": list_signal_policies(),
         "typesafe_api_key_configured": bool(settings.typesafe_api_key),
+        "gmo_private_credentials_configured": settings.gmo_private_read_configured,
         "live_trading_available": False,
     }
 
@@ -127,6 +143,7 @@ async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
             jev_every_seconds=request.jev_every_seconds,
             signal_policy_name=request.signal_policy_name,
             signal_policy=SignalPolicy(**request.signal_policy.model_dump()),
+            paper_config=None if request.paper_demo is None else request.paper_demo.model_dump(),
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -137,6 +154,27 @@ async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
 async def stop_observer() -> dict[str, Any]:
     await controller.stop_observer()
     return controller.snapshot()
+
+
+@app.post("/api/paper/reset")
+async def reset_paper() -> dict[str, Any]:
+    try:
+        return controller.reset_paper()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/account")
+async def get_account(force: bool = False) -> dict[str, Any]:
+    try:
+        return await controller.fetch_real_account(force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"GMO実口座の参照に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
 
 
 @app.post("/api/backtest")
