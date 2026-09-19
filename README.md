@@ -62,6 +62,7 @@ uv run jevpip ui
 - GMO外国為替FXの対円12ペアと BTC/JPY を切り替えてリアルタイム観測
 - GMOの過去KLineを自動で読み込み、live tickを末尾へ接続
 - 1分 / 5分 / 15分 / 1時間のチャート切替
+- 各時間足で約180本を表示し、時間足が長くなるほど見える期間も長くなる
 - 過去KLineをローソク足表示し、live MIDを末尾へ接続
 - MA20 / MA200 の表示切替
 - BID / ASKからMIDを更新
@@ -324,7 +325,17 @@ uv run jevpip observe --profile moon_only --with-jev
 
 ライブ観測で保存したraw tickを、**同じデータ・同じpaper cost model**で複数のcode-only strategyへ流して比較できます。
 
-ブラウザUI下部の **「戦略比較」** タブでは、選択中の銘柄について保存済みの日付を選び、Momentum / RSI / MAの **net PnL / Profit Factor / max drawdown / 決済数 / 勝率 / fee** を横並び表示できます。安全監督のON/OFFと、RSI/MAのtick / closed-bar入力も選べます。
+ブラウザUI下部の **「戦略比較」** タブでは、選択中の銘柄について保存済みの日付を選び、次の5者を同じraw tick / size / cost modelで比較できます。
+
+- No Trade
+- Buy & Hold
+- Momentum
+- RSI mean reversion
+- MA trend
+
+表示するのは **net PnL / Profit Factor / max drawdown / 決済数 / 勝率 / fee / 1取引平均 / 平均勝ち / 平均負け / exit理由別損益**。安全監督のON/OFFと、RSI/MAのtick / closed-bar入力も選べます。
+
+No Tradeは常に0円、Buy & Holdは最初のASKでLONGし最後のBIDで手仕舞う単純baselineで、spread / reference fee / configured slippageを同じように反映します。
 
 例:
 
