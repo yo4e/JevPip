@@ -12,6 +12,7 @@ from jevpip.context import ContextRisk, ExternalContextItem
 
 BLS_ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BLS_SCHEDULE_URL = "https://www.bls.gov/schedule/"
+BLS_MONTHLY_LIST_URL = "https://www.bls.gov/schedule/{year}/{month:02d}_sched_list.htm"
 BOJ_MPM_URL = "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm"
 FED_FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 _BLS_TZ = ZoneInfo("America/New_York")
@@ -153,6 +154,101 @@ def parse_bls_ics(
     return tuple(sorted(events, key=lambda item: item.scheduled_at or item.observed_at))
 
 
+class _BLSListParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._row: list[str] | None = None
+        self._in_cell = False
+        self._cell_parts: list[str] = []
+        self.rows: list[list[str]] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag == "tr":
+            self._row = []
+        elif tag in {"td", "th"} and self._row is not None:
+            self._in_cell = True
+            self._cell_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self._in_cell:
+            if self._row is not None:
+                self._row.append(" ".join(" ".join(self._cell_parts).split()))
+            self._in_cell = False
+        elif tag == "tr":
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+
+    def handle_data(self, data: str) -> None:
+        if self._in_cell:
+            self._cell_parts.append(data)
+
+
+def parse_bls_schedule_html(
+    html: str,
+    *,
+    observed_at: datetime,
+    source_url: str,
+) -> tuple[ExternalContextItem, ...]:
+    """Parse the official BLS monthly list view used as an ICS fallback."""
+
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+
+    parser = _BLSListParser()
+    parser.feed(html)
+    events: list[ExternalContextItem] = []
+
+    for row in parser.rows:
+        if len(row) < 3:
+            continue
+        date_text = row[0].strip()
+        time_text = row[1].strip()
+        title = " ".join(row[2:]).strip()
+        if not date_text or not time_text or not title:
+            continue
+        try:
+            local_date = datetime.strptime(date_text, "%A, %B %d, %Y").date()
+            local_time = datetime.strptime(time_text, "%I:%M %p").time()
+        except ValueError:
+            continue
+
+        local_at = datetime.combine(local_date, local_time, tzinfo=_BLS_TZ)
+        scheduled_at = local_at.astimezone(timezone.utc)
+        source_id = "schedule-" + sha256(
+            f"{title}|{scheduled_at.isoformat()}".encode("utf-8")
+        ).hexdigest()[:24]
+        events.append(
+            ExternalContextItem(
+                source="bls",
+                source_id=source_id,
+                kind="scheduled_event",
+                title=title,
+                observed_at=observed_at,
+                source_url=source_url,
+                scheduled_at=scheduled_at,
+                currencies=("USD",),
+                risk=bls_risk(title),
+            )
+        )
+
+    unique = {item.key: item for item in events}
+    return tuple(
+        sorted(unique.values(), key=lambda item: item.scheduled_at or item.observed_at)
+    )
+
+
+def _bls_month_urls(observed_at: datetime, count: int = 3) -> tuple[str, ...]:
+    local = observed_at.astimezone(_BLS_TZ)
+    start = local.year * 12 + local.month - 1
+    urls: list[str] = []
+    for offset in range(count):
+        serial = start + offset
+        year, month0 = divmod(serial, 12)
+        urls.append(BLS_MONTHLY_LIST_URL.format(year=year, month=month0 + 1))
+    return tuple(urls)
+
+
 def fetch_bls_events(
     observed_at: datetime | None = None,
     *,
@@ -161,16 +257,46 @@ def fetch_bls_events(
     observed = observed_at or datetime.now(timezone.utc)
     headers = {
         "User-Agent": "JevPip/0.1 (+https://github.com/yo4e/JevPip)",
-        "Accept": "text/calendar,text/plain;q=0.9,*/*;q=0.1",
+        "Accept": "text/calendar,text/html;q=0.9,text/plain;q=0.8,*/*;q=0.1",
     }
     with httpx.Client(
         timeout=timeout_seconds,
         follow_redirects=True,
         headers=headers,
     ) as client:
-        response = client.get(BLS_ICS_URL)
-        response.raise_for_status()
-    return parse_bls_ics(response.text, observed_at=observed)
+        try:
+            response = client.get(BLS_ICS_URL)
+            response.raise_for_status()
+            return parse_bls_ics(response.text, observed_at=observed)
+        except httpx.HTTPStatusError as ics_error:
+            # BLS documents the ICS URL publicly, but it can return 403 to
+            # programmatic clients. Fall back to BLS's own monthly list view
+            # instead of dropping the source or using a third-party calendar.
+            events: list[ExternalContextItem] = []
+            last_error: Exception = ics_error
+            for url in _bls_month_urls(observed):
+                try:
+                    page = client.get(url, headers={"Accept": "text/html,*/*;q=0.1"})
+                    page.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    continue
+                events.extend(
+                    parse_bls_schedule_html(
+                        page.text,
+                        observed_at=observed,
+                        source_url=url,
+                    )
+                )
+            if events:
+                unique = {item.key: item for item in events}
+                return tuple(
+                    sorted(
+                        unique.values(),
+                        key=lambda item: item.scheduled_at or item.observed_at,
+                    )
+                )
+            raise last_error
 
 
 _MONTHS = {
