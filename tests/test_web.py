@@ -25,7 +25,11 @@ def test_config_exposes_profiles_and_safety_flags():
         assert "gmo_private_credentials_configured" in payload
 
 
-def test_account_endpoint_requires_local_credentials():
+def test_account_endpoint_requires_local_credentials(monkeypatch):
+    from jevpip.web.app import controller
+
+    monkeypatch.setattr(controller.settings, "gmo_fx_api_key", None)
+    monkeypatch.setattr(controller.settings, "gmo_fx_api_secret", None)
     with TestClient(app) as client:
         response = client.get("/api/account")
         assert response.status_code == 400
