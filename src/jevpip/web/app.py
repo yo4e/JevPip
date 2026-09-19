@@ -76,6 +76,7 @@ class PaperDemoInput(BaseModel):
     ma_min_gap_units: float = Field(default=0.2, ge=0, le=100000000)
     deterministic_supervisor_enabled: bool = False
     max_market_age_seconds: float = Field(default=5.0, ge=0.1, le=60)
+    strategy_bar_seconds: Literal[0, 5, 15, 60, 300] = 0
 
 
 class ObserverStartRequest(BaseModel):
