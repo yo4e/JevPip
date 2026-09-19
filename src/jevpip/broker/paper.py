@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
+from jevpip.broker.bars import TimeBarBuilder
 from jevpip.broker.strategies import (
     StrategyDecision,
     StrategyName,
@@ -45,6 +46,7 @@ class PaperConfig:
     ma_min_gap_units: float = 0.2
     deterministic_supervisor_enabled: bool = False
     max_market_age_seconds: float = 5.0
+    strategy_bar_seconds: int = 0
 
 
 @dataclass(slots=True)
@@ -93,6 +95,13 @@ class PaperBroker:
         self.position: PaperPosition | None = None
         self.trades: deque[PaperTrade] = deque(maxlen=200)
         self._prices: deque[tuple[datetime, Decimal]] = deque(maxlen=50000)
+        self._bar_prices: deque[tuple[datetime, Decimal]] = deque(maxlen=5000)
+        self._bar_builder = (
+            TimeBarBuilder(config.strategy_bar_seconds)
+            if config.strategy_bar_seconds > 0
+            else None
+        )
+        self._bar_completed_this_tick = False
         self._latest_jev_signal = "WAIT"
         self._latest_jev_at: datetime | None = None
         self._last_exit_at: datetime | None = None
@@ -154,6 +163,12 @@ class PaperBroker:
         self._last_supervisor_age_seconds = market_age_seconds
         self._prices.append((at, mid))
         self._prune_prices(at)
+        self._bar_completed_this_tick = False
+        if self._bar_builder is not None:
+            completed = self._bar_builder.update(at, mid)
+            for bar in completed:
+                self._bar_prices.append((bar.end, bar.close))
+            self._bar_completed_this_tick = bool(completed)
 
         if self.config.deterministic_supervisor_enabled:
             self._supervisor = deterministic_supervisor(
@@ -234,21 +249,49 @@ class PaperBroker:
                 {"signal_age_seconds": round(age, 3)},
             )
 
+        strategy_prices = self._prices
+        semantics = "tick_count"
+        if self._bar_builder is not None and self.config.strategy in {
+            "rsi_mean_reversion",
+            "ma_trend",
+        }:
+            semantics = f"{self.config.strategy_bar_seconds}s_bar_close"
+            if not self._bar_completed_this_tick:
+                return StrategyDecision(
+                    "WAIT",
+                    "bar_wait",
+                    {
+                        "semantics": semantics,
+                        "bars": len(self._bar_prices),
+                    },
+                )
+            strategy_prices = self._bar_prices
+
         if self.config.strategy == "rsi_mean_reversion":
-            return rsi_mean_reversion_signal(
-                self._prices,
+            decision = rsi_mean_reversion_signal(
+                strategy_prices,
                 period=self.config.rsi_period,
                 oversold=self.config.rsi_oversold,
                 overbought=self.config.rsi_overbought,
             )
+            return StrategyDecision(
+                decision.signal,
+                decision.reason,
+                {**decision.metrics, "semantics": semantics},
+            )
 
         if self.config.strategy == "ma_trend":
-            return ma_trend_signal(
-                self._prices,
+            decision = ma_trend_signal(
+                strategy_prices,
                 price_unit=self.price_unit,
                 fast_period=self.config.ma_fast_period,
                 slow_period=self.config.ma_slow_period,
                 min_gap_units=self.config.ma_min_gap_units,
+            )
+            return StrategyDecision(
+                decision.signal,
+                decision.reason,
+                {**decision.metrics, "semantics": semantics},
             )
 
         return momentum_signal(
@@ -431,6 +474,8 @@ class PaperBroker:
         return {
             "enabled": True,
             "strategy": self.config.strategy,
+            "strategy_bar_seconds": self.config.strategy_bar_seconds,
+            "strategy_bars": len(self._bar_prices),
             "strategy_decision": asdict(self._latest_strategy_decision),
             "supervisor": {
                 **asdict(self._supervisor),
