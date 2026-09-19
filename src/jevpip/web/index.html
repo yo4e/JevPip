@@ -15,10 +15,10 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 .status-pill{font-size:10px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);white-space:nowrap}.status-pill.safe{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
 .mini-btn{height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 12px;font-weight:800}.mini-btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.mini-btn.danger{color:var(--red)}
 .workspace{display:grid;grid-template-columns:minmax(0,1fr) 342px;min-height:0}
-.chart-pane{display:grid;grid-template-rows:40px minmax(0,1fr);min-width:0;border-right:1px solid var(--line);background:#fff}
-.chart-toolbar{display:flex;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid var(--line);font-size:12px}.chart-title{font-weight:900}.muted{color:var(--muted)}
+.chart-pane{display:grid;grid-template-rows:40px minmax(0,1fr);min-width:0;min-height:0;border-right:1px solid var(--line);background:#fff;overflow:hidden}
+.chart-toolbar{display:flex;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;position:relative;z-index:3;background:#fff}.chart-title{font-weight:900}.muted{color:var(--muted)}
 .indicator-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:800}.indicator-toggle input{accent-color:var(--blue)}
-.chart-wrap{position:relative;min-height:0;background:#fff}.chart-wrap canvas{display:block;width:100%;height:100%}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;pointer-events:none}
+.chart-wrap{position:relative;min-height:0;overflow:hidden;background:#fff}.chart-wrap canvas{display:block;width:100%;height:100%}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;pointer-events:none;background:rgba(255,255,255,.86);z-index:2}
 .side{overflow:auto;background:#fff}.side-section{padding:16px 15px;border-bottom:1px solid var(--line)}.side-section h2{font-size:14px;margin:0 0 11px}.side-section p{font-size:11px;color:var(--muted);line-height:1.55;margin:5px 0 11px}
 .field{margin-bottom:11px}.label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin-bottom:5px}.field input,.field select{width:100%;height:38px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:0 9px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toggle{display:flex;align-items:flex-start;gap:8px;font-size:12px;font-weight:800}.toggle input{margin-top:3px}.toggle small{display:block;font-size:10px;color:var(--muted);font-weight:500;margin-top:3px}
@@ -189,7 +189,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 </div>
 <div class="toast" id="toast"></div><script>
 const $=id=>document.getElementById(id);
-const state={config:null,lastStatus:null,lastAccountAt:0,history:[],historyRequestId:0};
+const state={config:null,lastStatus:null,lastAccountAt:0,history:[],historyRequestId:0,historyCache:{}};
 
 function toast(msg,error=false){const n=$("toast");n.textContent=msg;n.className="toast"+(error?" error":"");n.style.display="block";clearTimeout(n.t);n.t=setTimeout(()=>n.style.display="none",4200)}
 async function api(path,opt={}){const r=await fetch(path,{headers:{"Content-Type":"application/json",...(opt.headers||{})},...opt});let d=null;try{d=await r.json()}catch{}if(!r.ok)throw new Error(d?.detail||`HTTP ${r.status}`);return d}
@@ -253,16 +253,23 @@ function applyInstrumentDefaults(){
 }
 function localDateYmd(){const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`}
 async function loadHistory(){
-  const instrument=$("instrument").value,interval=$("chart-interval").value,requestId=++state.historyRequestId;
+  const instrument=$("instrument").value,interval=$("chart-interval").value,key=instrument+"|"+interval,requestId=++state.historyRequestId;
+  $("chart-empty").textContent="過去チャートを読み込み中…";
   try{
     const r=await api(`/api/chart/history?instrument_id=${encodeURIComponent(instrument)}&interval=${encodeURIComponent(interval)}&date=${localDateYmd()}`);
     if(requestId!==state.historyRequestId||instrument!==$("instrument").value||interval!==$("chart-interval").value)return;
-    state.history=(r.candles||[]).map(x=>({timestamp:x.timestamp,mid:x.close,open:x.open,high:x.high,low:x.low,close:x.close}));
+    const rows=(r.candles||[]).map(x=>({timestamp:x.timestamp,mid:x.close,open:x.open,high:x.high,low:x.low,close:x.close}));
+    state.history=rows;
+    if(rows.length)state.historyCache[key]=rows;
     const live=state.lastStatus?.instrument_id===instrument?(state.lastStatus?.chart||[]):[];
     drawChart([...state.history,...live],state.lastStatus?.paper?.trades||[]);
   }catch(e){
     if(requestId!==state.historyRequestId||instrument!==$("instrument").value||interval!==$("chart-interval").value)return;
-    state.history=[];drawChart([],[]);toast(e.message,true)
+    state.history=state.historyCache[key]||[];
+    const live=state.lastStatus?.instrument_id===instrument?(state.lastStatus?.chart||[]):[];
+    drawChart([...state.history,...live],state.lastStatus?.paper?.trades||[]);
+    $("chart-empty").textContent=state.history.length?"":"チャートを取得できません。再読込してください。";
+    toast(e.message,true)
   }
 }
 async function instrumentChanged(){applyInstrumentDefaults();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await loadHistory();refresh()}
@@ -289,22 +296,54 @@ $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Numb
 
 function renderDecision(d){if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}$("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"}
 
+function chartPrice(p){
+  const direct=Number(p?.mid ?? p?.close);
+  if(Number.isFinite(direct))return direct;
+  const bid=Number(p?.bid),ask=Number(p?.ask);
+  return Number.isFinite(bid)&&Number.isFinite(ask)?(bid+ask)/2:null;
+}
+function finiteNumber(v){const n=Number(v);return Number.isFinite(n)?n:null}
 function drawChart(points,trades=[]){
-  const canvas=$("chart"),wrap=canvas.parentElement,rect=wrap.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
-  canvas.width=Math.floor(rect.width*dpr);canvas.height=Math.floor(rect.height*dpr);
-  const c=canvas.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,rect.width,rect.height);
-  if(!points?.length){$("chart-empty").style.display="grid";return}
+  const canvas=$("chart"),wrap=canvas?.parentElement;
+  if(!canvas||!wrap)return;
+  const rect=wrap.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  if(rect.width<20||rect.height<20)return;
+
+  canvas.width=Math.max(1,Math.floor(rect.width*dpr));
+  canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+  const c=canvas.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,rect.width,rect.height);
+
+  const clean=(points||[]).filter(p=>{
+    const price=chartPrice(p);
+    const o=finiteNumber(p?.open),hh=finiteNumber(p?.high),ll=finiteNumber(p?.low),cl=finiteNumber(p?.close);
+    return price!=null || (o!=null&&hh!=null&&ll!=null&&cl!=null);
+  });
+  if(!clean.length){
+    $("chart-empty").style.display="grid";
+    if(!$("chart-empty").textContent.trim())$("chart-empty").textContent="表示できるチャートデータがありません。";
+    return;
+  }
   $("chart-empty").style.display="none";
+
   const pad={l:10,r:82,t:16,b:26},w=Math.max(40,rect.width-pad.l-pad.r),h=Math.max(40,rect.height-pad.t-pad.b);
   const values=[];
-  for(const p of points){
-    if(p.high!=null) values.push(Number(p.high));
-    if(p.low!=null) values.push(Number(p.low));
-    if(p.mid!=null) values.push(Number(p.mid));
-    if(p.close!=null) values.push(Number(p.close));
+  for(const p of clean){
+    for(const raw of [p.high,p.low,p.open,p.close,chartPrice(p)]){
+      const v=finiteNumber(raw);if(v!=null)values.push(v);
+    }
   }
-  const min=Math.min(...values),max=Math.max(...values),span=Math.max(max-min,.002),lo=min-span*.07,hi=max+span*.07;
-  const x=i=>pad.l+(i/(points.length-1||1))*w,y=v=>pad.t+(hi-v)/(hi-lo)*h;
+  if(!values.length){
+    $("chart-empty").style.display="grid";
+    $("chart-empty").textContent="価格データを解釈できません。";
+    return;
+  }
+
+  const min=Math.min(...values),max=Math.max(...values);
+  const minSpan=Math.max(Math.abs(max)*1e-8,.000001);
+  const span=Math.max(max-min,minSpan),lo=min-span*.07,hi=max+span*.07;
+  const x=i=>pad.l+(i/(clean.length-1||1))*w,y=v=>pad.t+(hi-v)/(hi-lo)*h;
   const dec=instrumentSpec()?.price_decimals??3;
 
   c.font="10px sans-serif";c.lineWidth=1;
@@ -316,11 +355,13 @@ function drawChart(points,trades=[]){
   }
 
   const candleIndexes=[];
-  points.forEach((p,i)=>{if(p.open!=null&&p.high!=null&&p.low!=null&&p.close!=null)candleIndexes.push(i)});
+  clean.forEach((p,i)=>{
+    if([p.open,p.high,p.low,p.close].every(v=>finiteNumber(v)!=null))candleIndexes.push(i);
+  });
   if(candleIndexes.length){
-    const body=Math.max(1.5,Math.min(8,w/Math.max(points.length,1)*.68));
+    const body=Math.max(1.5,Math.min(8,w/Math.max(clean.length,1)*.68));
     for(const i of candleIndexes){
-      const p=points[i],xx=x(i),o=Number(p.open),hh=Number(p.high),ll=Number(p.low),cl=Number(p.close),up=cl>=o;
+      const p=clean[i],xx=x(i),o=Number(p.open),hh=Number(p.high),ll=Number(p.low),cl=Number(p.close),up=cl>=o;
       c.strokeStyle=up?"#089981":"#f23645";c.fillStyle=up?"#089981":"#f23645";
       c.beginPath();c.moveTo(xx,y(hh));c.lineTo(xx,y(ll));c.stroke();
       const top=Math.min(y(o),y(cl)),height=Math.max(1,Math.abs(y(cl)-y(o)));
@@ -330,7 +371,7 @@ function drawChart(points,trades=[]){
 
   function drawMA(period,stroke){
     if(!$("ind-ma"+period)?.checked)return;
-    const candlePoints=points.map((p,i)=>({p,i})).filter(({p})=>p.close!=null);
+    const candlePoints=clean.map((p,i)=>({p,i})).filter(({p})=>finiteNumber(p.close)!=null);
     if(candlePoints.length<period)return;
     c.strokeStyle=stroke;c.lineWidth=1.5;c.beginPath();let started=false;
     const closes=candlePoints.map(({p})=>Number(p.close));
@@ -344,40 +385,43 @@ function drawChart(points,trades=[]){
   drawMA(20,"#2962ff");
   drawMA(200,"#16a34a");
 
-  const liveStart=points.findIndex(p=>p.open==null&&p.mid!=null);
-  if(liveStart>=0){
-    c.strokeStyle="#7c3aed";c.lineWidth=1.5;c.beginPath();
-    for(let i=Math.max(0,liveStart-1);i<points.length;i++){
-      const v=Number(points[i].mid ?? points[i].close);
-      if(i===Math.max(0,liveStart-1))c.moveTo(x(i),y(v));else c.lineTo(x(i),y(v));
+  const liveIndexes=clean.map((p,i)=>({p,i,price:chartPrice(p)})).filter(({p,price})=>price!=null&&finiteNumber(p.open)==null);
+  if(liveIndexes.length){
+    c.strokeStyle="#7c3aed";c.lineWidth=1.5;c.beginPath();let started=false;
+    for(const item of liveIndexes){
+      if(!started){c.moveTo(x(item.i),y(item.price));started=true}else c.lineTo(x(item.i),y(item.price));
     }
     c.stroke();
   }
 
-  const last=points.at(-1),lastPrice=Number(last.mid ?? last.close);
-  if(Number.isFinite(lastPrice)){
+  const last=clean.at(-1),lastPrice=chartPrice(last);
+  if(lastPrice!=null){
     const yy=y(lastPrice);
     c.strokeStyle="#2962ff";c.setLineDash([4,4]);c.beginPath();c.moveTo(pad.l,yy);c.lineTo(pad.l+w,yy);c.stroke();c.setLineDash([]);
     c.fillStyle="#2962ff";c.fillRect(pad.l+w+2,yy-9,76,18);
     c.fillStyle="#fff";c.fillText(lastPrice.toLocaleString("ja-JP",{minimumFractionDigits:dec,maximumFractionDigits:dec}),pad.l+w+7,yy+3);
   }
 
-  const times=points.map(p=>new Date(p.timestamp).getTime());
+  const times=clean.map(p=>new Date(p.timestamp).getTime());
   for(const t of trades||[]){
-    const tt=new Date(t.timestamp).getTime();let idx=0,best=Infinity;
-    times.forEach((v,i)=>{const d=Math.abs(v-tt);if(d<best){best=d;idx=i}});
+    const tt=new Date(t.timestamp).getTime();if(!Number.isFinite(tt))continue;
+    let idx=0,best=Infinity;
+    times.forEach((v,i)=>{if(!Number.isFinite(v))return;const d=Math.abs(v-tt);if(d<best){best=d;idx=i}});
     if(best>30000)continue;
-    const price=Number(points[idx].mid ?? points[idx].close),xx=x(idx),yy=y(price);
+    const price=chartPrice(clean[idx]);if(price==null)continue;
+    const xx=x(idx),yy=y(price);
     c.fillStyle=t.action==="OPEN"?(t.side==="LONG"?"#089981":"#f23645"):"#f59e0b";c.beginPath();
     if(t.action==="OPEN"){c.moveTo(xx,yy-9);c.lineTo(xx-5,yy+2);c.lineTo(xx+5,yy+2)}else c.arc(xx,yy,4,0,Math.PI*2);
     c.fill();
   }
 
   c.fillStyle="#6b7280";c.font="10px sans-serif";
-  const first=new Date(points[0].timestamp),lastT=new Date(points.at(-1).timestamp);
-  c.fillText(first.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}),pad.l,pad.t+h+18);
-  const txt=lastT.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
-  c.fillText(txt,pad.l+w-c.measureText(txt).width,pad.t+h+18);
+  const firstT=new Date(clean[0].timestamp),lastT=new Date(clean.at(-1).timestamp);
+  if(Number.isFinite(firstT.getTime()))c.fillText(firstT.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}),pad.l,pad.t+h+18);
+  if(Number.isFinite(lastT.getTime())){
+    const txt=lastT.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+    c.fillText(txt,pad.l+w-c.measureText(txt).width,pad.t+h+18);
+  }
 }
 window.addEventListener("resize",()=>{if(!state.lastStatus)return;const active=state.lastStatus.instrument_id===$("instrument").value;const live=active?(state.lastStatus.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus.paper?.trades:[])});
 function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
