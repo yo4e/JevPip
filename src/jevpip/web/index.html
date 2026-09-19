@@ -290,7 +290,8 @@ $("paper-pf").textContent=p.profit_factor==null?(p.closed_trades&&p.realized_pnl
 $("paper-dd").textContent=yen(p.max_drawdown)+" / "+pct(p.max_drawdown_pct);
 $("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.win_rate==null?"-":pct(p.win_rate);
 const sd=p.strategy_decision||{},sv=p.supervisor||{};
-$("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAIT")+"</strong> ("+esc(sd.reason||"-")+") / 監督: <strong>"+esc(sv.state||"NORMAL")+"</strong> ("+esc(sv.reason||"-")+")";
+const age=sv.last_tick_age_seconds==null?"":" / tick age "+Number(sv.last_tick_age_seconds).toFixed(1)+"s";
+$("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAIT")+"</strong> ("+esc(sd.reason||"-")+") / 監督: <strong>"+esc(sv.state||"NORMAL")+"</strong> ("+esc(sv.reason||"-")+")"+esc(age);
 $("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実BID/ASK"+(p.cost_model?.slippage_units?(" / slippage "+p.cost_model.slippage_units+" "+(instrumentSpec()?.move_unit_label||"")):"")+(p.cost_model?.short_is_synthetic?" / SHORTは仮想ショート":"");
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
