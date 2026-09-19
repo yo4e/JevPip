@@ -14,6 +14,7 @@ from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_event_supervisor
 from jevpip.config import Settings
 from jevpip.context import ExternalContextItem
+from jevpip.context_log import append_context_fetch
 from jevpip.context_sources import fetch_bls_events, fetch_boj_events, fetch_fed_events
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
@@ -28,6 +29,7 @@ class UIController:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings()
         self._task: asyncio.Task[None] | None = None
+        self._context_task: asyncio.Task[None] | None = None
         self._events: deque[dict[str, Any]] = deque(maxlen=120)
         self._chart: deque[dict[str, Any]] = deque(maxlen=900)
         self._status = "stopped"
@@ -121,11 +123,30 @@ class UIController:
             name=f"jevpip-ui-observer-{instrument.id}",
         )
         self._task.add_done_callback(self._observer_done)
+        self._context_task = asyncio.create_task(
+            self._context_refresh_loop(instrument.id),
+            name=f"jevpip-context-refresh-{instrument.id}",
+        )
+        self._context_task.add_done_callback(self._context_refresh_done)
+
+    async def _stop_context_refresh(self) -> None:
+        task = self._context_task
+        if task is None:
+            return
+        self._context_task = None
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     async def stop_observer(self) -> None:
+        await self._stop_context_refresh()
         task = self._task
         if task is None or task.done():
             self._status = "stopped"
+            self._task = None
             return
         task.cancel()
         try:
@@ -171,6 +192,8 @@ class UIController:
         self._events.appendleft(event)
 
     def _observer_done(self, task: asyncio.Task[None]) -> None:
+        if self._context_task is not None and not self._context_task.done():
+            self._context_task.cancel()
         if task.cancelled():
             self._status = "stopped"
             return
@@ -184,6 +207,27 @@ class UIController:
             self._last_error = f"{type(exc).__name__}: {exc}"
         else:
             self._status = "stopped"
+
+    def _context_refresh_done(self, task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            message = f"context_refresh:{type(exc).__name__}: {exc}"
+            self._external_context_error = (
+                message
+                if not self._external_context_error
+                else f"{self._external_context_error}; {message}"
+            )
+
+    async def _context_refresh_loop(self, instrument_id: str) -> None:
+        interval = max(60.0, float(self.settings.context_refresh_seconds))
+        while True:
+            await asyncio.sleep(interval)
+            await self.refresh_external_context(instrument_id)
 
     def reset_paper(self) -> dict[str, Any]:
         if self._paper_config is None:
@@ -328,10 +372,39 @@ class UIController:
 
         errors: list[str] = []
         for (source, _fetcher), result in zip(fetchers.items(), results, strict=True):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
             if isinstance(result, BaseException):
-                errors.append(f"{source}:{type(result).__name__}: {result}")
+                error = f"{type(result).__name__}: {result}"
+                errors.append(f"{source}:{error}")
+                try:
+                    await asyncio.to_thread(
+                        append_context_fetch,
+                        self.settings.data_dir,
+                        source=source,
+                        observed_at=observed_at,
+                        error=error,
+                    )
+                except Exception as log_exc:
+                    errors.append(
+                        f"context_log:{source}:{type(log_exc).__name__}: {log_exc}"
+                    )
                 continue
-            by_source[source] = tuple(result)
+
+            source_items = tuple(result)
+            by_source[source] = source_items
+            try:
+                await asyncio.to_thread(
+                    append_context_fetch,
+                    self.settings.data_dir,
+                    source=source,
+                    observed_at=observed_at,
+                    events=source_items,
+                )
+            except Exception as log_exc:
+                errors.append(
+                    f"context_log:{source}:{type(log_exc).__name__}: {log_exc}"
+                )
 
         merged = [
             item
