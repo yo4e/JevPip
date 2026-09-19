@@ -1,5 +1,7 @@
 # JevPip 設計書 / Project Handoff
 
+> 現在の実装状態・未実装・次の一手は [docs/CURRENT_STATE.md](./docs/CURRENT_STATE.md) を参照。この文書は設計判断と実装経緯を時系列で残す。
+
 > **Status:** early prototype implemented / Observer + Feature Lab + 1分足replay + local Web UI  
 > **Repository:** `yo4e/JevPip`  
 > **Created:** 2026-09-19  
@@ -1109,7 +1111,7 @@ UI初期interval:
 - 15min
 - 1hour
 
-history APIが指定日に空の場合は、まず前日へ1回fallbackする。
+chart historyは概ね一定のcandle数を確保するため複数日を遡り、FXのweekend / holiday gapも跨いで取得する。
 
 BTCのhistorical KLineはOHLC取引データでありBID/ASK履歴ではないため、これだけでspread込みscalping backtestを行わない。
 
@@ -1152,7 +1154,7 @@ BTC v0.1で行う:
 - BTC KLineだけを用いたspread込みscalping backtest
 
 
-### 22.5 Trading-like controls
+### 23.8 Trading-like controls
 
 Paper trading UIは研究用パラメータをそのまま露出せず、一般的な取引端末に近い情報階層へ寄せる。
 
@@ -1175,14 +1177,14 @@ Paper trading UIは研究用パラメータをそのまま露出せず、一般�
 - re-entry cooldown
 - Jev thresholds / feature settings
 
-JevPipには現時点でmanual market/pending order executionはないため、存在しない注文機能をMT4風に見せかけない。Paper strategyが自動でentry/exitすることを明示する。
+JevPipには現時点でmanual market/pending order executionはないため、存在しない注文機能があるように見せない。Paper strategyが自動でentry/exitすることを明示する。
 
 
 ---
 
 ## 24. Simple Trading Terminal UI（2026-09-19）
 
-TradingView / MT4の情報階層を参考にしつつ、JevPipでは機能を絞った単純な取引端末UIを採用する。
+JevPipでは、チャートを中心に必要な取引・研究情報へ素早くアクセスできる、機能を絞った取引端末UIを採用する。
 
 ### 24.1 Layout
 
@@ -1210,7 +1212,7 @@ RSI / ATR等のsub-panel indicatorは、main terminal layoutが安定した後�
 
 ### 24.3 Simplicity
 
-TradingViewの描画ツール群やMT4の全注文機能を再現することを目的にしない。
+高機能チャート製品の描画ツール群や、総合取引端末の全注文機能を再現することを目的にしない。
 
 優先するのは、
 
@@ -1220,6 +1222,28 @@ TradingViewの描画ツール群やMT4の全注文機能を再現することを
 - advanced research controlsは普段隠す
 
 こと。
+
+
+
+### 24.4 Timeframe changes visible range
+
+chart interval切替は、同じ1日を粗く再描画するだけにしない。
+
+UI historyは各intervalで概ね180 candleをtargetとし、必要に応じて複数日を遡って取得する。
+
+目安:
+
+- 1min: 約3時間
+- 5min: 約15時間
+- 15min: 約45時間
+- 1hour: 約180時間
+
+FXはweekend / holiday gapを跨いで遡る。
+cryptoは連続市場なので、複数日のKLineを連結する。
+
+同じ本数を保つことで、長いtimeframeほど自然に長い期間が見える一般的な取引チャートの操作感へ寄せる。
+
+UI上にも candle本数とvisible spanを表示する。
 
 
 ---
@@ -1354,7 +1378,7 @@ bar modeでは形成途中のbarからsignalを出さない。次bucketのtick�
 
 gap区間に架空の空barは補完しない。
 
-このためMT4的な時間足indicatorへ寄せられる一方、取引所のhistorical barとlive raw tickから構築したbarが完全一致するとは限らないことに注意する。
+このため一般的な時間足indicatorへ寄せられる一方、取引所のhistorical barとlive raw tickから構築したbarが完全一致するとは限らないことに注意する。
 
 ### 26.3 Deterministic supervisor
 
@@ -1492,27 +1516,6 @@ uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.json
 
 raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
 
-
-
-### 24.4 Timeframe changes visible range
-
-chart interval切替は、同じ1日を粗く再描画するだけにしない。
-
-UI historyは各intervalで概ね180 candleをtargetとし、必要に応じて複数日を遡って取得する。
-
-目安:
-
-- 1min: 約3時間
-- 5min: 約15時間
-- 15min: 約45時間
-- 1hour: 約180時間
-
-FXはweekend / holiday gapを跨いで遡る。
-cryptoは連続市場なので、複数日のKLineを連結する。
-
-同じ本数を保つことで、長いtimeframeほど自然に長い期間が見えるTradingView / MT4型の操作感へ寄せる。
-
-UI上にも candle本数とvisible spanを表示する。
 
 
 ### 27.1 Baselines and diagnostics
