@@ -1342,14 +1342,19 @@ entry logにはstrategy reasonを残す。
 
 ### 26.2 RSI / MA semantics
 
-初期実装のRSI / MAはtick-count based。
+RSI / MAの入力系列は選択式とする。
 
-- RSI(14) = 直近15 tick midから計算
-- MA 5 / 20 = 直近5 / 20 tick mid
+- `strategy_bar_seconds = 0`: tick-count based（従来互換・初期値）
+- `5`: 確定5秒bar close
+- `15`: 確定15秒bar close
+- `60`: 確定1分bar close
+- `300`: 確定5分bar close
 
-時間足bar RSI / MAとは同じではない。
+bar modeでは形成途中のbarからsignalを出さない。次bucketのtick到着で前barが確定した時だけ、closed bar系列を更新してRSI / MAを評価する。
 
-UI / docsではtick semanticsを明示し、bar-based strategyは別Phaseで実装する。
+gap区間に架空の空barは補完しない。
+
+このためMT4的な時間足indicatorへ寄せられる一方、取引所のhistorical barとlive raw tickから構築したbarが完全一致するとは限らないことに注意する。
 
 ### 26.3 Deterministic supervisor
 
@@ -1429,6 +1434,8 @@ uv run jevpip compare --instrument BTC --file data/raw_ticks/BTC/YYYY-MM-DD.json
 ```
 
 `--no-supervisor` によりdeterministic supervisorなしのbaselineも再生できる。
+
+`--bar-seconds 5|15|60|300` によりRSI / MAを同じraw tickからclosed time barへ集約して比較できる。`0` はtick input。
 
 raw tickのinstrument mismatchはfailし、別銘柄データを誤って比較しない。
 
