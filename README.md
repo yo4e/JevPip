@@ -74,8 +74,10 @@ uv run jevpip ui
 - Featureプリセットを「基本」「テクニカル」「月だけ」などから選択
 - Jev利用のON/OFF
 - 詳細設定でFeature / Signal / Paper scalpingパラメータを変更
-- GMO公式BID/ASK 1分足による粗い履歴リプレイ
+- 対円FXのBID/ASK 1分足、BTCのhistorical closeによる粗い履歴リプレイ
 - tick / Jev / デモ売買イベントのログ表示
+
+デスクトップUIでは、チャートと下部ターミナルの境界を上下へドラッグして、バックテスト / 戦略比較 / ログ領域の高さを変更できます。ダブルクリックで標準サイズへ戻ります。高さはブラウザのlocalStorageへ保存します。
 
 UI上で変更したカスタム設定は、現時点では恒久保存しません。
 
@@ -138,7 +140,7 @@ JevをOFFにしても、次の機能は使えます。
 - raw tick保存
 - 5秒モメンタム等のcode-based paper strategy
 - デモ口座の残高・PnL・仮想建玉
-- 対円FXペアの粗いBID/ASK KLine replay
+- 対円FXのBID/ASK KLine replay / BTCのclose-only KLine replay
 - 外国為替FX実口座のread-only表示（認証情報を設定した場合）
 
 つまりJevPip本体は、チャート・データ収集・paper broker・研究機能を持つ小さなターミナルとして動きます。Jevはその上に追加できるstrategy / research componentの一つです。
@@ -393,7 +395,11 @@ uv run jevpip compare \
 
 ## 1分足リプレイ
 
-選択中の対円FXペアについて、GMO公式のBID / ASK KLineを取得し、同じFeature pipelineへ流します。BTCのhistorical KLineはBID/ASK履歴ではないため、この統計リプレイには使いません。
+バックテストの日付欄は**過去日付を自由に選択**できます。UIの初期値は前日です。
+
+対円FXではGMO公式のBID / ASK 1分足KLineを使い、同じFeature pipelineへ流します。このため1分後のMID変化に加えて、historical spreadを含むLONG / SHORT edgeも確認できます。
+
+BTC/JPYもバックテストできます。ただし暗号資産のhistorical KLineはBID / ASK履歴ではないため、**1分足close-to-closeの方向・変化量を見る粗いリプレイ**として扱います。BTCでhistorical spread込みのLONG / SHORT edgeを捏造しません。
 
 ブラウザUIから実行するほか、CLIでも動かせます。
 
@@ -482,6 +488,6 @@ JevPipは現在、次の四つを同じローカルアプリへまとめてい�
 1. **Market Terminal** : 対円FX 12ペア / BTC/JPY の過去チャート + live market表示
 2. **Paper Broker** : Jevなしのルール戦略でも動く仮想売買・PnL
 3. **Observer / Feature Lab** : raw tickを保存し、Jevへ見せる情報を組み替えて比較
-4. **Backtester** : 対円FX BID/ASK KLine replayと、今後のraw tick replayで設定を再検証
+4. **Backtester** : 対円FX BID/ASK KLine replay、BTC close-only KLine replay、raw tick replayで設定を再検証
 
 Jevはこの土台を利用する任意コンポーネントです。将来、ETHや他のFX通貨ペアを追加しても、market / chart / paperの基本構造を再利用できる設計にします。
