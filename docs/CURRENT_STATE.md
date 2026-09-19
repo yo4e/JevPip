@@ -147,6 +147,7 @@ Jev schemaには含めない:
 - BOJ MPM release schedule adapter
 - Summary of Opinions / MPM Minutesの公式8:50 JST時刻
 - BLS / BOJを独立・並列refresh
+- 片方のsource取得失敗時も、もう片方とlast known-good dataを維持
 - observer開始時のcontext refresh
 - UIからの手動context refresh
 - deterministic event-window supervisor
