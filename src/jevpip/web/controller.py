@@ -11,9 +11,15 @@ from jevpip.backtest.kline import replay_kline
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
 from jevpip.broker.comparison import compare_raw_file
 from jevpip.broker.paper import PaperBroker, PaperConfig
-from jevpip.broker.supervisor import SupervisorDecision, deterministic_event_supervisor
+from jevpip.broker.supervisor import (
+    JevSupervisorAdvice,
+    SupervisorDecision,
+    combine_supervisors,
+    deterministic_event_supervisor,
+    validate_jev_supervisor_payload,
+)
 from jevpip.config import Settings
-from jevpip.context import ExternalContextItem
+from jevpip.context import ExternalContextItem, select_context, to_jev_context_state
 from jevpip.context_log import append_context_fetch
 from jevpip.context_sources import fetch_bls_events, fetch_boj_events, fetch_fed_events
 from jevpip.gmo.history import fetch_history
@@ -48,6 +54,9 @@ class UIController:
         self._external_context_fetched_at: datetime | None = None
         self._external_context_error: str | None = None
         self._event_supervisor = SupervisorDecision("NORMAL", "event_not_loaded", True)
+        self._jev_supervisor_advice: JevSupervisorAdvice | None = None
+        self._jev_supervisor_expires_at: datetime | None = None
+        self._jev_supervisor_error: str | None = None
 
     @property
     def running(self) -> bool:
@@ -72,6 +81,7 @@ class UIController:
         await self.refresh_external_context(instrument.id)
 
         jev_client = None
+        jev_supervisor_strategies: tuple[str, ...] = ()
         if with_jev:
             if not self.settings.typesafe_api_key:
                 raise ValueError("Jevを使うには .env に TYPESAFE_API_KEY を設定してください。")
@@ -91,6 +101,16 @@ class UIController:
                 raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
             self._paper_config = config
             self._paper = PaperBroker(config)
+            if (
+                with_jev
+                and config.strategy != "jev"
+                and config.deterministic_supervisor_enabled
+            ):
+                jev_supervisor_strategies = (
+                    "momentum",
+                    "rsi_mean_reversion",
+                    "ma_trend",
+                )
         else:
             self._paper_config = None
             self._paper = None
@@ -104,6 +124,9 @@ class UIController:
         self._last_error = None
         self._latest_market = None
         self._latest_decision = None
+        self._jev_supervisor_advice = None
+        self._jev_supervisor_expires_at = None
+        self._jev_supervisor_error = None
         self._chart.clear()
         self._events.clear()
 
@@ -119,6 +142,10 @@ class UIController:
                 instrument_id=instrument.id,
                 on_update=self._on_update,
                 emit_console=False,
+                jev_state_context_provider=(
+                    self._jev_context_state if jev_supervisor_strategies else None
+                ),
+                jev_supervisor_strategies=jev_supervisor_strategies,
             ),
             name=f"jevpip-ui-observer-{instrument.id}",
         )
@@ -177,15 +204,22 @@ class UIController:
             if self._paper is not None:
                 at = self._parse_timestamp(str(event["market_timestamp"]))
                 self._update_event_supervisor(at, self._instrument_id)
+                jev_advice = self._active_jev_supervisor(at)
+                supervisor_plan = combine_supervisors(
+                    self._event_supervisor,
+                    jev_advice,
+                )
                 for paper_event in self._paper.on_tick(
                     event,
-                    allow_entry=self._event_supervisor.allow_entry,
+                    allow_entry=supervisor_plan.allow_entry,
+                    strategy_override=supervisor_plan.strategy,
                 ):
                     self._events.appendleft(paper_event)
         elif kind == "decision":
             self._latest_decision = event
             if self._paper is not None:
                 self._paper.on_decision(event)
+            self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
 
@@ -256,6 +290,7 @@ class UIController:
             "chart": list(self._chart),
             "paper": None if self._paper is None else self._paper.snapshot(),
             "external_context": self._external_context_snapshot(now, self._instrument_id),
+            "jev_supervisor": self._jev_supervisor_snapshot(now),
             "events": list(self._events)[:40],
         }
 
@@ -265,6 +300,108 @@ class UIController:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
+
+    @staticmethod
+    def _supervisor_strategies() -> tuple[str, ...]:
+        return ("momentum", "rsi_mean_reversion", "ma_trend")
+
+    def _jev_context_state(
+        self,
+        as_of: datetime,
+        instrument_id: str,
+    ) -> dict[str, Any]:
+        selected = select_context(
+            self._external_context_items,
+            as_of=as_of,
+            instrument_id=instrument_id,
+            currencies=self._context_currencies(instrument_id),
+        )
+        return to_jev_context_state(selected, as_of=as_of)
+
+    def _update_jev_supervisor(self, event: dict[str, Any]) -> None:
+        if (
+            not self._with_jev
+            or self._paper_config is None
+            or self._paper_config.strategy == "jev"
+            or not self._paper_config.deterministic_supervisor_enabled
+        ):
+            return
+
+        raw = event.get("jev_supervisor")
+        if not isinstance(raw, dict):
+            error = event.get("jev_supervisor_error")
+            if error:
+                self._jev_supervisor_error = str(error)
+            return
+
+        try:
+            advice = validate_jev_supervisor_payload(
+                raw,
+                allowed_strategies=self._supervisor_strategies(),
+            )
+            raw_at = event.get("recorded_at") or event.get("market_timestamp")
+            if not raw_at:
+                raise ValueError("Jev supervisor decision timestamp is required")
+            received_at = self._parse_timestamp(str(raw_at))
+        except Exception as exc:
+            self._jev_supervisor_error = f"{type(exc).__name__}: {exc}"
+            return
+
+        self._jev_supervisor_advice = advice
+        self._jev_supervisor_expires_at = received_at + timedelta(
+            seconds=advice.ttl_seconds
+        )
+        self._jev_supervisor_error = None
+
+    def _active_jev_supervisor(
+        self,
+        as_of: datetime,
+    ) -> JevSupervisorAdvice | None:
+        advice = self._jev_supervisor_advice
+        expires_at = self._jev_supervisor_expires_at
+        if advice is None or expires_at is None:
+            return None
+
+        at = (
+            as_of
+            if as_of.tzinfo is not None
+            else as_of.replace(tzinfo=timezone.utc)
+        ).astimezone(timezone.utc)
+        if at > expires_at:
+            self._jev_supervisor_advice = None
+            self._jev_supervisor_expires_at = None
+            return None
+        return advice
+
+    def _jev_supervisor_snapshot(self, as_of: datetime) -> dict[str, Any]:
+        advice = self._active_jev_supervisor(as_of)
+        enabled = bool(
+            self._with_jev
+            and self._paper_config is not None
+            and self._paper_config.strategy != "jev"
+            and self._paper_config.deterministic_supervisor_enabled
+        )
+        return {
+            "enabled": enabled,
+            "active": advice is not None,
+            "expires_at": (
+                None
+                if advice is None or self._jev_supervisor_expires_at is None
+                else self._jev_supervisor_expires_at.isoformat()
+            ),
+            "error": self._jev_supervisor_error,
+            "advice": (
+                None
+                if advice is None
+                else {
+                    "state": advice.state,
+                    "strategy": advice.strategy,
+                    "confidence": advice.confidence,
+                    "ttl_seconds": advice.ttl_seconds,
+                    "reason": advice.reason,
+                }
+            ),
+        }
 
     @staticmethod
     def _context_currencies(instrument_id: str) -> tuple[str, ...]:
