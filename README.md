@@ -271,9 +271,10 @@ Jevは現在、research componentです。
 
 Jev answerとcode側のstrategy / safety ruleは分離しつつ、paper modeで **Jev判断を追加** をONにした場合はJevをdirection gateとして新規entryへ反映します。
 
-- code strategyがLONG候補 + Jev LONG → entry候補を通す
-- code strategyがSHORT候補 + Jev SHORT → entry候補を通す
-- Jev WAIT / 反対方向 / stale / warmup → 新規entryしない
+- code strategyがLONG候補 + Jev direction LONG → entry候補を通す
+- code strategyがSHORT候補 + Jev direction SHORT → entry候補を通す
+- Jev direction WAIT / 反対方向 / stale / warmup → 新規entryしない
+- noise / reversal / trend は research filter と supervisor 用に残し、direction gateそのものは止めない
 - 既存positionのTP / SL / max hold決済はJev WAITで止めない
 
 Jev direct signal strategyは引き続きresearch controlとして別系統です。
