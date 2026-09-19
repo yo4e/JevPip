@@ -143,7 +143,11 @@ class PaperBroker:
         return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
     def on_decision(self, event: dict[str, Any]) -> None:
-        signal = str(event.get("research_signal") or "WAIT")
+        signal = str(
+            event.get("direction_signal")
+            or event.get("research_signal")
+            or "WAIT"
+        )
         if signal not in {"LONG", "SHORT", "WAIT"}:
             signal = "WAIT"
         self._latest_jev_signal = signal
