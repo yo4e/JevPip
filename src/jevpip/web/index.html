@@ -65,7 +65,9 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper">デモ自動売買</option></select></div>
       <div id="paper-basic" style="display:none">
         <div class="field"><label class="label">戦略</label><select id="paper-strategy"><option value="momentum">モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option><option value="jev">Jevシグナル</option></select></div>
-        <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>市場状態・stale data・spreadをcode側で監視して新規entryを止めます。</small></span></label>
+        <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>市場状態・stale data・spread・公式経済イベントをcode側で監視して新規entryを止めます。</small></span></label>
+        <div class="notice" id="event-context" style="margin-bottom:8px">公式イベント: 未取得</div>
+        <button class="btn ghost" id="context-refresh" type="button" style="margin-bottom:10px">公式イベント更新</button>
         <div class="pair">
           <div class="field"><label class="label" id="paper-size-label">注文数量</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
           <div class="field"><label class="label">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
@@ -503,6 +505,29 @@ function drawChart(points,trades=[]){
   }
 }
 window.addEventListener("resize",()=>{if(!state.lastStatus)return;const active=state.lastStatus.instrument_id===$("instrument").value;const live=active?(state.lastStatus.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus.paper?.trades:[])});
+function renderEventContext(ctx){
+  const box=$("event-context");if(!box)return;
+  if(!ctx){box.textContent="公式イベント: 未取得";return}
+  const sup=ctx.supervisor||{};
+  const next=(ctx.events||[])[0];
+  let text="公式イベント: "+(sup.state||"NORMAL");
+  if(next?.scheduled_at){
+    const at=new Date(next.scheduled_at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+    text+=` / 次: ${next.title} (${at}, ${next.risk||"-"})`;
+  }else{text+=" / 直近イベントなし"}
+  if(ctx.error)text+=" / 取得警告: "+ctx.error;
+  box.textContent=text;
+}
+async function refreshContext(){
+  const instrument=$("instrument").value;
+  try{
+    $("context-refresh").disabled=true;
+    const ctx=await api("/api/context/refresh?instrument_id="+encodeURIComponent(instrument),{method:"POST"});
+    renderEventContext(ctx);
+    toast("公式イベントを更新しました");
+  }catch(e){toast(e.message,true)}
+  finally{$("context-refresh").disabled=false}
+}
 function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
 
 async function refresh(){
@@ -534,6 +559,7 @@ async function refresh(){
     $("signal").textContent=d?.research_signal||"-";
     $("signal-sub").textContent=activeInstrument&&s.with_jev?"Jev ON":"Jev OFF";
     renderPaper($("mode").value==="paper"&&activeInstrument?s.paper:null);
+    renderEventContext(activeInstrument?s.external_context:null);
     renderDecision(d);
     const live=activeInstrument?(s.chart||[]):[];
     drawChart([...state.history,...live],activeInstrument?s.paper?.trades:[]);
@@ -660,7 +686,7 @@ function initTerminalResizer(){const handle=$("terminal-resizer");if(!handle)ret
 
 document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active");if(b.dataset.tab==="compare")loadCompareDates()}));
 ["ind-ma20","ind-ma200"].forEach(id=>$(id).addEventListener("change",()=>{const active=state.lastStatus?.instrument_id===$("instrument").value;const live=active?(state.lastStatus?.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[])}));
-initTerminalResizer();$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
+initTerminalResizer();$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("context-refresh").addEventListener("click",refreshContext);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>
