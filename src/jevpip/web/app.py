@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
 from jevpip.config import Settings, list_profiles, list_signal_policies
+from jevpip.instruments import public_instruments
 from jevpip.signals import SignalPolicy
 from jevpip.web.controller import UIController
 
@@ -51,24 +52,25 @@ class SignalPolicyInput(BaseModel):
     max_noise_probability: float = Field(default=0.40, ge=0, le=1)
     max_reversal_probability: float = Field(default=0.35, ge=0, le=1)
     min_trend_strength: float = Field(default=1.0, ge=0, le=3)
-    max_spread_pips: float = Field(default=2.0, ge=0, le=100)
+    max_spread_pips: float = Field(default=2.0, ge=0, le=100000000)
 
 
 class PaperDemoInput(BaseModel):
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
-    size: int = Field(default=1000, ge=1, le=10000000)
+    size: float = Field(default=1000, gt=0, le=100000000)
     strategy: Literal["momentum", "jev"] = "momentum"
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
-    momentum_trigger_pips: float = Field(default=0.6, gt=0, le=100)
-    max_spread_pips: float = Field(default=1.5, ge=0, le=100)
-    take_profit_pips: float = Field(default=1.0, gt=0, le=100)
-    stop_loss_pips: float = Field(default=1.0, gt=0, le=100)
+    momentum_trigger_units: float = Field(default=0.6, gt=0, le=100000000)
+    max_spread_units: float = Field(default=1.5, ge=0, le=100000000)
+    take_profit_units: float = Field(default=1.0, gt=0, le=100000000)
+    stop_loss_units: float = Field(default=1.0, gt=0, le=100000000)
     max_hold_seconds: float = Field(default=8.0, ge=1, le=600)
     cooldown_seconds: float = Field(default=2.0, ge=0, le=600)
     jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)
 
 
 class ObserverStartRequest(BaseModel):
+    instrument_id: Literal["USD_JPY", "BTC"] = "USD_JPY"
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
     with_jev: bool = False
@@ -106,7 +108,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="JevPip",
-    description="GMO外国為替FX × TypeSafe Jev のローカル研究UI",
+    description="GMOのFX / 暗号資産Public API × TypeSafe Jev のローカル研究UI",
     lifespan=lifespan,
 )
 
@@ -120,6 +122,7 @@ async def index() -> HTMLResponse:
 @app.get("/api/config")
 async def get_config() -> dict[str, Any]:
     return {
+        "instruments": public_instruments(),
         "profiles": list_profiles(),
         "signal_policies": list_signal_policies(),
         "typesafe_api_key_configured": bool(settings.typesafe_api_key),
@@ -133,10 +136,36 @@ async def get_status() -> dict[str, Any]:
     return controller.snapshot()
 
 
+@app.get("/api/chart/history")
+async def get_chart_history(
+    instrument_id: Literal["USD_JPY", "BTC"] = "USD_JPY",
+    interval: Literal["1min", "5min", "15min", "1hour"] = "1min",
+    date: str = "",
+) -> dict[str, Any]:
+    if not date:
+        date = datetime.now().strftime("%Y%m%d")
+    try:
+        datetime.strptime(date, "%Y%m%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日付はYYYYMMDD形式で指定してください。") from exc
+    try:
+        return await controller.fetch_chart_history(
+            instrument_id=instrument_id,
+            interval=interval,
+            date=date,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"過去チャート取得に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
 @app.post("/api/observer/start")
 async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
     try:
         await controller.start_observer(
+            instrument_id=request.instrument_id,
             profile_name=request.profile_name,
             profile=request.profile.model_dump(),
             with_jev=request.with_jev,
