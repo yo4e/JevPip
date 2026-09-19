@@ -383,6 +383,19 @@ TypeSafeの現行契約にはサービスのbenchmark / performance information�
 
 - https://typesafe.ai/legal/mca
 
+## Private APIのrate-limit / retry
+
+現在の外国為替FX Private API利用はread-onlyです。
+
+- Private GETはclient内の共有sliding-window limiterを通す
+- UI側にも3秒cacheがあり、口座refresh連打でAPIを叩き続けない
+- read-only GETはclient内で自動retryしない
+- 一時的な失敗はエラー表示し、次回refreshへ任せる
+- 将来注文POSTを追加する場合、**timeout / connection errorを理由に同じ注文をblind retryしない**
+- 注文系retryを実装する前に、client order ID相当・注文照会・idempotency・最新のGMO公式rate limitを確認する
+
+現在のPrivate clientには注文POST自体が存在しません。
+
 ## 安全方針
 
 現時点のJevPipには、次のものはありません。
