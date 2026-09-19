@@ -285,7 +285,7 @@ def parse_boj_mpm_html(
             events.append(
                 ExternalContextItem(
                     source="boj",
-                    source_id=f"summary-opinions-{summary_at.date().isoformat()}",
+                    source_id=f"summary-opinions-{summary_at.astimezone(_BOJ_TZ).date().isoformat()}",
                     kind="scheduled_event",
                     title="BOJ Summary of Opinions",
                     observed_at=observed_at,
@@ -299,7 +299,7 @@ def parse_boj_mpm_html(
             events.append(
                 ExternalContextItem(
                     source="boj",
-                    source_id=f"mpm-minutes-{minutes_at.date().isoformat()}",
+                    source_id=f"mpm-minutes-{minutes_at.astimezone(_BOJ_TZ).date().isoformat()}",
                     kind="scheduled_event",
                     title="BOJ Monetary Policy Meeting Minutes",
                     observed_at=observed_at,
