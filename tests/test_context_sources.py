@@ -1,6 +1,11 @@
 from datetime import datetime, timezone
 
-from jevpip.context_sources import bls_risk, parse_bls_ics, parse_boj_mpm_html
+from jevpip.context_sources import (
+    bls_risk,
+    parse_bls_ics,
+    parse_boj_mpm_html,
+    parse_fed_fomc_html,
+)
 
 
 UTC = timezone.utc
@@ -104,3 +109,35 @@ def test_parse_boj_timed_summary_and_minutes():
     assert all(item.risk == "medium" for item in items)
     # 08:50 JST = 23:50 UTC on the previous calendar day.
     assert items[0].scheduled_at == datetime(2026, 9, 30, 23, 50, tzinfo=UTC)
+
+
+def test_parse_fed_fomc_statement_schedule():
+    html = """
+    <html><body>
+      <h4>2026 FOMC Meetings</h4>
+      <div>January</div><div>27-28</div>
+      <div>March</div><div>17-18*</div>
+      <div>September</div><div>15-16*</div>
+      <div>October</div><div>27-28</div>
+      <div>December</div><div>8-9*</div>
+      <h4>2025 FOMC Meetings</h4>
+    </body></html>
+    """
+    items = parse_fed_fomc_html(
+        html,
+        observed_at=datetime(2026, 9, 19, tzinfo=UTC),
+        year=2026,
+    )
+
+    assert [item.source_id for item in items] == [
+        "fomc-statement-2026-01-28",
+        "fomc-statement-2026-03-18",
+        "fomc-statement-2026-09-16",
+        "fomc-statement-2026-10-28",
+        "fomc-statement-2026-12-09",
+    ]
+    assert all(item.source == "fed" for item in items)
+    assert all(item.risk == "high" for item in items)
+    assert all(item.currencies == ("USD",) for item in items)
+    # October is EDT: 14:00 Eastern = 18:00 UTC.
+    assert items[3].scheduled_at == datetime(2026, 10, 28, 18, 0, tzinfo=UTC)
