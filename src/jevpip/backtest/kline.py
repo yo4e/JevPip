@@ -5,7 +5,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from jevpip.gmo.public_rest import fetch_klines\nfrom jevpip.instruments import get_instrument
+from jevpip.gmo.public_rest import fetch_klines
+from jevpip.instruments import get_instrument
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.market.models import MarketTick
