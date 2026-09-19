@@ -7,7 +7,19 @@ from jevpip.market.models import MarketTick
 
 
 def tick(at, bid="156.00", ask="156.02"):
-    return MarketTick("USD_JPY", Decimal(bid), Decimal(ask), at, at, "OPEN", {})
+    return MarketTick(
+        instrument_id="USD_JPY",
+        symbol="USD_JPY",
+        display_symbol="USD/JPY",
+        bid=Decimal(bid),
+        ask=Decimal(ask),
+        market_timestamp=at,
+        received_at=at,
+        price_unit=Decimal("0.01"),
+        move_unit_label="pips",
+        status="OPEN",
+        raw={},
+    )
 
 
 def test_quote_and_return_features():
@@ -19,17 +31,18 @@ def test_quote_and_return_features():
     buf.append(second)
     state = build_features(second, buf, {"quote": True, "returns_seconds": [5]})
     assert state["quote"]["mid"] == 156.04
-    assert state["quote"]["spread_pips"] == 2.0
-    assert state["move_pips"]["5s"] == 3.0
+    assert state["quote"]["spread_units"] == 2.0
+    assert state["quote"]["spread_unit"] == "pips"
+    assert state["move_units"]["values"]["5s"] == 3.0
 
 
-def test_moon_only_excludes_price():
+def test_moon_only_really_contains_only_moon():
     at = datetime(2026, 9, 19, tzinfo=timezone.utc)
     buf = TickBuffer()
     current = tick(at)
     buf.append(current)
     state = build_features(current, buf, {"quote": False, "moon_phase": True})
-    assert "quote" not in state
+    assert set(state) == {"moon"}
     assert set(state["moon"]) == {"phase", "age_days", "illumination"}
 
 
