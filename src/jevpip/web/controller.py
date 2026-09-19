@@ -353,8 +353,6 @@ class UIController:
     ) -> dict[str, Any]:
         slug = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in profile_name)[:64] or "custom"
         instrument = get_instrument(instrument_id)
-        if instrument.market_kind != "fx" or instrument.quote_currency != "JPY":
-            raise ValueError("統計リプレイは現在、対円FXペアのみ対応しています。")
         output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
         rows = await asyncio.to_thread(
             replay_kline,
@@ -375,32 +373,60 @@ class UIController:
 
 def summarize_backtest(rows: list[dict[str, Any]]) -> dict[str, Any]:
     outcomes = [row["outcome_1m"] for row in rows if row.get("outcome_1m") is not None]
+    mode = rows[0].get("replay_mode") if rows else None
     if not outcomes:
         return {
             "rows": len(rows),
             "outcomes": 0,
-            "mean_delta_mid_pips": None,
-            "mean_long_edge_pips": None,
-            "mean_short_edge_pips": None,
+            "mode": mode,
+            "mean_change_units": None,
+            "max_change_units": None,
+            "min_change_units": None,
+            "mean_long_edge_units": None,
+            "mean_short_edge_units": None,
             "long_positive_ratio": None,
             "short_positive_ratio": None,
+            "up_ratio": None,
+            "down_ratio": None,
         }
 
-    def mean(key: str) -> float:
-        return round(fmean(float(item[key]) for item in outcomes), 6)
+    changes = [float(item["delta_units"]) for item in outcomes]
+
+    def mean_nullable(key: str) -> float | None:
+        values = [float(item[key]) for item in outcomes if item.get(key) is not None]
+        return None if not values else round(fmean(values), 6)
+
+    long_values = [
+        float(item["long_edge_units"])
+        for item in outcomes
+        if item.get("long_edge_units") is not None
+    ]
+    short_values = [
+        float(item["short_edge_units"])
+        for item in outcomes
+        if item.get("short_edge_units") is not None
+    ]
 
     return {
         "rows": len(rows),
         "outcomes": len(outcomes),
-        "mean_delta_mid_pips": mean("delta_mid_pips"),
-        "mean_long_edge_pips": mean("long_edge_pips"),
-        "mean_short_edge_pips": mean("short_edge_pips"),
-        "long_positive_ratio": round(
-            sum(float(item["long_edge_pips"]) > 0 for item in outcomes) / len(outcomes),
-            6,
+        "mode": mode,
+        "mean_change_units": round(fmean(changes), 6),
+        "max_change_units": round(max(changes), 6),
+        "min_change_units": round(min(changes), 6),
+        "mean_long_edge_units": mean_nullable("long_edge_units"),
+        "mean_short_edge_units": mean_nullable("short_edge_units"),
+        "long_positive_ratio": (
+            None
+            if not long_values
+            else round(sum(value > 0 for value in long_values) / len(long_values), 6)
         ),
-        "short_positive_ratio": round(
-            sum(float(item["short_edge_pips"]) > 0 for item in outcomes) / len(outcomes),
-            6,
+        "short_positive_ratio": (
+            None
+            if not short_values
+            else round(sum(value > 0 for value in short_values) / len(short_values), 6)
         ),
+        "up_ratio": round(sum(value > 0 for value in changes) / len(changes), 6),
+        "down_ratio": round(sum(value < 0 for value in changes) / len(changes), 6),
     }
+
