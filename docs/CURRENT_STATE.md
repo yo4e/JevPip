@@ -176,7 +176,11 @@ Jev schemaには含めない:
 - existing positionのTP / SL / max hold exitはdirection gateで止めない
 - Jev stateへconfigured strategy / latest strategy decision / position side・ageを追加
 - external contextはJev ON時にdirection判断側へも渡す
-- UIでWAIT gate理由と「Jev方向一致必須」を表示
+- UIでWAIT gate理由とJev方向一致条件を表示
+- paper modeは「コード戦略 / 安全監督 / Jev」を独立ON/OFF可能
+- コード戦略OFF + Jev ONではJev direction単独でpaper entry
+- コード戦略OFF + Jev OFFでは新規entryなし
+- 安全監督OFFではmarket status / stale / spread / official eventのentry vetoを無効化
 
 未実装:
 
