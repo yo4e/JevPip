@@ -144,6 +144,11 @@ Jevとは独立したdeterministic supervisorがあります。
 - stale market data → `PAUSE_ALL`
 - spread over limit → `PAUSE_ENTRY`
 - spread near limit → `CAUTION`
+- BLS公式scheduled event（local risk=high/critical）→ 前30分〜後15分 `PAUSE_ENTRY`
+- BLS公式scheduled event（local risk=medium）→ 前10分〜後5分 `CAUTION`
+
+BLS calendarはObserver開始時とUIの「公式イベント更新」から取得します。
+CPI / PPI / Employment Situation等のrisk分類はBLS公式の重要度ではなく、JevPip側の比較実験用local classificationです。
 
 supervisorはリスクを**厳しくする方向にしか動けません**。
 
