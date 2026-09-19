@@ -15,6 +15,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "デモ自動売買" in response.text
         assert "RSI逆張り" in response.text
         assert "MAトレンド" in response.text
+        assert "RSI/MA入力" in response.text
+        assert "1分bar" in response.text
         assert "安全監督" in response.text
         assert "tick age" in response.text
         assert "Take Profit" in response.text
