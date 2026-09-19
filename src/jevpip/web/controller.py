@@ -57,6 +57,7 @@ class UIController:
         self._external_context_error: str | None = None
         self._event_supervisor = SupervisorDecision("NORMAL", "event_not_loaded", True)
         self._jev_supervisor_advice: JevSupervisorAdvice | None = None
+        self._jev_supervisor_available_at: datetime | None = None
         self._jev_supervisor_expires_at: datetime | None = None
         self._jev_supervisor_error: str | None = None
         self._jev_usage_calls = 0
@@ -149,6 +150,7 @@ class UIController:
         self._latest_market = None
         self._latest_decision = None
         self._jev_supervisor_advice = None
+        self._jev_supervisor_available_at = None
         self._jev_supervisor_expires_at = None
         self._jev_supervisor_error = None
         self._reset_jev_usage()
@@ -228,8 +230,11 @@ class UIController:
             )
             if self._paper is not None:
                 at = self._parse_timestamp(str(event["market_timestamp"]))
+                decision_clock = self._parse_timestamp(
+                    str(event.get("received_at") or event["market_timestamp"])
+                )
                 self._update_event_supervisor(at, self._instrument_id)
-                jev_advice = self._active_jev_supervisor(at)
+                jev_advice = self._active_jev_supervisor(decision_clock)
                 supervisor_plan = combine_supervisors(
                     self._event_supervisor,
                     jev_advice,
@@ -479,13 +484,17 @@ class UIController:
             raw_at = event.get("recorded_at") or event.get("market_timestamp")
             if not raw_at:
                 raise ValueError("Jev supervisor decision timestamp is required")
-            received_at = self._parse_timestamp(str(raw_at))
+            raw_requested = event.get("requested_at") or raw_at
+            raw_available = event.get("available_at") or raw_at
+            requested_at = self._parse_timestamp(str(raw_requested))
+            available_at = self._parse_timestamp(str(raw_available))
         except Exception as exc:
             self._jev_supervisor_error = f"{type(exc).__name__}: {exc}"
             return
 
         self._jev_supervisor_advice = advice
-        self._jev_supervisor_expires_at = received_at + timedelta(
+        self._jev_supervisor_available_at = available_at
+        self._jev_supervisor_expires_at = requested_at + timedelta(
             seconds=advice.ttl_seconds
         )
         self._jev_supervisor_error = None
@@ -495,8 +504,9 @@ class UIController:
         as_of: datetime,
     ) -> JevSupervisorAdvice | None:
         advice = self._jev_supervisor_advice
+        available_at = self._jev_supervisor_available_at
         expires_at = self._jev_supervisor_expires_at
-        if advice is None or expires_at is None:
+        if advice is None or available_at is None or expires_at is None:
             return None
 
         at = (
@@ -504,8 +514,11 @@ class UIController:
             if as_of.tzinfo is not None
             else as_of.replace(tzinfo=timezone.utc)
         ).astimezone(timezone.utc)
+        if at < available_at:
+            return None
         if at > expires_at:
             self._jev_supervisor_advice = None
+            self._jev_supervisor_available_at = None
             self._jev_supervisor_expires_at = None
             return None
         return advice
@@ -522,6 +535,11 @@ class UIController:
         return {
             "enabled": enabled,
             "active": advice is not None,
+            "available_at": (
+                None
+                if advice is None or self._jev_supervisor_available_at is None
+                else self._jev_supervisor_available_at.isoformat()
+            ),
             "expires_at": (
                 None
                 if advice is None or self._jev_supervisor_expires_at is None
