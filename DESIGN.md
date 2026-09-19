@@ -1457,3 +1457,31 @@ read-only GETは次回refreshで再取得できるため、network failure時に
 - 最新GMO公式rate limitを再確認する
 
 現時点ではorder POSTが存在しないため、POST retry / limiterを「実装済み」とは扱わない。
+
+
+### 26.6 Bounded Jev supervisor schema
+
+Jev supervisorの出力は自由文命令として扱わず、固定schemaへvalidateする。
+
+許可field:
+
+- `state`: NORMAL | CAUTION | PAUSE_ENTRY | PAUSE_ALL
+- `strategy`: caller-provided allowlist内、またはnull
+- `confidence`: 0..1
+- `ttl_seconds`: bounded integer
+- `reason`: short text
+
+明示的に含めない:
+
+- side / BUY / SELL
+- order quantity
+- TP / SL
+- leverage
+- arbitrary code / endpoint / command
+
+deterministic supervisorとJev adviceをmergeするときはstateの厳しい側を採用する。
+Jevはdeterministic `PAUSE_ENTRY / PAUSE_ALL` をNORMALへ戻せない。
+
+allowlisted strategy提案も、effective stateがentry可能な場合だけ採用候補とする。
+
+外部fundamental context source / Jev API call / TTL expiration schedulingは別Phase。
