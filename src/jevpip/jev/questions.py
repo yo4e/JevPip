@@ -27,3 +27,45 @@ def question_specs(horizon: str = "5s") -> dict:
             "criteria": ["No meaningful trend", "Weak", "Moderate", "Strong"],
         },
     }
+
+
+
+def supervisor_question_specs(allowed_strategies: tuple[str, ...]) -> dict:
+    """Bounded supervisor questions. They never ask Jev for an order action."""
+
+    specs = {
+        "supervisor_pause_entry": {
+            "type": "noul",
+            "instructions": (
+                "Given the supplied technical state and external_context, is there "
+                "enough short-lived risk that NEW paper-strategy entries should be "
+                "paused? Do not decide order direction, quantity, TP/SL, or leverage."
+            ),
+        },
+        "supervisor_caution": {
+            "type": "noul",
+            "instructions": (
+                "Given the supplied technical state and external_context, should the "
+                "paper strategy operate in a cautious regime even if new entries are "
+                "not fully paused?"
+            ),
+        },
+    }
+    unique = tuple(dict.fromkeys(allowed_strategies))
+    if unique:
+        criteria = {
+            "KEEP_CURRENT": "Keep the currently configured code strategy.",
+            **{
+                name: f"Select the existing allowlisted code strategy {name}."
+                for name in unique
+            },
+        }
+        specs["supervisor_strategy"] = {
+            "type": "choice",
+            "instructions": (
+                "Which allowlisted code strategy best fits the supplied state? "
+                "Choose KEEP_CURRENT if there is not strong evidence to switch."
+            ),
+            "criteria": criteria,
+        }
+    return specs
