@@ -133,3 +133,96 @@ def test_jev_paper_waits_for_recent_signal():
     )
     events = broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.000", "150.002"))
     assert events[0]["side"] == "SHORT"
+
+
+def test_rsi_strategy_opens_long_after_falling_ticks():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="rsi_mean_reversion",
+            size=1000,
+            price_unit=0.01,
+            max_spread_units=2,
+            rsi_period=5,
+            rsi_oversold=30,
+            rsi_overbought=70,
+            take_profit_units=100,
+            stop_loss_units=100,
+        )
+    )
+    for second, mid in enumerate([150.10, 150.09, 150.08, 150.07, 150.06, 150.05]):
+        events = broker.on_tick(
+            tick(
+                f"2026-09-19T00:00:0{second}+00:00",
+                f"{mid - 0.001:.3f}",
+                f"{mid + 0.001:.3f}",
+            )
+        )
+    assert events
+    assert events[0]["action"] == "OPEN"
+    assert events[0]["side"] == "LONG"
+    assert events[0]["reason"] == "rsi_mean_reversion"
+
+
+def test_ma_trend_strategy_opens_long():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="ma_trend",
+            size=1000,
+            price_unit=0.01,
+            max_spread_units=2,
+            ma_fast_period=3,
+            ma_slow_period=5,
+            ma_min_gap_units=0.2,
+            take_profit_units=100,
+            stop_loss_units=100,
+        )
+    )
+    events = []
+    for second, mid in enumerate([150.00, 150.01, 150.02, 150.03, 150.04]):
+        events = broker.on_tick(
+            tick(
+                f"2026-09-19T00:00:0{second}+00:00",
+                f"{mid - 0.001:.3f}",
+                f"{mid + 0.001:.3f}",
+            )
+        )
+    assert events
+    assert events[0]["side"] == "LONG"
+    assert events[0]["reason"] == "ma_trend"
+
+
+def test_supervisor_blocks_stale_tick_entry():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            deterministic_supervisor_enabled=True,
+            max_market_age_seconds=5,
+        )
+    )
+    broker.on_tick(
+        {
+            "market_timestamp": "2026-09-19T00:00:00+00:00",
+            "received_at": "2026-09-19T00:00:00+00:00",
+            "status": "OPEN",
+            "bid": "150.000",
+            "ask": "150.002",
+        }
+    )
+    events = broker.on_tick(
+        {
+            "market_timestamp": "2026-09-19T00:00:01+00:00",
+            "received_at": "2026-09-19T00:00:11+00:00",
+            "status": "OPEN",
+            "bid": "150.010",
+            "ask": "150.012",
+        }
+    )
+    assert events == []
+    snapshot = broker.snapshot()
+    assert snapshot["supervisor"]["state"] == "PAUSE_ALL"
+    assert snapshot["supervisor"]["reason"] == "stale_market_data"
