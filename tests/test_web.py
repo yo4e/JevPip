@@ -1044,3 +1044,57 @@ def test_homepage_has_independent_strategy_safety_and_jev_toggles():
     assert "コード戦略OFF。Jev方向" in response.text
     assert "コード戦略OFF / Jev OFF。新規entryは行いません。" in response.text
     assert '<option value="jev">Jevシグナル</option>' not in response.text
+    assert 'id="session-lock-note"' in response.text
+    assert "syncSessionControls(s,activeInstrument)" in response.text
+    assert "実行中のコード戦略・安全監督・Jev設定は開始時の値で固定" in response.text
+    assert "手数料損益分岐概算" in response.text
+
+
+
+def test_jev_supervisor_is_not_active_before_response_is_available():
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+
+    from jevpip.broker.paper import PaperBroker, PaperConfig
+    from jevpip.web.controller import UIController
+
+    controller = UIController()
+    config = PaperConfig(
+        strategy="momentum",
+        deterministic_supervisor_enabled=True,
+    )
+    controller._with_jev = True
+    controller._paper_config = config
+    controller._paper = PaperBroker(config)
+
+    requested_at = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
+    available_at = requested_at + timedelta(seconds=2)
+    asyncio.run(
+        controller._on_update(
+            {
+                "kind": "decision",
+                "recorded_at": available_at.isoformat(),
+                "requested_at": requested_at.isoformat(),
+                "available_at": available_at.isoformat(),
+                "market_timestamp": requested_at.isoformat(),
+                "jev_supervisor": {
+                    "state": "PAUSE_ENTRY",
+                    "strategy": None,
+                    "confidence": 0.9,
+                    "ttl_seconds": 20,
+                    "reason": "causal timing test",
+                },
+                "jev_supervisor_error": None,
+            }
+        )
+    )
+
+    assert controller._active_jev_supervisor(
+        requested_at + timedelta(seconds=1)
+    ) is None
+    assert controller._active_jev_supervisor(
+        requested_at + timedelta(seconds=2)
+    ) is not None
+    assert controller._active_jev_supervisor(
+        requested_at + timedelta(seconds=21)
+    ) is None
