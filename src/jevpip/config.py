@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     gmo_fx_api_secret: str | None = None
     live_trading: bool = False
     data_dir: Path = Path("data")
+    context_refresh_seconds: float = 900.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
