@@ -1220,3 +1220,87 @@ TradingViewの描画ツール群やMT4の全注文機能を再現することを
 - advanced research controlsは普段隠す
 
 こと。
+
+
+---
+
+## 25. Paper Cost Model / JPY FX Expansion（2026-09-19）
+
+### 25.1 対円FXを先行して増やす
+
+GMO外国為替FXは21通貨ペアを扱うが、paper brokerのaccounting currencyは現在JPY。
+
+そのため、まず次の対円12ペアをinstrument registryへ追加する。
+
+- USD_JPY
+- EUR_JPY
+- GBP_JPY
+- AUD_JPY
+- NZD_JPY
+- CAD_JPY
+- CHF_JPY
+- TRY_JPY
+- ZAR_JPY
+- MXN_JPY
+- HUF_JPY
+- SEK_JPY
+
+非対円pairは、quote currencyで生じるPnLをJPYへ換算するcross-rate modelが必要。
+換算なしでJPYとして表示する実装は禁止する。
+
+対円FXは、
+
+- Public WebSocket live ticker
+- historical chart
+- paper broker
+- BID/ASK 1min replay
+
+を同じinstrument registryから利用する。
+
+### 25.2 Paper cost model
+
+Paper brokerは次を反映する。
+
+1. real BID/ASK spread
+2. adverse slippage（configurable。初期値0）
+3. proportional fee per execution
+
+初期fee reference:
+
+- BTC spot: Taker 0.05% / execution
+- FX API: notional JPY × 0.002% / execution
+
+feeは将来の実注文を意味しない。あくまでpaper resultを過度に楽観的にしないためのreference cost。
+
+BTC paper SHORTは、現物Public ticker上のsynthetic shortであることをUIへ明示する。
+
+### 25.3 Performance metrics
+
+Paper snapshotは少なくとも次を返す。
+
+- net realized PnL
+- gross realized PnL
+- unrealized net PnL
+- fees paid
+- slippage cost
+- closed trades
+- win rate
+- profit factor
+- max drawdown JPY
+- max drawdown ratio
+
+Profit Factor / drawdownは短時間の収益性保証ではなく、strategy比較のdiagnosticとして扱う。
+
+### 25.4 コストを入れた比較
+
+Jevの価値評価では、必ず同じcost modelを通す。
+
+比較候補:
+
+- rule-only
+- rule-only + deterministic event pause
+- rule + Jev supervisor
+- Jev signal direct（研究対照）
+
+「Jevなしで利益が出た」場合も、それを失敗とみなさない。
+単純baselineが強いなら、そのbaselineを基準にJevがdrawdown / bad regime avoidanceへ付加価値を持つかを検証する。
