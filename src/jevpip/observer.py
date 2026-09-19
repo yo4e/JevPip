@@ -13,7 +13,11 @@ from jevpip.gmo.public_ws import stream_ticker
 from jevpip.jev.supervisor import derive_jev_supervisor_advice
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
-from jevpip.signals import SignalPolicy, classify_research_signal
+from jevpip.signals import (
+    SignalPolicy,
+    classify_direction_signal,
+    classify_research_signal,
+)
 from jevpip.storage.jsonl import append_jsonl
 
 UpdateCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -101,9 +105,15 @@ async def observe(
                     instrument_label=tick.display_symbol,
                 )
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
+                direction_signal = None
+                direction_detail = None
                 research_signal = None
                 signal_detail = None
                 if signal_policy is not None:
+                    direction_signal, direction_detail = classify_direction_signal(
+                        answer,
+                        signal_policy,
+                    )
                     research_signal, signal_detail = classify_research_signal(
                         answer,
                         float(tick.spread_units),
@@ -137,6 +147,8 @@ async def observe(
                     "state": jev_state,
                     "jev": answer,
                     "jev_latency_ms": latency_ms,
+                    "direction_signal": direction_signal,
+                    "direction_detail": direction_detail,
                     "research_signal": research_signal,
                     "signal_policy": signal_policy_name,
                     "signal_detail": signal_detail,
@@ -150,7 +162,11 @@ async def observe(
                 )
                 await _notify(on_update, event)
                 if emit_console:
-                    suffix = f" signal={research_signal}" if research_signal else ""
+                    suffix = (
+                        f" direction={direction_signal} research={research_signal}"
+                        if direction_signal or research_signal
+                        else ""
+                    )
                     print(f"Jev decision saved ({latency_ms} ms){suffix}")
             except asyncio.CancelledError:
                 raise
