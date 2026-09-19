@@ -269,9 +269,18 @@ Jevは現在、research componentです。
 - reversal_risk
 - trend_strength
 
-Jev answerと、code側のsignal / safety ruleは分離しています。
+Jev answerとcode側のstrategy / safety ruleは分離しつつ、paper modeで **Jev判断を追加** をONにした場合はJevをdirection gateとして新規entryへ反映します。
 
-将来はJevを直接の売買方向決定器よりも、**code strategyを監督するsupervisor**として使う方向を優先しています。
+- code strategyがLONG候補 + Jev LONG → entry候補を通す
+- code strategyがSHORT候補 + Jev SHORT → entry候補を通す
+- Jev WAIT / 反対方向 / stale / warmup → 新規entryしない
+- 既存positionのTP / SL / max hold決済はJev WAITで止めない
+
+Jev direct signal strategyは引き続きresearch controlとして別系統です。
+
+Jevには選択Featureに加え、look-ahead-safeなofficial event contextと、最小限のpaper state（configured strategy、直近strategy判断、position side / age）を渡します。API key、secret、口座credentialsは渡しません。
+
+Jev supervisorも併用できます。
 
 Jev supervisor用には固定schemaを実装済みです。
 
