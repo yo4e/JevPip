@@ -1,13 +1,15 @@
 [project]
 name = "jevpip"
 version = "0.1.0"
-description = "USD/JPY research lab combining GMO Coin FX market data with TypeSafe AI Jev"
+description = "GMO外国為替FXとTypeSafe AI Jevを組み合わせたUSD/JPY研究アプリ"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "pydantic-settings>=2.10,<3",
   "typesafe-sdk>=0.7,<0.8",
+  "uvicorn>=0.35,<1",
   "websockets>=15,<16",
 ]
 
@@ -25,7 +27,11 @@ build-backend = "hatchling.build"
 packages = ["src/jevpip"]
 
 [tool.hatch.build]
-include = ["src/jevpip/profiles.toml", "src/jevpip/signals.toml"]
+include = [
+  "src/jevpip/profiles.toml",
+  "src/jevpip/signals.toml",
+  "src/jevpip/web/index.html",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
