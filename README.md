@@ -324,6 +324,8 @@ uv run jevpip observe --profile moon_only --with-jev
 
 ライブ観測で保存したraw tickを、**同じデータ・同じpaper cost model**で複数のcode-only strategyへ流して比較できます。
 
+ブラウザUI下部の **「戦略比較」** タブでは、選択中の銘柄について保存済みの日付を選び、Momentum / RSI / MAの **net PnL / Profit Factor / max drawdown / 決済数 / 勝率 / fee** を横並び表示できます。安全監督のON/OFFと、RSI/MAのtick / closed-bar入力も選べます。
+
 例:
 
 ```bash
