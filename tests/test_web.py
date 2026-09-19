@@ -967,3 +967,67 @@ def test_homepage_explains_wait_signal_gate_failures():
     assert 'id="signal-detail"' in response.text
     assert "WAIT理由:" in response.text
     assert "signalGateSummary" in response.text
+
+
+
+def test_controller_jev_state_context_includes_minimal_paper_state():
+    from datetime import datetime, timezone
+
+    from jevpip.broker.paper import PaperBroker, PaperConfig
+    from jevpip.web.controller import UIController
+
+    config = PaperConfig(
+        strategy="momentum",
+        jev_direction_gate_enabled=True,
+        size=1000,
+        price_unit=0.01,
+        momentum_window_seconds=1,
+        momentum_trigger_units=0.5,
+        max_spread_units=2,
+        take_profit_units=100,
+        stop_loss_units=100,
+        cooldown_seconds=0,
+    )
+    controller = UIController()
+    controller._paper_config = config
+    controller._paper = PaperBroker(config)
+
+    controller._paper.on_tick(
+        {
+            "market_timestamp": "2026-09-20T00:00:00+00:00",
+            "bid": "150.000",
+            "ask": "150.002",
+        }
+    )
+    controller._paper.on_decision(
+        {
+            "research_signal": "LONG",
+            "recorded_at": "2026-09-20T00:00:00+00:00",
+        }
+    )
+    controller._paper.on_tick(
+        {
+            "market_timestamp": "2026-09-20T00:00:01+00:00",
+            "bid": "150.010",
+            "ask": "150.012",
+        }
+    )
+
+    state = controller._jev_state_context(
+        datetime(2026, 9, 20, 0, 0, 2, tzinfo=timezone.utc),
+        "USD_JPY",
+    )
+    paper = state["paper_context"]
+    assert paper["configured_strategy"] == "momentum"
+    assert paper["jev_direction_gate_enabled"] is True
+    assert paper["latest_strategy_decision"]["signal"] == "LONG"
+    assert paper["position"]["side"] == "LONG"
+    assert paper["position"]["age_seconds"] == 1.0
+
+
+def test_homepage_describes_jev_as_direction_gate():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert "Jev方向一致必須" in response.text
+    assert "WAIT・反対方向・古い判断ではentryしません" in response.text
