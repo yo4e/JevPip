@@ -226,3 +226,31 @@ def test_supervisor_blocks_stale_tick_entry():
     snapshot = broker.snapshot()
     assert snapshot["supervisor"]["state"] == "PAUSE_ALL"
     assert snapshot["supervisor"]["reason"] == "stale_market_data"
+
+
+def test_supervisor_heartbeat_detects_silent_feed():
+    from datetime import datetime, timezone
+
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            price_unit=0.01,
+            max_spread_units=2,
+            deterministic_supervisor_enabled=True,
+            max_market_age_seconds=5,
+        )
+    )
+    broker.on_tick(
+        {
+            "market_timestamp": "2026-09-19T00:00:00+00:00",
+            "received_at": "2026-09-19T00:00:00+00:00",
+            "status": "OPEN",
+            "bid": "150.000",
+            "ask": "150.002",
+        }
+    )
+    broker.heartbeat(datetime(2026, 9, 19, 0, 0, 7, tzinfo=timezone.utc))
+    snapshot = broker.snapshot()
+    assert snapshot["supervisor"]["state"] == "PAUSE_ALL"
+    assert snapshot["supervisor"]["reason"] == "stale_market_data"
+    assert snapshot["supervisor"]["last_tick_age_seconds"] == 7.0
