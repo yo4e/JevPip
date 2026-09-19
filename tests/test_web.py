@@ -29,6 +29,8 @@ def test_config_exposes_btc_profiles_and_safety_flags():
         assert payload["instruments"]["BTC"]["display_symbol"] == "BTC/JPY"
         assert payload["instruments"]["BTC"]["move_unit_label"] == "円"
         assert payload["instruments"]["USD_JPY"]["move_unit_label"] == "pips"
+        assert payload["instruments"]["EUR_JPY"]["display_symbol"] == "EUR/JPY"
+        assert payload["instruments"]["GBP_JPY"]["quote_currency"] == "JPY"
         assert "moon_only" in payload["profiles"]
         assert "research_default" in payload["signal_policies"]
         assert payload["live_trading_available"] is False
@@ -93,3 +95,19 @@ def test_backtest_summary():
     assert summary["mean_delta_mid_pips"] == 0.5
     assert summary["long_positive_ratio"] == 0.5
     assert summary["short_positive_ratio"] == 0.5
+
+
+def test_backtest_rejects_btc():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/backtest",
+            json={
+                "instrument_id": "BTC",
+                "date": "20260919",
+                "profile_name": "test",
+                "profile": {"quote": True},
+                "limit": 2,
+            },
+        )
+        assert response.status_code == 400
+        assert "対円FX" in response.json()["detail"]
