@@ -34,6 +34,7 @@ class PaperConfig:
     max_hold_seconds: float = 8.0
     cooldown_seconds: float = 2.0
     jev_signal_max_age_seconds: float = 3.0
+    jev_direction_gate_enabled: bool = False
     fee_rate: float = 0.0
     fee_label: str = "手数料なし"
     slippage_units: float = 0.0
@@ -214,6 +215,8 @@ class PaperBroker:
                 mid,
                 strategy_override=strategy_override,
             )
+            if self.config.jev_direction_gate_enabled and self.config.strategy != "jev":
+                decision = self._apply_jev_direction_gate(decision, at)
             self._latest_strategy_decision = decision
             if decision.signal in {"LONG", "SHORT"}:
                 trade = self._open(decision.signal, at, bid, ask, decision.reason)
@@ -284,6 +287,43 @@ class PaperBroker:
         if self._last_exit_at is None:
             return True
         return (at - self._last_exit_at).total_seconds() >= self.config.cooldown_seconds
+
+    def _apply_jev_direction_gate(
+        self,
+        decision: StrategyDecision,
+        at: datetime,
+    ) -> StrategyDecision:
+        """Require fresh Jev agreement before a code-strategy entry.
+
+        The gate only affects new-entry direction. Position exits remain fully
+        code-owned so WAIT/stale Jev output can never trap an open position.
+        """
+
+        if decision.signal not in {"LONG", "SHORT"}:
+            return decision
+
+        metrics = {
+            **decision.metrics,
+            "code_signal": decision.signal,
+            "code_reason": decision.reason,
+            "jev_signal": self._latest_jev_signal,
+        }
+        if self._latest_jev_at is None:
+            return StrategyDecision("WAIT", "jev_gate_warmup", metrics)
+
+        age = abs((at - self._latest_jev_at).total_seconds())
+        metrics["jev_signal_age_seconds"] = round(age, 3)
+        if age > self.config.jev_signal_max_age_seconds:
+            return StrategyDecision("WAIT", "jev_gate_stale", metrics)
+        if self._latest_jev_signal == "WAIT":
+            return StrategyDecision("WAIT", "jev_gate_wait", metrics)
+        if self._latest_jev_signal != decision.signal:
+            return StrategyDecision("WAIT", "jev_gate_disagree", metrics)
+        return StrategyDecision(
+            decision.signal,
+            f"jev_gate_agree:{decision.reason}",
+            metrics,
+        )
 
     def _strategy_decision(
         self,
@@ -565,6 +605,8 @@ class PaperBroker:
         return {
             "enabled": True,
             "strategy": self.config.strategy,
+            "jev_direction_gate_enabled": self.config.jev_direction_gate_enabled,
+            "latest_jev_signal": self._latest_jev_signal,
             "strategy_bar_seconds": self.config.strategy_bar_seconds,
             "strategy_bars": len(self._bar_prices),
             "strategy_decision": asdict(self._latest_strategy_decision),
