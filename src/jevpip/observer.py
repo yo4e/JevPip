@@ -9,6 +9,7 @@ from typing import Any
 from jevpip.gmo.public_ws import stream_ticker
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
+from jevpip.signals import SignalPolicy, classify_research_signal
 from jevpip.storage.jsonl import append_jsonl
 
 
@@ -18,6 +19,8 @@ async def observe(
     jev_client: Any | None = None,
     jev_every_seconds: float = 1.0,
     max_ticks: int | None = None,
+    signal_policy: SignalPolicy | None = None,
+    signal_policy_name: str | None = None,
 ) -> None:
     buffer = TickBuffer()
     count = 0
@@ -43,6 +46,14 @@ async def observe(
             try:
                 answer = await asyncio.to_thread(jev_client.decide, features, "5s")
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
+                research_signal = None
+                signal_detail = None
+                if signal_policy is not None:
+                    research_signal, signal_detail = classify_research_signal(
+                        answer,
+                        float(tick.spread_pips),
+                        signal_policy,
+                    )
                 event = {
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
                     "market_timestamp": tick.market_timestamp.isoformat(),
@@ -50,9 +61,13 @@ async def observe(
                     "state": features,
                     "jev": answer,
                     "jev_latency_ms": latency_ms,
+                    "research_signal": research_signal,
+                    "signal_policy": signal_policy_name,
+                    "signal_detail": signal_detail,
                 }
                 append_jsonl(data_dir / "decisions" / f"{day}.jsonl", event)
-                print(f"Jev decision saved ({latency_ms} ms)")
+                suffix = f" signal={research_signal}" if research_signal else ""
+                print(f"Jev decision saved ({latency_ms} ms){suffix}")
             except Exception as exc:
                 print(f"Jev error: {type(exc).__name__}: {exc}")
             last_jev_at = now
