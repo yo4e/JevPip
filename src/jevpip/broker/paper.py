@@ -107,6 +107,9 @@ class PaperBroker:
         self._bar_completed_this_tick = False
         self._latest_jev_signal = "WAIT"
         self._latest_jev_at: datetime | None = None
+        self._latest_jev_basis_at: datetime | None = None
+        self._latest_jev_requested_at: datetime | None = None
+        self._latest_jev_available_at: datetime | None = None
         self._last_exit_at: datetime | None = None
         self._last_bid: Decimal | None = None
         self._last_ask: Decimal | None = None
@@ -153,8 +156,13 @@ class PaperBroker:
         if signal not in {"LONG", "SHORT", "WAIT"}:
             signal = "WAIT"
         self._latest_jev_signal = signal
-        raw_at = event.get("recorded_at") or event.get("market_timestamp")
-        self._latest_jev_at = self._dt(str(raw_at)) if raw_at else None
+        raw_basis = event.get("basis_market_timestamp") or event.get("market_timestamp")
+        raw_requested = event.get("requested_at") or event.get("recorded_at") or raw_basis
+        raw_available = event.get("available_at") or event.get("recorded_at") or raw_requested
+        self._latest_jev_basis_at = self._dt(str(raw_basis)) if raw_basis else None
+        self._latest_jev_requested_at = self._dt(str(raw_requested)) if raw_requested else None
+        self._latest_jev_available_at = self._dt(str(raw_available)) if raw_available else None
+        self._latest_jev_at = self._latest_jev_available_at
 
     def on_tick(
         self,
@@ -209,24 +217,41 @@ class PaperBroker:
             self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
         generated: list[dict[str, Any]] = []
+        closed_this_tick = False
         if self.position is not None:
-            exit_reason = self._exit_reason(at, bid, ask)
+            exit_reason = self._exit_reason(
+                at,
+                bid,
+                ask,
+                decision_at=received_at,
+            )
             if exit_reason is not None:
                 trade = self._close(at, bid, ask, exit_reason)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
+                closed_this_tick = True
 
-        if allow_entry and self.position is None and self._can_enter(at, spread_units):
+        if (
+            allow_entry
+            and not closed_this_tick
+            and self.position is None
+            and self._can_enter(at, spread_units)
+        ):
             decision = self._strategy_decision(
                 at,
                 mid,
                 strategy_override=strategy_override,
+                decision_at=received_at,
             )
             if (
                 self.config.strategy_enabled
                 and self.config.jev_direction_gate_enabled
                 and self.config.strategy != "jev"
             ):
-                decision = self._apply_jev_direction_gate(decision, at)
+                decision = self._apply_jev_direction_gate(
+                    decision,
+                    at,
+                    decision_at=received_at,
+                )
             self._latest_strategy_decision = decision
             if decision.signal in {"LONG", "SHORT"}:
                 trade = self._open(decision.signal, at, bid, ask, decision.reason)
@@ -305,6 +330,8 @@ class PaperBroker:
         self,
         decision: StrategyDecision,
         at: datetime,
+        *,
+        decision_at: datetime | None = None,
     ) -> StrategyDecision:
         """Require fresh Jev agreement before a code-strategy entry.
 
@@ -321,11 +348,13 @@ class PaperBroker:
             "code_reason": decision.reason,
             "jev_signal": self._latest_jev_signal,
         }
-        if self._latest_jev_at is None:
+        clock = decision_at or at
+        age = self._jev_signal_age(clock)
+        if age is None:
             return StrategyDecision("WAIT", "jev_gate_warmup", metrics)
-
-        age = abs((at - self._latest_jev_at).total_seconds())
         metrics["jev_signal_age_seconds"] = round(age, 3)
+        if age < 0:
+            return StrategyDecision("WAIT", "jev_gate_future", metrics)
         if age > self.config.jev_signal_max_age_seconds:
             return StrategyDecision("WAIT", "jev_gate_stale", metrics)
         if self._latest_jev_signal == "WAIT":
@@ -344,6 +373,7 @@ class PaperBroker:
         mid: Decimal,
         *,
         strategy_override: StrategyName | None = None,
+        decision_at: datetime | None = None,
     ) -> StrategyDecision:
         if self.config.jev_direct_enabled:
             strategy = "jev"
@@ -353,10 +383,21 @@ class PaperBroker:
             strategy = strategy_override or self.config.strategy
 
         if strategy == "jev":
-            if self._latest_jev_at is None:
+            clock = decision_at or at
+            age = self._jev_signal_age(clock)
+            if age is None:
                 return StrategyDecision("WAIT", "jev_warmup", {})
-            age = abs((at - self._latest_jev_at).total_seconds())
-            signal = self._latest_jev_signal if age <= self.config.jev_signal_max_age_seconds else "WAIT"
+            if age < 0:
+                return StrategyDecision(
+                    "WAIT",
+                    "jev_future",
+                    {"signal_age_seconds": round(age, 3)},
+                )
+            signal = (
+                self._latest_jev_signal
+                if age <= self.config.jev_signal_max_age_seconds
+                else "WAIT"
+            )
             return StrategyDecision(
                 signal,
                 "jev_signal" if signal != "WAIT" else "jev_stale_or_wait",
@@ -417,6 +458,14 @@ class PaperBroker:
             trigger_units=self.config.momentum_trigger_units,
         )
 
+    def _jev_signal_age(self, now: datetime) -> float | None:
+        if self._latest_jev_available_at is None:
+            return None
+        if now < self._latest_jev_available_at:
+            return (now - self._latest_jev_available_at).total_seconds()
+        basis = self._latest_jev_requested_at or self._latest_jev_available_at
+        return (now - basis).total_seconds()
+
     def _entry_price(self, side: Side, bid: Decimal, ask: Decimal) -> Decimal:
         slip = self.slippage_price
         return ask + slip if side == "LONG" else bid - slip
@@ -454,7 +503,14 @@ class PaperBroker:
         exit_fee = self._fee(exit_price, self.position.size)
         return gross - self.position.entry_fee - exit_fee
 
-    def _exit_reason(self, at: datetime, bid: Decimal, ask: Decimal) -> str | None:
+    def _exit_reason(
+        self,
+        at: datetime,
+        bid: Decimal,
+        ask: Decimal,
+        *,
+        decision_at: datetime | None = None,
+    ) -> str | None:
         if self.position is None:
             return None
         units = self._position_units(bid, ask)
@@ -465,7 +521,11 @@ class PaperBroker:
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
         if self.config.strategy == "jev" or self.config.jev_direct_enabled:
-            desired = self._strategy_decision(at, (bid + ask) / Decimal("2")).signal
+            desired = self._strategy_decision(
+                at,
+                (bid + ask) / Decimal("2"),
+                decision_at=decision_at,
+            ).signal
             if desired == "SHORT" and self.position.side == "LONG":
                 return "opposite_jev_signal"
             if desired == "LONG" and self.position.side == "SHORT":
