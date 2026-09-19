@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
 from jevpip.config import Settings, list_profiles, list_signal_policies
-from jevpip.instruments import public_instruments
+from jevpip.instruments import get_instrument, public_instruments
 from jevpip.signals import SignalPolicy
 from jevpip.web.controller import UIController
 
@@ -66,11 +66,11 @@ class PaperDemoInput(BaseModel):
     stop_loss_units: float = Field(default=1.0, gt=0, le=100000000)
     max_hold_seconds: float = Field(default=8.0, ge=1, le=600)
     cooldown_seconds: float = Field(default=2.0, ge=0, le=600)
-    jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)
+    jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)\n    slippage_units: float = Field(default=0.0, ge=0, le=100000000)
 
 
 class ObserverStartRequest(BaseModel):
-    instrument_id: Literal["USD_JPY", "BTC"] = "USD_JPY"
+    instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
     with_jev: bool = False
@@ -138,13 +138,14 @@ async def get_status() -> dict[str, Any]:
 
 @app.get("/api/chart/history")
 async def get_chart_history(
-    instrument_id: Literal["USD_JPY", "BTC"] = "USD_JPY",
+    instrument_id: str = "USD_JPY",
     interval: Literal["1min", "5min", "15min", "1hour"] = "1min",
     date: str = "",
 ) -> dict[str, Any]:
     if not date:
         date = datetime.now().strftime("%Y%m%d")
     try:
+        get_instrument(instrument_id)
         datetime.strptime(date, "%Y%m%d")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="日付はYYYYMMDD形式で指定してください。") from exc
@@ -164,6 +165,7 @@ async def get_chart_history(
 @app.post("/api/observer/start")
 async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
     try:
+        get_instrument(request.instrument_id)
         await controller.start_observer(
             instrument_id=request.instrument_id,
             profile_name=request.profile_name,
