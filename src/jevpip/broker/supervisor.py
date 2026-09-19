@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Literal, Mapping, Any
+
+from jevpip.context import ExternalContextItem
 
 SupervisorState = Literal["NORMAL", "CAUTION", "PAUSE_ENTRY", "PAUSE_ALL"]
 
@@ -149,6 +152,63 @@ def combine_supervisors(
         confidence=jev.confidence,
         ttl_seconds=jev.ttl_seconds,
     )
+
+
+
+
+def combine_code_supervisors(*decisions: SupervisorDecision) -> SupervisorDecision:
+    """Merge deterministic supervisors by taking the strictest state."""
+
+    if not decisions:
+        return SupervisorDecision("NORMAL", "ok", True)
+    strictest = max(decisions, key=lambda item: _STATE_RANK[_state(item.state)])
+    reasons = [item.reason for item in decisions if item.reason not in {"ok", "disabled"}]
+    return SupervisorDecision(
+        state=_state(strictest.state),
+        reason="; ".join(reasons) if reasons else strictest.reason,
+        allow_entry=all(item.allow_entry for item in decisions)
+        and _STATE_RANK[_state(strictest.state)] < _STATE_RANK["PAUSE_ENTRY"],
+    )
+
+
+def deterministic_event_supervisor(
+    items: Iterable[ExternalContextItem],
+    *,
+    as_of: datetime,
+    high_lead: timedelta = timedelta(minutes=30),
+    high_lag: timedelta = timedelta(minutes=15),
+    medium_lead: timedelta = timedelta(minutes=10),
+    medium_lag: timedelta = timedelta(minutes=5),
+) -> SupervisorDecision:
+    """Code-only scheduled-event guard used as the external-context baseline."""
+
+    if as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise ValueError("as_of must be timezone-aware")
+    at = as_of.astimezone(timezone.utc)
+
+    high_hits: list[ExternalContextItem] = []
+    medium_hits: list[ExternalContextItem] = []
+
+    for item in items:
+        if item.kind != "scheduled_event" or item.scheduled_at is None:
+            continue
+        if not item.known_at(at):
+            continue
+        event_at = item.scheduled_at.astimezone(timezone.utc)
+        if item.risk in {"critical", "high"}:
+            if event_at - high_lead <= at <= event_at + high_lag:
+                high_hits.append(item)
+        elif item.risk == "medium":
+            if event_at - medium_lead <= at <= event_at + medium_lag:
+                medium_hits.append(item)
+
+    if high_hits:
+        names = ",".join(item.source_id for item in high_hits[:3])
+        return SupervisorDecision("PAUSE_ENTRY", f"scheduled_event_high:{names}", False)
+    if medium_hits:
+        names = ",".join(item.source_id for item in medium_hits[:3])
+        return SupervisorDecision("CAUTION", f"scheduled_event_medium:{names}", True)
+    return SupervisorDecision("NORMAL", "event_ok", True)
 
 
 def deterministic_supervisor(
