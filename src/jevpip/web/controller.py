@@ -107,8 +107,13 @@ class UIController:
             normalized["fee_rate"] = float(instrument.paper_fee_rate)
             normalized["fee_label"] = instrument.paper_fee_label
             normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
+            strategy_enabled = bool(normalized.get("strategy_enabled", True))
+            normalized["strategy_enabled"] = strategy_enabled
+            normalized["jev_direct_enabled"] = bool(with_jev and not strategy_enabled)
             normalized["jev_direction_gate_enabled"] = bool(
-                with_jev and normalized.get("strategy") != "jev"
+                with_jev
+                and strategy_enabled
+                and normalized.get("strategy") != "jev"
             )
             config = PaperConfig(**normalized)
             if config.strategy == "jev" and not with_jev:
@@ -117,6 +122,7 @@ class UIController:
             self._paper = PaperBroker(config)
             if (
                 with_jev
+                and config.strategy_enabled
                 and config.strategy != "jev"
                 and config.deterministic_supervisor_enabled
             ):
@@ -365,7 +371,13 @@ class UIController:
 
         strategy_decision = snapshot.get("strategy_decision")
         state["paper_context"] = {
-            "configured_strategy": self._paper_config.strategy,
+            "strategy_enabled": self._paper_config.strategy_enabled,
+            "configured_strategy": (
+                self._paper_config.strategy
+                if self._paper_config.strategy_enabled
+                else None
+            ),
+            "jev_direct_enabled": self._paper_config.jev_direct_enabled,
             "jev_direction_gate_enabled": self._paper_config.jev_direction_gate_enabled,
             "latest_strategy_decision": (
                 {
@@ -442,6 +454,7 @@ class UIController:
         if (
             not self._with_jev
             or self._paper_config is None
+            or not self._paper_config.strategy_enabled
             or self._paper_config.strategy == "jev"
             or not self._paper_config.deterministic_supervisor_enabled
         ):
@@ -498,6 +511,7 @@ class UIController:
         enabled = bool(
             self._with_jev
             and self._paper_config is not None
+            and self._paper_config.strategy_enabled
             and self._paper_config.strategy != "jev"
             and self._paper_config.deterministic_supervisor_enabled
         )
