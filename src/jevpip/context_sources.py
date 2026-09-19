@@ -12,6 +12,10 @@ from jevpip.context import ContextRisk, ExternalContextItem
 BLS_ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BLS_SCHEDULE_URL = "https://www.bls.gov/schedule/"
 _BLS_TZ = ZoneInfo("America/New_York")
+_TZ_ALIASES = {
+    "Eastern Standard Time": "America/New_York",
+    "US/Eastern": "America/New_York",
+}
 
 _HIGH_RELEASES = (
     "consumer price index",
@@ -75,7 +79,10 @@ def _parse_datetime(value: str, params: dict[str, str]) -> datetime | None:
     fmt = "%Y%m%dT%H%M%S" if len(raw) >= 15 else "%Y%m%dT%H%M"
     parsed = datetime.strptime(raw[:15] if fmt.endswith("%S") else raw[:13], fmt)
     tzid = params.get("TZID")
-    zone = ZoneInfo(tzid) if tzid else _BLS_TZ
+    if tzid:
+        zone = ZoneInfo(_TZ_ALIASES.get(tzid, tzid))
+    else:
+        zone = _BLS_TZ
     return parsed.replace(tzinfo=zone).astimezone(timezone.utc)
 
 
