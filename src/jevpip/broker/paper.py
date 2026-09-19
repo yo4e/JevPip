@@ -25,6 +25,10 @@ class PaperConfig:
     max_hold_seconds: float = 8.0
     cooldown_seconds: float = 2.0
     jev_signal_max_age_seconds: float = 3.0
+    fee_rate: float = 0.0
+    fee_label: str = "手数料なし"
+    slippage_units: float = 0.0
+    short_is_synthetic: bool = False
 
 
 @dataclass(slots=True)
@@ -33,6 +37,8 @@ class PaperPosition:
     size: Decimal
     entry_price: Decimal
     opened_at: datetime
+    entry_fee: Decimal
+    entry_slippage_cost: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,16 +49,31 @@ class PaperTrade:
     price: str
     timestamp: str
     pnl: float | None
+    gross_pnl: float | None
+    fees: float
+    slippage_cost: float
     reason: str
 
 
 class PaperBroker:
-    """Single-position paper scalper driven by real BID/ASK ticks."""
+    """Single-position paper scalper driven by real BID/ASK ticks.
+
+    The simulator intentionally keeps execution simple:
+    - real BID/ASK spread
+    - optional adverse slippage
+    - per-execution proportional fee
+    - one position at a time
+
+    It is a research approximation, not an execution simulator.
+    """
 
     def __init__(self, config: PaperConfig) -> None:
         self.config = config
         self.initial_balance = Decimal(str(config.initial_balance))
-        self.realized_pnl = Decimal("0")
+        self.closed_net_pnl = Decimal("0")
+        self.gross_realized_pnl = Decimal("0")
+        self.fees_paid = Decimal("0")
+        self.slippage_cost = Decimal("0")
         self.position: PaperPosition | None = None
         self.trades: deque[PaperTrade] = deque(maxlen=200)
         self._prices: deque[tuple[datetime, Decimal]] = deque(maxlen=50000)
@@ -62,10 +83,21 @@ class PaperBroker:
         self._last_bid: Decimal | None = None
         self._last_ask: Decimal | None = None
         self._last_market_at: datetime | None = None
+        self._peak_equity = self.initial_balance
+        self._max_drawdown = Decimal("0")
+        self._max_drawdown_pct = Decimal("0")
 
     @property
     def price_unit(self) -> Decimal:
         return Decimal(str(self.config.price_unit))
+
+    @property
+    def fee_rate(self) -> Decimal:
+        return Decimal(str(self.config.fee_rate))
+
+    @property
+    def slippage_price(self) -> Decimal:
+        return self.price_unit * Decimal(str(self.config.slippage_units))
 
     @staticmethod
     def _dt(value: str) -> datetime:
@@ -106,6 +138,7 @@ class PaperBroker:
                 trade = self._open(desired, at, bid, ask)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
+        self._update_drawdown()
         return generated
 
     def _prune_prices(self, now: datetime) -> None:
@@ -143,19 +176,42 @@ class PaperBroker:
             return "SHORT"
         return "WAIT"
 
+    def _entry_price(self, side: Side, bid: Decimal, ask: Decimal) -> Decimal:
+        slip = self.slippage_price
+        return ask + slip if side == "LONG" else bid - slip
+
+    def _exit_price(self, side: Side, bid: Decimal, ask: Decimal) -> Decimal:
+        slip = self.slippage_price
+        return bid - slip if side == "LONG" else ask + slip
+
+    def _fee(self, price: Decimal, size: Decimal) -> Decimal:
+        if self.fee_rate <= 0:
+            return Decimal("0")
+        return abs(price * size) * self.fee_rate
+
     def _position_units(self, bid: Decimal, ask: Decimal) -> Decimal:
         if self.position is None:
             return Decimal("0")
+        exit_price = self._exit_price(self.position.side, bid, ask)
         if self.position.side == "LONG":
-            return (bid - self.position.entry_price) / self.price_unit
-        return (self.position.entry_price - ask) / self.price_unit
+            return (exit_price - self.position.entry_price) / self.price_unit
+        return (self.position.entry_price - exit_price) / self.price_unit
 
-    def _position_pnl(self, bid: Decimal, ask: Decimal) -> Decimal:
+    def _position_gross_pnl(self, bid: Decimal, ask: Decimal) -> Decimal:
         if self.position is None:
             return Decimal("0")
+        exit_price = self._exit_price(self.position.side, bid, ask)
         if self.position.side == "LONG":
-            return (bid - self.position.entry_price) * self.position.size
-        return (self.position.entry_price - ask) * self.position.size
+            return (exit_price - self.position.entry_price) * self.position.size
+        return (self.position.entry_price - exit_price) * self.position.size
+
+    def _position_net_pnl(self, bid: Decimal, ask: Decimal) -> Decimal:
+        if self.position is None:
+            return Decimal("0")
+        gross = self._position_gross_pnl(bid, ask)
+        exit_price = self._exit_price(self.position.side, bid, ask)
+        exit_fee = self._fee(exit_price, self.position.size)
+        return gross - self.position.entry_fee - exit_fee
 
     def _exit_reason(self, at: datetime, bid: Decimal, ask: Decimal) -> str | None:
         if self.position is None:
@@ -176,9 +232,23 @@ class PaperBroker:
         return None
 
     def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal) -> PaperTrade:
-        price = ask if side == "LONG" else bid
         size = Decimal(str(self.config.size))
-        self.position = PaperPosition(side=side, size=size, entry_price=price, opened_at=at)
+        raw_price = ask if side == "LONG" else bid
+        price = self._entry_price(side, bid, ask)
+        entry_fee = self._fee(price, size)
+        entry_slippage = abs(price - raw_price) * size
+
+        self.position = PaperPosition(
+            side=side,
+            size=size,
+            entry_price=price,
+            opened_at=at,
+            entry_fee=entry_fee,
+            entry_slippage_cost=entry_slippage,
+        )
+        self.fees_paid += entry_fee
+        self.slippage_cost += entry_slippage
+
         trade = PaperTrade(
             action="OPEN",
             side=side,
@@ -186,6 +256,9 @@ class PaperBroker:
             price=str(price),
             timestamp=at.isoformat(),
             pnl=None,
+            gross_pnl=None,
+            fees=round(float(entry_fee), 3),
+            slippage_cost=round(float(entry_slippage), 3),
             reason="momentum" if self.config.strategy == "momentum" else "jev_signal",
         )
         self.trades.appendleft(trade)
@@ -194,34 +267,69 @@ class PaperBroker:
     def _close(self, at: datetime, bid: Decimal, ask: Decimal, reason: str) -> PaperTrade:
         assert self.position is not None
         position = self.position
-        price = bid if position.side == "LONG" else ask
-        pnl = self._position_pnl(bid, ask)
-        self.realized_pnl += pnl
+        raw_price = bid if position.side == "LONG" else ask
+        price = self._exit_price(position.side, bid, ask)
+        gross_pnl = self._position_gross_pnl(bid, ask)
+        exit_fee = self._fee(price, position.size)
+        exit_slippage = abs(price - raw_price) * position.size
+        net_pnl = gross_pnl - position.entry_fee - exit_fee
+
+        self.gross_realized_pnl += gross_pnl
+        self.closed_net_pnl += net_pnl
+        self.fees_paid += exit_fee
+        self.slippage_cost += exit_slippage
         self.position = None
         self._last_exit_at = at
+
         trade = PaperTrade(
             action="CLOSE",
             side=position.side,
             size=float(position.size),
             price=str(price),
             timestamp=at.isoformat(),
-            pnl=round(float(pnl), 3),
+            pnl=round(float(net_pnl), 3),
+            gross_pnl=round(float(gross_pnl), 3),
+            fees=round(float(position.entry_fee + exit_fee), 3),
+            slippage_cost=round(float(position.entry_slippage_cost + exit_slippage), 3),
             reason=reason,
         )
         self.trades.appendleft(trade)
         return trade
 
-    def snapshot(self) -> dict[str, Any]:
+    def _equity(self) -> Decimal:
         unrealized = Decimal("0")
+        if self.position is not None and self._last_bid is not None and self._last_ask is not None:
+            unrealized = self._position_net_pnl(self._last_bid, self._last_ask)
+        return self.initial_balance + self.closed_net_pnl + unrealized
+
+    def _update_drawdown(self) -> None:
+        equity = self._equity()
+        if equity > self._peak_equity:
+            self._peak_equity = equity
+        drawdown = self._peak_equity - equity
+        if drawdown > self._max_drawdown:
+            self._max_drawdown = drawdown
+            if self._peak_equity > 0:
+                self._max_drawdown_pct = drawdown / self._peak_equity
+
+    def snapshot(self) -> dict[str, Any]:
+        unrealized_net = Decimal("0")
+        unrealized_gross = Decimal("0")
         current_units = Decimal("0")
         if self.position is not None and self._last_bid is not None and self._last_ask is not None:
-            unrealized = self._position_pnl(self._last_bid, self._last_ask)
+            unrealized_gross = self._position_gross_pnl(self._last_bid, self._last_ask)
+            unrealized_net = self._position_net_pnl(self._last_bid, self._last_ask)
             current_units = self._position_units(self._last_bid, self._last_ask)
 
-        balance = self.initial_balance + self.realized_pnl
-        equity = balance + unrealized
+        balance = self.initial_balance + self.closed_net_pnl
+        equity = balance + unrealized_net
         closed = [trade for trade in self.trades if trade.action == "CLOSE"]
         wins = sum(1 for trade in closed if (trade.pnl or 0) > 0)
+        gross_profit = sum(Decimal(str(trade.pnl or 0)) for trade in closed if (trade.pnl or 0) > 0)
+        gross_loss = abs(sum(Decimal(str(trade.pnl or 0)) for trade in closed if (trade.pnl or 0) < 0))
+        profit_factor = None
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
 
         position: dict[str, Any] | None = None
         if self.position is not None:
@@ -230,7 +338,8 @@ class PaperBroker:
                 "size": float(self.position.size),
                 "entry_price": str(self.position.entry_price),
                 "opened_at": self.position.opened_at.isoformat(),
-                "unrealized_pnl": round(float(unrealized), 3),
+                "unrealized_pnl": round(float(unrealized_net), 3),
+                "unrealized_gross_pnl": round(float(unrealized_gross), 3),
                 "current_units": round(float(current_units), 3),
                 "move_unit_label": self.config.move_unit_label,
             }
@@ -241,17 +350,26 @@ class PaperBroker:
             "initial_balance": round(float(self.initial_balance), 3),
             "balance": round(float(balance), 3),
             "equity": round(float(equity), 3),
-            "realized_pnl": round(float(self.realized_pnl), 3),
-            "unrealized_pnl": round(float(unrealized), 3),
+            "realized_pnl": round(float(self.closed_net_pnl), 3),
+            "gross_realized_pnl": round(float(self.gross_realized_pnl), 3),
+            "unrealized_pnl": round(float(unrealized_net), 3),
+            "unrealized_gross_pnl": round(float(unrealized_gross), 3),
+            "fees_paid": round(float(self.fees_paid), 3),
+            "slippage_cost": round(float(self.slippage_cost), 3),
             "position": position,
             "closed_trades": len(closed),
             "wins": wins,
             "win_rate": None if not closed else round(wins / len(closed), 4),
+            "profit_factor": None if profit_factor is None else round(float(profit_factor), 4),
+            "max_drawdown": round(float(self._max_drawdown), 3),
+            "max_drawdown_pct": round(float(self._max_drawdown_pct), 6),
             "config": asdict(self.config),
             "trades": [asdict(trade) for trade in list(self.trades)[:50]],
             "cost_model": {
                 "spread": "real_bid_ask",
-                "api_fee": "not_modeled_yet",
-                "slippage": "not_modeled_yet",
+                "fee_rate_per_execution": self.config.fee_rate,
+                "fee_label": self.config.fee_label,
+                "slippage_units": self.config.slippage_units,
+                "short_is_synthetic": self.config.short_is_synthetic,
             },
         }
