@@ -161,14 +161,20 @@ Jev schemaには含めない:
 - medium: 前10分〜後5分 CAUTION
 - paper新規entry gateへの接続
 - UI上のevent supervisor / 次イベント表示
+- Jev supervisor bounded questions
+- technical state + external contextを同じJev callへ投入
+- bounded adviceをpaper-onlyへ接続
+- `NORMAL / CAUTION / PAUSE_ENTRY`
+- allowlist済みstrategy override
+- 15〜30秒TTLと自動失効
+- deterministic event supervisorとのstrict merge
+- UIでJev supervisor state / strategy / confidence / expiryを表示
 
 未実装:
 
 - BOJ policy decision本体（固定公開時刻がないため未接続）
 - official post-release context
-- Jev supervisor live paper call
-- TTL expiration scheduling
-- A/B/C/D experiment harness
+- A/B/C/D experiment harness / counterfactual metrics
 
 ## 3つの検証機能
 
@@ -242,7 +248,6 @@ strategy PnL backtestではない。
 - paper modelはdepth / partial fill / dynamic slippage / margin constraintsを完全再現しない
 - real account open position表示は現在USD/JPY中心
 - non-JPY FX accounting未実装
-- Jev external context未接続
 - UI custom strategy parametersは恒久保存しない
 - 複合entry / exit rule builder未実装
 
@@ -295,8 +300,7 @@ Technical strategy engine + Jev supervisor.
 未実装:
 
 - BOJ policy decision本体の安全な時刻表現
-- Jev supervisor paper integration
-- A/B/C/D experiment harness
+- A/B/C/D experiment harness / counterfactual metrics
 
 ### Issue #5
 
@@ -310,13 +314,13 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. BOJ policy decision本体を、固定時刻を捏造せず扱う方法を設計
-2. Jev supervisorをpaper-onlyで接続
-6. A: technical only
-7. B: technical + deterministic event supervisor
-8. C: technical + deterministic + Jev supervisor
-9. D: Jev direct signal control（research control）
-10. 同一market path / cost modelでcounterfactualも含めて比較
+1. A/B/C/D experiment harnessを実装
+2. A: technical only
+3. B: technical + deterministic event supervisor
+4. C: technical + deterministic + Jev supervisor
+5. D: Jev direct signal control（research control）
+6. blocked candidate entryのcounterfactualを同一market path / cost modelで計算
+7. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
 
 主に見る指標:
 
@@ -342,4 +346,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> Jev supervisorをpaper-onlyで接続し、TTL → A/B/C/D experiment / counterfactualへ進む。
+> A/B/C/D experiment harnessとblocked-entry counterfactual metricsを実装する。
