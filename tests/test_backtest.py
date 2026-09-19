@@ -14,7 +14,8 @@ def test_kline_replay_keeps_spread_and_future_edges(monkeypatch):
         KLine(60_000, Decimal("100.05"), Decimal("100.05"), Decimal("100.05"), Decimal("100.05")),
     ]
 
-    def fake_fetch(date, price_type):
+    def fake_fetch(date, price_type, symbol="USD_JPY", interval="1min"):
+        assert symbol == "USD_JPY"
         return bid if price_type == "BID" else ask
 
     monkeypatch.setattr(module, "fetch_klines", fake_fetch)
