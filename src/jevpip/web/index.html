@@ -128,7 +128,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
 <section class="terminal">
   <nav class="tabs">
-    <button class="tabbtn active" data-tab="dashboard">口座・建玉</button><button class="tabbtn" data-tab="backtest">バックテスト</button><button class="tabbtn" data-tab="logs">ログ</button>
+    <button class="tabbtn active" data-tab="dashboard">口座・建玉</button><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">バックテスト</button><button class="tabbtn" data-tab="logs">ログ</button>
   </nav>
 
   <section class="tab active" id="tab-dashboard">
@@ -182,6 +182,19 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="mode-grid"><div class="field"><label class="label">日付</label><input id="bt-date" type="date"></div><div class="field"><label class="label">最大本数</label><input id="bt-limit" type="number"></div></div>
       <div class="pillrow" id="bt-summary"></div><button class="btn primary" id="bt-run" style="margin-top:8px">1分足をリプレイ</button>
       <div class="back-result" id="bt-result"><div class="results"><div class="result"><span>本数</span><strong id="bt-rows">-</strong></div><div class="result"><span>平均MID変化</span><strong id="bt-mid">-</strong></div><div class="result"><span>平均LONG edge</span><strong id="bt-long">-</strong></div><div class="result"><span>平均SHORT edge</span><strong id="bt-short">-</strong></div><div class="result"><span>LONG正edge比率</span><strong id="bt-lr">-</strong></div><div class="result"><span>SHORT正edge比率</span><strong id="bt-sr">-</strong></div></div><div class="muted" id="bt-output" style="font-size:9px;margin-top:5px"></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-compare">
+    <div class="back-wrap">
+      <div class="mode-grid">
+        <div class="field"><label class="label">保存済みraw tick日</label><select id="cmp-date"><option value="">保存データを確認中…</option></select></div>
+        <div class="field"><label class="label">RSI/MA入力</label><select id="cmp-bar"><option value="0">tick</option><option value="5">5秒bar</option><option value="15">15秒bar</option><option value="60">1分bar</option><option value="300">5分bar</option></select></div>
+      </div>
+      <label class="toggle"><input id="cmp-supervisor" type="checkbox" checked><span>安全監督あり<small>同じraw tick・数量・コスト条件で Momentum / RSI / MA を比較します。Jev APIは呼びません。</small></span></label>
+      <button class="btn primary" id="cmp-run" style="margin-top:8px">3戦略を比較</button>
+      <div class="results" id="cmp-results" style="margin-top:10px"><div class="empty">保存済みraw tickを選んで比較します。</div></div>
+      <div class="muted" id="cmp-source" style="font-size:9px;margin-top:5px"></div>
     </div>
   </section>
 
@@ -275,7 +288,7 @@ async function loadHistory(){
     toast(e.message,true)
   }
 }
-async function instrumentChanged(){applyInstrumentDefaults();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await loadHistory();refresh()}
+async function instrumentChanged(){applyInstrumentDefaults();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates()]);refresh()}
 
 async function start(){const payload={instrument_id:$("instrument").value,profile_name:$("profile").value+" / UI",profile:features(),with_jev:$("with-jev").checked,jev_every_seconds:Number($("jev-every").value||1),signal_policy_name:$("signal-policy").value+" / UI",signal_policy:signalPolicy(),paper_demo:paperConfig()};try{await api("/api/observer/start",{method:"POST",body:JSON.stringify(payload)});toast(payload.paper_demo?"デモ取引を開始しました。":"観測を開始しました。");refresh()}catch(e){toast(e.message,true)}}
 async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}"});toast("停止しました。");refresh()}catch(e){toast(e.message,true)}}
@@ -469,13 +482,53 @@ async function refresh(){
 
 async function refreshAccount(force=false){if(!state.config?.gmo_private_credentials_configured)return;try{const a=await api("/api/account"+(force?"?force=true":""));$("account-unconfigured").style.display="none";$("account-body").style.display="block";const x=a.assets||{};$("account-equity").textContent=yen(x.equity);$("account-pnl").textContent="評価損益 "+(Number(x.positionLossGain||0)>=0?"+":"")+yen(x.positionLossGain);pnlClass($("account-pnl"),x.positionLossGain);$("account-balance").textContent=yen(x.balance);$("account-available").textContent=yen(x.availableAmount);$("account-ratio").textContent=x.marginRatio==null?"-":Number(x.marginRatio).toFixed(1)+"%";$("account-swap").textContent=yen(x.totalSwap);const p=a.positions||[];$("positions").innerHTML=p.length?p.map(z=>`<div class="position"><strong>${esc(z.side)} ${Number(z.size||0).toLocaleString()}通貨</strong><br>建値 ${esc(z.price)} / 評価損益 ${yen(z.lossGain)} / swap ${yen(z.totalSwap)}</div>`).join(""):'<div class="position">USD/JPY建玉なし</div>';state.lastAccountAt=Date.now()}catch(e){toast(e.message,true)}}
 
+async function loadCompareDates(){
+  if(!state.config)return;
+  const select=$("cmp-date"),instrument=$("instrument").value;
+  try{
+    const r=await api(`/api/raw/dates?instrument_id=${encodeURIComponent(instrument)}`);
+    if(instrument!==$("instrument").value)return;
+    const dates=r.dates||[];
+    select.innerHTML=dates.length?dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(""):'<option value="">保存データなし</option>';
+    $("cmp-run").disabled=!dates.length;
+  }catch(e){
+    select.innerHTML='<option value="">取得失敗</option>';$("cmp-run").disabled=true;toast(e.message,true)
+  }
+}
+async function runRawCompare(){
+  const date=$("cmp-date").value;if(!date){toast("比較できるraw tickがまだありません。",true);return}
+  const b=$("cmp-run");b.disabled=true;b.textContent="比較中…";
+  try{
+    const payload={
+      instrument_id:$("instrument").value,
+      date,
+      strategies:["momentum","rsi_mean_reversion","ma_trend"],
+      initial_balance:Number($("paper-balance").value||100000),
+      size:Number($("paper-size").value||0)||null,
+      supervisor:$("cmp-supervisor").checked,
+      bar_seconds:Number($("cmp-bar").value||0)
+    };
+    const r=await api("/api/compare/raw",{method:"POST",body:JSON.stringify(payload)});
+    const labels={momentum:"Momentum",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
+    $("cmp-results").innerHTML=Object.entries(r.results||{}).map(([name,x])=>{
+      const net=Number(x.net_pnl||0),klass=net>0?"pos":net<0?"neg":"";
+      const pf=x.profit_factor==null?"-":Number(x.profit_factor).toFixed(2);
+      const win=x.win_rate==null?"-":pct(x.win_rate);
+      return `<div class="result"><span>${esc(labels[name]||name)}</span><strong class="${klass}">${net>=0?"+":""}${yen(net)}</strong><div class="muted" style="font-size:9px;margin-top:4px">PF ${esc(pf)} / DD ${esc(yen(x.max_drawdown))}<br>決済 ${esc(x.closed_trades)} / 勝率 ${esc(win)} / fee ${esc(yen(x.fees_paid))}</div></div>`;
+    }).join("");
+    $("cmp-source").textContent=`source: ${r.source} / ${r.bar_seconds===0?"tick":r.bar_seconds+"秒bar"} / 安全監督 ${r.supervisor?"ON":"OFF"}`;
+    toast("戦略比較が完了しました。")
+  }catch(e){toast(e.message,true)}
+  finally{b.disabled=false;b.textContent="3戦略を比較"}
+}
+
 async function runBacktest(){const spec=instrumentSpec();if(spec?.market_kind!=="fx"||spec?.quote_currency!=="JPY"){toast("統計リプレイは現在、対円FXペアのみ対応しています。BTCは過去チャート表示を使ってください。",true);return}const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=pips(s.mean_delta_mid_pips);$("bt-long").textContent=pips(s.mean_long_edge_pips);$("bt-short").textContent=pips(s.mean_short_edge_pips);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足をリプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const d=new Date();d.setDate(d.getDate()-1);$("bt-date").value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;modeChanged();applyInstrumentDefaults();await loadHistory();refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const d=new Date();d.setDate(d.getDate()-1);$("bt-date").value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;modeChanged();applyInstrumentDefaults();await Promise.all([loadHistory(),loadCompareDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
 
-document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")}));
+document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active");if(b.dataset.tab==="compare")loadCompareDates()}));
 ["ind-ma20","ind-ma200"].forEach(id=>$(id).addEventListener("change",()=>{const active=state.lastStatus?.instrument_id===$("instrument").value;const live=active?(state.lastStatus?.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[])}));
-$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("p-bar-seconds").addEventListener("change",updateTradeSummary);$("paper-supervisor").addEventListener("change",updateTradeSummary);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
+$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("p-bar-seconds").addEventListener("change",updateTradeSummary);$("paper-supervisor").addEventListener("change",updateTradeSummary);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>
