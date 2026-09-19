@@ -423,3 +423,95 @@ def test_supervisor_strategy_override_rejects_jev_and_unknown_values():
     }
     with pytest.raises(ValueError, match="Unsupported"):
         broker.on_tick(event, strategy_override="jev")
+
+
+
+def test_jev_direction_gate_requires_fresh_agreement():
+    config = PaperConfig(
+        strategy="momentum",
+        jev_direction_gate_enabled=True,
+        jev_signal_max_age_seconds=3,
+        size=1000,
+        price_unit=0.01,
+        momentum_window_seconds=1,
+        momentum_trigger_units=0.5,
+        max_spread_units=2,
+        take_profit_units=100,
+        stop_loss_units=100,
+        cooldown_seconds=0,
+    )
+
+    broker = PaperBroker(config)
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    blocked = broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
+    assert blocked == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "jev_gate_warmup"
+
+    broker.on_decision(
+        {
+            "research_signal": "WAIT",
+            "recorded_at": "2026-09-19T00:00:01+00:00",
+        }
+    )
+    blocked = broker.on_tick(tick("2026-09-19T00:00:02+00:00", "150.020", "150.022"))
+    assert blocked == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "jev_gate_wait"
+
+    broker.on_decision(
+        {
+            "research_signal": "SHORT",
+            "recorded_at": "2026-09-19T00:00:02+00:00",
+        }
+    )
+    blocked = broker.on_tick(tick("2026-09-19T00:00:03+00:00", "150.030", "150.032"))
+    assert blocked == []
+    assert broker.snapshot()["strategy_decision"]["reason"] == "jev_gate_disagree"
+
+    broker.on_decision(
+        {
+            "research_signal": "LONG",
+            "recorded_at": "2026-09-19T00:00:03+00:00",
+        }
+    )
+    opened = broker.on_tick(tick("2026-09-19T00:00:04+00:00", "150.040", "150.042"))
+    assert len(opened) == 1
+    assert opened[0]["action"] == "OPEN"
+    assert opened[0]["side"] == "LONG"
+    assert opened[0]["reason"].startswith("jev_gate_agree:")
+
+
+def test_jev_direction_gate_does_not_block_position_exit():
+    broker = PaperBroker(
+        PaperConfig(
+            strategy="momentum",
+            jev_direction_gate_enabled=True,
+            jev_signal_max_age_seconds=3,
+            size=1000,
+            price_unit=0.01,
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=1,
+            stop_loss_units=100,
+            cooldown_seconds=0,
+        )
+    )
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    broker.on_decision(
+        {
+            "research_signal": "LONG",
+            "recorded_at": "2026-09-19T00:00:00+00:00",
+        }
+    )
+    opened = broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
+    assert opened and opened[0]["action"] == "OPEN"
+
+    broker.on_decision(
+        {
+            "research_signal": "WAIT",
+            "recorded_at": "2026-09-19T00:00:01+00:00",
+        }
+    )
+    closed = broker.on_tick(tick("2026-09-19T00:00:02+00:00", "150.024", "150.026"))
+    assert closed and closed[0]["action"] == "CLOSE"
+    assert closed[0]["reason"] == "take_profit"
