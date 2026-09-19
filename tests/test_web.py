@@ -8,21 +8,48 @@ def test_web_root_is_japanese_and_has_dashboard_features():
     with TestClient(app) as client:
         response = client.get("/")
         assert response.status_code == 200
-        assert "リアルタイムチャート" in response.text
+        assert "チャート" in response.text
+        assert "BTC/JPY" in response.text
         assert "デモ口座" in response.text
-        assert "実口座（参照専用）" in response.text
+        assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月の満ち欠け" in response.text
 
 
-def test_config_exposes_profiles_and_safety_flags():
+def test_config_exposes_btc_profiles_and_safety_flags():
     with TestClient(app) as client:
         response = client.get("/api/config")
         assert response.status_code == 200
         payload = response.json()
+        assert payload["instruments"]["BTC"]["display_symbol"] == "BTC/JPY"
+        assert payload["instruments"]["BTC"]["move_unit_label"] == "円"
+        assert payload["instruments"]["USD_JPY"]["move_unit_label"] == "pips"
         assert "moon_only" in payload["profiles"]
         assert "research_default" in payload["signal_policies"]
         assert payload["live_trading_available"] is False
         assert "gmo_private_credentials_configured" in payload
+
+
+def test_chart_history_endpoint_routes_btc(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_history(*, instrument_id, interval, date):
+        assert instrument_id == "BTC"
+        assert interval == "5min"
+        assert date == "20260919"
+        return {
+            "instrument_id": "BTC",
+            "interval": "5min",
+            "date": "20260919",
+            "candles": [{"timestamp": "2026-09-19T00:00:00+00:00", "close": 17000000}],
+        }
+
+    monkeypatch.setattr(controller, "fetch_chart_history", fake_history)
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/chart/history?instrument_id=BTC&interval=5min&date=20260919"
+        )
+        assert response.status_code == 200
+        assert response.json()["candles"][0]["close"] == 17000000
 
 
 def test_account_endpoint_requires_local_credentials(monkeypatch):
