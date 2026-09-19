@@ -27,6 +27,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "baseline含む5者比較" in response.text
         assert "1分bar" in response.text
         assert "安全監督" in response.text
+        assert "Jev監督" in response.text
         assert "公式イベント更新" in response.text
         assert "tick age" in response.text
         assert "Take Profit" in response.text
@@ -623,3 +624,147 @@ def test_periodic_context_refresh_has_minimum_interval(monkeypatch):
 
     asyncio.run(run_once())
     assert delays == [60.0]
+
+
+def test_controller_jev_supervisor_ttl_and_strategy(monkeypatch):
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+
+    from jevpip.broker.paper import PaperBroker, PaperConfig
+    from jevpip.web.controller import UIController
+
+    controller = UIController()
+    config = PaperConfig(
+        strategy="momentum",
+        momentum_window_seconds=10,
+        momentum_trigger_units=0,
+        max_spread_units=100,
+        take_profit_units=100,
+        stop_loss_units=100,
+        deterministic_supervisor_enabled=True,
+    )
+    controller._with_jev = True
+    controller._paper_config = config
+    controller._paper = PaperBroker(config)
+    controller._instrument_id = "USD_JPY"
+
+    recorded_at = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+    asyncio.run(
+        controller._on_update(
+            {
+                "kind": "decision",
+                "recorded_at": recorded_at.isoformat(),
+                "market_timestamp": recorded_at.isoformat(),
+                "research_signal": "WAIT",
+                "jev_supervisor": {
+                    "state": "CAUTION",
+                    "strategy": "ma_trend",
+                    "confidence": 0.8,
+                    "ttl_seconds": 20,
+                    "reason": "bounded test",
+                },
+                "jev_supervisor_error": None,
+            }
+        )
+    )
+
+    active = controller._active_jev_supervisor(recorded_at + timedelta(seconds=19))
+    assert active is not None
+    assert active.strategy == "ma_trend"
+
+    expired = controller._active_jev_supervisor(recorded_at + timedelta(seconds=21))
+    assert expired is None
+
+
+def test_controller_jev_supervisor_can_pause_new_entries():
+    import asyncio
+    from datetime import datetime, timezone
+
+    from jevpip.broker.paper import PaperBroker, PaperConfig
+    from jevpip.web.controller import UIController
+
+    controller = UIController()
+    config = PaperConfig(
+        strategy="momentum",
+        momentum_window_seconds=10,
+        momentum_trigger_units=0,
+        max_spread_units=100,
+        take_profit_units=100,
+        stop_loss_units=100,
+        deterministic_supervisor_enabled=True,
+    )
+    controller._with_jev = True
+    controller._paper_config = config
+    controller._paper = PaperBroker(config)
+    controller._instrument_id = "USD_JPY"
+
+    at = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+    asyncio.run(
+        controller._on_update(
+            {
+                "kind": "decision",
+                "recorded_at": at.isoformat(),
+                "market_timestamp": at.isoformat(),
+                "research_signal": "WAIT",
+                "jev_supervisor": {
+                    "state": "PAUSE_ENTRY",
+                    "strategy": None,
+                    "confidence": 0.9,
+                    "ttl_seconds": 30,
+                    "reason": "bounded test pause",
+                },
+                "jev_supervisor_error": None,
+            }
+        )
+    )
+
+    async def feed():
+        for second, bid in [(1, 100.00), (2, 100.02), (3, 100.04)]:
+            timestamp = f"2026-09-19T12:00:{second:02d}+00:00"
+            await controller._on_update(
+                {
+                    "kind": "tick",
+                    "instrument_id": "USD_JPY",
+                    "symbol": "USD_JPY",
+                    "market_timestamp": timestamp,
+                    "received_at": timestamp,
+                    "bid": f"{bid:.2f}",
+                    "ask": f"{bid + 0.01:.2f}",
+                    "status": "OPEN",
+                }
+            )
+
+    asyncio.run(feed())
+
+    assert not any(
+        event.get("kind") == "paper_trade" and event.get("action") == "OPEN"
+        for event in controller._events
+    )
+
+
+def test_controller_jev_context_state_is_lookahead_safe():
+    from datetime import datetime, timezone
+
+    from jevpip.context import ExternalContextItem
+    from jevpip.web.controller import UIController
+
+    controller = UIController()
+    controller._external_context_items = (
+        ExternalContextItem(
+            source="bls",
+            source_id="future-observation",
+            kind="scheduled_event",
+            title="Consumer Price Index",
+            observed_at=datetime(2026, 9, 19, 12, 30, tzinfo=timezone.utc),
+            source_url="https://example.test/cpi",
+            scheduled_at=datetime(2026, 9, 19, 13, 0, tzinfo=timezone.utc),
+            currencies=("USD",),
+            risk="high",
+        ),
+    )
+
+    state = controller._jev_context_state(
+        datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc),
+        "USD_JPY",
+    )
+    assert state["external_context"] == []
