@@ -194,6 +194,17 @@ async def get_status() -> dict[str, Any]:
     return controller.snapshot()
 
 
+@app.post("/api/context/refresh")
+async def refresh_context(
+    instrument_id: str = "USD_JPY",
+) -> dict[str, Any]:
+    try:
+        get_instrument(instrument_id)
+        return await controller.refresh_external_context(instrument_id)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/chart/history")
 async def get_chart_history(
     instrument_id: str = "USD_JPY",
