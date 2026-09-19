@@ -98,6 +98,7 @@ def _baseline_buy_and_hold(
     instrument_id: str,
     initial_balance: float,
     size: float | None,
+    slippage_units: float | None = None,
 ) -> dict[str, Any]:
     instrument = get_instrument(instrument_id)
     quantity = (
@@ -112,7 +113,12 @@ def _baseline_buy_and_hold(
         }
 
     price_unit = instrument.price_unit
-    slippage_price = price_unit * instrument.default_slippage_units
+    configured_slippage = (
+        instrument.default_slippage_units
+        if slippage_units is None
+        else Decimal(str(slippage_units))
+    )
+    slippage_price = price_unit * configured_slippage
     fee_rate = instrument.paper_fee_rate
 
     first_ask = Decimal(str(ticks[0]["ask"]))
@@ -188,6 +194,7 @@ def build_baselines(
     instrument_id: str,
     initial_balance: float = 100000.0,
     size: float | None = None,
+    slippage_units: float | None = None,
 ) -> dict[str, dict[str, Any]]:
     return {
         "no_trade": _baseline_no_trade(
@@ -199,6 +206,7 @@ def build_baselines(
             instrument_id=instrument_id,
             initial_balance=initial_balance,
             size=size,
+            slippage_units=slippage_units,
         ),
     }
 
