@@ -136,3 +136,52 @@ def test_observer_keeps_decision_when_supervisor_answer_is_incomplete(tmp_path, 
     assert decision["jev_supervisor"] is None
     assert "missing required" in decision["jev_supervisor_error"]
     assert not any(event["kind"] == "error" for event in events)
+
+
+
+async def two_ticks(_instrument_id):
+    for second in (0, 1):
+        yield MarketTick(
+            instrument_id="USD_JPY",
+            symbol="USD_JPY",
+            display_symbol="USD/JPY",
+            bid=Decimal(f"150.00{second}"),
+            ask=Decimal(f"150.01{second}"),
+            market_timestamp=datetime(2026, 9, 20, 0, 0, second, tzinfo=UTC),
+            received_at=datetime(2026, 9, 20, 0, 0, second, tzinfo=UTC),
+            status="OPEN",
+        )
+        await asyncio.sleep(0)
+
+
+def test_observer_does_not_block_ticks_while_jev_is_running(tmp_path, monkeypatch):
+    monkeypatch.setattr(observer_module, "stream_ticker", two_ticks)
+    original_to_thread = asyncio.to_thread
+
+    async def delayed_to_thread(func, /, *args, **kwargs):
+        await asyncio.sleep(0.01)
+        return await original_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr(observer_module.asyncio, "to_thread", delayed_to_thread)
+    client = FakeJevClient(supervisor_response())
+    events = []
+
+    asyncio.run(
+        observe(
+            {},
+            tmp_path,
+            client,
+            jev_every_seconds=0,
+            max_ticks=2,
+            instrument_id="USD_JPY",
+            on_update=events.append,
+            emit_console=False,
+        )
+    )
+
+    kinds = [event["kind"] for event in events]
+    assert kinds[:2] == ["tick", "tick"]
+    assert kinds.count("decision") == 1
+    decision = next(event for event in events if event["kind"] == "decision")
+    assert decision["basis_market_timestamp"] == "2026-09-20T00:00:00+00:00"
+    assert decision["requested_at"] <= decision["available_at"]
