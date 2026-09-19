@@ -26,3 +26,10 @@ def test_supervisor_questions_are_bounded_and_allowlisted():
     assert "leverage" in text
     assert "buy" not in questions
     assert "sell" not in questions
+
+
+
+def test_direction_question_uses_selected_instrument_label():
+    questions = question_specs("5s", "BTC/JPY")
+    assert "BTC/JPY" in questions["direction"]["instructions"]
+    assert "USD/JPY" not in questions["direction"]["instructions"]
