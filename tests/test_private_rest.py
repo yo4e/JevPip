@@ -38,3 +38,27 @@ def test_private_snapshot_uses_get_only():
     assert methods == ["GET", "GET"]
     assert snapshot["assets"]["balance"] == "100000"
     assert snapshot["positions"][0]["symbol"] == "USD_JPY"
+
+
+def test_private_client_acquires_rate_limit_before_each_get():
+    calls = []
+
+    class FakeLimiter:
+        def acquire(self):
+            calls.append("acquire")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/account/assets"):
+            return httpx.Response(200, json={"status": 0, "data": {}})
+        return httpx.Response(200, json={"status": 0, "data": {"list": []}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = GMOPrivateReadClient(
+            "key",
+            "secret",
+            client=http_client,
+            rate_limiter=FakeLimiter(),
+        )
+        client.fetch_snapshot()
+
+    assert calls == ["acquire", "acquire"]
