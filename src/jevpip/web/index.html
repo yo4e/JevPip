@@ -81,7 +81,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
     <section class="side-section">
       <h2>Jev</h2>
-      <label class="toggle"><input id="with-jev" type="checkbox"><span>Jev判断を追加<small>現在は研究シグナル。監督レイヤーは次段階。</small></span></label>
+      <label class="toggle"><input id="with-jev" type="checkbox"><span>Jev判断を追加<small>コード戦略＋安全監督ONでは、bounded supervisorとして新規entry停止・許可済み戦略切替にも使います。</small></span></label>
     </section>
 
     <section class="side-section">
@@ -176,6 +176,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="money" id="decision-signal">WAIT</div>
           <div class="decision-grid"><div class="stat"><span>UP</span><strong id="up">-</strong></div><div class="stat"><span>DOWN</span><strong id="down">-</strong></div><div class="stat"><span>FLAT</span><strong id="flat">-</strong></div><div class="stat"><span>latency</span><strong id="latency">-</strong></div></div>
         </div>
+        <div class="notice" id="jev-supervisor" style="margin-top:8px">Jev監督: OFF</div>
       </div>
     </div>
   </section>
@@ -371,7 +372,21 @@ $("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAI
 $("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実BID/ASK"+(p.cost_model?.slippage_units?(" / slippage "+p.cost_model.slippage_units+" "+(instrumentSpec()?.move_unit_label||"")):"")+(p.cost_model?.short_is_synthetic?" / SHORTは仮想ショート":"");
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
-function renderDecision(d){if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}$("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"}
+function renderDecision(d,sup){
+  const supBox=$("jev-supervisor");
+  if(supBox){
+    if(!sup?.enabled){supBox.textContent="Jev監督: OFF"}
+    else if(sup?.advice){
+      const a=sup.advice;
+      const strategy=a.strategy?(" / 戦略 "+a.strategy):"";
+      const expires=sup.expires_at?(" / 期限 "+new Date(sup.expires_at).toLocaleTimeString("ja-JP")):"";
+      supBox.textContent=`Jev監督: ${a.state}${strategy} / confidence ${pct(a.confidence)}${expires}`;
+    }else{supBox.textContent="Jev監督: 待機中"}
+    if(sup?.error)supBox.textContent+=" / "+sup.error;
+  }
+  if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}
+  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"
+}
 
 function chartPrice(p){
   const direct=Number(p?.mid ?? p?.close);
@@ -560,7 +575,7 @@ async function refresh(){
     $("signal-sub").textContent=activeInstrument&&s.with_jev?"Jev ON":"Jev OFF";
     renderPaper($("mode").value==="paper"&&activeInstrument?s.paper:null);
     renderEventContext(activeInstrument?s.external_context:null);
-    renderDecision(d);
+    renderDecision(d,activeInstrument?s.jev_supervisor:null);
     const live=activeInstrument?(s.chart||[]):[];
     drawChart([...state.history,...live],activeInstrument?s.paper?.trades:[]);
     renderLogs(activeInstrument?s.events:[]);
