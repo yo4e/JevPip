@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from statistics import fmean
 import time
 from typing import Any
@@ -10,7 +10,9 @@ from typing import Any
 from jevpip.backtest.kline import replay_kline
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.config import Settings
+from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
+from jevpip.instruments import get_instrument
 from jevpip.observer import observe
 from jevpip.signals import SignalPolicy
 
@@ -25,6 +27,7 @@ class UIController:
         self._chart: deque[dict[str, Any]] = deque(maxlen=900)
         self._status = "stopped"
         self._started_at: str | None = None
+        self._instrument_id = "USD_JPY"
         self._profile_name: str | None = None
         self._signal_policy_name: str | None = None
         self._with_jev = False
@@ -42,6 +45,7 @@ class UIController:
     async def start_observer(
         self,
         *,
+        instrument_id: str,
         profile_name: str,
         profile: dict[str, Any],
         with_jev: bool,
@@ -53,6 +57,8 @@ class UIController:
         if self.running:
             raise RuntimeError("観測はすでに実行中です。")
 
+        instrument = get_instrument(instrument_id)
+
         jev_client = None
         if with_jev:
             if not self.settings.typesafe_api_key:
@@ -62,7 +68,10 @@ class UIController:
             jev_client = JevClient(self.settings.typesafe_api_key)
 
         if paper_config is not None:
-            config = PaperConfig(**paper_config)
+            normalized = dict(paper_config)
+            normalized["price_unit"] = float(instrument.price_unit)
+            normalized["move_unit_label"] = instrument.move_unit_label
+            config = PaperConfig(**normalized)
             if config.strategy == "jev" and not with_jev:
                 raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
             self._paper_config = config
@@ -73,6 +82,7 @@ class UIController:
 
         self._status = "running"
         self._started_at = datetime.now(timezone.utc).isoformat()
+        self._instrument_id = instrument.id
         self._profile_name = profile_name
         self._signal_policy_name = signal_policy_name if with_jev else None
         self._with_jev = with_jev
@@ -91,10 +101,11 @@ class UIController:
                 None,
                 signal_policy if with_jev else None,
                 signal_policy_name if with_jev else None,
+                instrument_id=instrument.id,
                 on_update=self._on_update,
                 emit_console=False,
             ),
-            name="jevpip-ui-observer",
+            name=f"jevpip-ui-observer-{instrument.id}",
         )
         self._task.add_done_callback(self._observer_done)
 
@@ -169,6 +180,7 @@ class UIController:
             "status": self._status,
             "running": self.running,
             "started_at": self._started_at,
+            "instrument_id": self._instrument_id,
             "profile_name": self._profile_name,
             "with_jev": self._with_jev,
             "signal_policy_name": self._signal_policy_name,
@@ -178,6 +190,39 @@ class UIController:
             "chart": list(self._chart),
             "paper": None if self._paper is None else self._paper.snapshot(),
             "events": list(self._events)[:40],
+        }
+
+    async def fetch_chart_history(
+        self,
+        *,
+        instrument_id: str,
+        interval: str,
+        date: str,
+    ) -> dict[str, Any]:
+        get_instrument(instrument_id)
+        rows = await asyncio.to_thread(fetch_history, instrument_id, date, interval)
+        used_date = date
+        if not rows:
+            previous = datetime.strptime(date, "%Y%m%d") - timedelta(days=1)
+            used_date = previous.strftime("%Y%m%d")
+            rows = await asyncio.to_thread(fetch_history, instrument_id, used_date, interval)
+        return {
+            "instrument_id": instrument_id,
+            "interval": interval,
+            "date": used_date,
+            "candles": [
+                {
+                    "timestamp": datetime.fromtimestamp(
+                        item.open_time_ms / 1000,
+                        tz=timezone.utc,
+                    ).isoformat(),
+                    "open": float(item.open),
+                    "high": float(item.high),
+                    "low": float(item.low),
+                    "close": float(item.close),
+                }
+                for item in rows
+            ],
         }
 
     async def fetch_real_account(self, *, force: bool = False) -> dict[str, Any]:
