@@ -66,7 +66,8 @@ class PaperDemoInput(BaseModel):
     stop_loss_units: float = Field(default=1.0, gt=0, le=100000000)
     max_hold_seconds: float = Field(default=8.0, ge=1, le=600)
     cooldown_seconds: float = Field(default=2.0, ge=0, le=600)
-    jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)\n    slippage_units: float = Field(default=0.0, ge=0, le=100000000)
+    jev_signal_max_age_seconds: float = Field(default=3.0, ge=0.5, le=60)
+    slippage_units: float = Field(default=0.0, ge=0, le=100000000)
 
 
 class ObserverStartRequest(BaseModel):
@@ -148,7 +149,7 @@ async def get_chart_history(
         get_instrument(instrument_id)
         datetime.strptime(date, "%Y%m%d")
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="日付はYYYYMMDD形式で指定してください。") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         return await controller.fetch_chart_history(
             instrument_id=instrument_id,
