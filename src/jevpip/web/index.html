@@ -108,6 +108,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field"><label class="label" id="p-trigger-label">エントリー幅</label><input id="p-trigger" type="number" value=".6" step="any"></div>
               <div class="field"><label class="label">最大保有 秒</label><input id="p-hold" type="number" value="8" step="1"></div>
               <div class="field"><label class="label">再entry待機 秒</label><input id="p-cool" type="number" value="2" step=".5"></div>
+              <div class="field"><label class="label" id="p-slip-label">slippage（pips）</label><input id="p-slip" type="number" value="0" min="0" step="any"></div>
             </div>
           </div>
         </div>
@@ -128,7 +129,17 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div id="paper-empty" class="empty">デモ自動売買を選ぶと動きます。</div>
         <div id="paper-body" style="display:none">
           <div class="money" id="paper-money">¥0</div><div class="pnl" id="paper-total-pnl">±¥0</div>
-          <div class="account-stats"><div class="stat"><span>確定損益</span><strong id="paper-realized">-</strong></div><div class="stat"><span>含み損益</span><strong id="paper-unrealized">-</strong></div><div class="stat"><span>決済</span><strong id="paper-trades">-</strong></div><div class="stat"><span>勝率</span><strong id="paper-winrate">-</strong></div></div>
+          <div class="account-stats">
+            <div class="stat"><span>コスト後確定損益</span><strong id="paper-realized">-</strong></div>
+            <div class="stat"><span>含み損益</span><strong id="paper-unrealized">-</strong></div>
+            <div class="stat"><span>粗利益</span><strong id="paper-gross">-</strong></div>
+            <div class="stat"><span>手数料</span><strong id="paper-fees">-</strong></div>
+            <div class="stat"><span>Profit Factor</span><strong id="paper-pf">-</strong></div>
+            <div class="stat"><span>最大DD</span><strong id="paper-dd">-</strong></div>
+            <div class="stat"><span>決済</span><strong id="paper-trades">-</strong></div>
+            <div class="stat"><span>勝率</span><strong id="paper-winrate">-</strong></div>
+          </div>
+          <div class="notice" id="paper-cost-note"></div>
           <div class="position" id="paper-position">建玉なし</div><button class="btn" id="paper-reset" disabled style="margin-top:6px">デモ口座リセット</button>
         </div>
         <div style="display:none"><span id="paper-equity">-</span><span id="paper-pnl">-</span></div>
@@ -187,7 +198,7 @@ function featureNames(){const p=features(),a=[];if(p.quote)a.push("価格");if(p
 function renderFeatures(){const h=featureNames().map(x=>`<span class="pill">${esc(x)}</span>`).join("");$("feature-summary").innerHTML=h;$("bt-summary").innerHTML=h}
 function applySignal(name){const p=state.config.signal_policies[name];if(!p)return;$("s-dir").value=p.min_direction_probability;$("s-margin").value=p.min_direction_margin;$("s-noise").value=p.max_noise_probability;$("s-rev").value=p.max_reversal_probability;$("s-trend").value=p.min_trend_strength;const i=instrumentSpec();$("s-spread").value=i?.market_kind==="crypto_spot"?i.default_max_spread:p.max_spread_pips}
 function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
-function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3}}
+function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0)}}
 
 function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper($("mode").value==="paper"&&active?state.lastStatus.paper:null)}}
 function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true;updateTradeSummary()}
@@ -203,7 +214,8 @@ function updateTradeSummary(){
     const sec=$("p-window").value,trigger=$("p-trigger").value;
     entry=`${sec}秒のMID変化が +${trigger}${unit} 以上なら <span class="buy">買い</span>、-${trigger}${unit} 以下なら <span class="sell">売り</span>。`;
   }
-  box.innerHTML=`<strong>${esc(i.display_symbol)} / 注文数量 ${size} ${esc(i.quantity_label)}</strong><br>${entry}<br>Take Profit +${esc($("p-tp").value)}${esc(unit)} / Stop Loss -${esc($("p-sl").value)}${esc(unit)} / 最大spread ${esc($("p-spread").value)}${esc(unit)}`;
+  const synthetic=i.paper_short_is_synthetic?' / SHORTは仮想ショート':'';
+  box.innerHTML=`<strong>${esc(i.display_symbol)} / 注文数量 ${size} ${esc(i.quantity_label)}</strong><br>${entry}<br>Take Profit +${esc($("p-tp").value)}${esc(unit)} / Stop Loss -${esc($("p-sl").value)}${esc(unit)} / 最大spread ${esc($("p-spread").value)}${esc(unit)}<br>${esc(i.paper_fee_label)} / slippage ${esc($("p-slip").value||0)}${esc(unit)}${synthetic}`;
 }
 function instrumentSpec(){return state.config?.instruments?.[$("instrument").value]||null}
 function applyInstrumentDefaults(){
@@ -213,11 +225,13 @@ function applyInstrumentDefaults(){
   $("p-spread").value=i.default_max_spread;
   $("p-tp").value=i.default_take_profit;
   $("p-sl").value=i.default_stop_loss;
+  $("p-slip").value=i.default_slippage_units||0;
   $("paper-size-label").textContent="注文数量（"+i.quantity_label+"）";
   $("p-trigger-label").textContent="エントリー判定幅（"+i.move_unit_label+"）";
   $("p-spread-label").textContent="最大スプレッド（"+i.move_unit_label+"）";
   $("p-tp-label").textContent="利確幅 / Take Profit（"+i.move_unit_label+"）";
   $("p-sl-label").textContent="損切り幅 / Stop Loss（"+i.move_unit_label+"）";
+  $("p-slip-label").textContent="slippage（"+i.move_unit_label+"）";
   $("mid-label").textContent=i.display_symbol+" MID";
   applySignal($("signal-policy").value);
   updateTradeSummary();
@@ -244,7 +258,17 @@ async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
 function renderPaper(p){if(!p){$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
-$("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;$("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;$("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);$("paper-equity").textContent=yen(p.equity);$("paper-pnl").textContent="損益 "+(total>=0?"+":"")+yen(total);$("paper-realized").textContent=yen(p.realized_pnl);$("paper-unrealized").textContent=yen(p.unrealized_pnl);$("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.win_rate==null?"-":pct(p.win_rate);$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / 含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
+$("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;
+$("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;
+$("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);
+$("paper-equity").textContent=yen(p.equity);$("paper-pnl").textContent="損益 "+(total>=0?"+":"")+yen(total);
+$("paper-realized").textContent=yen(p.realized_pnl);$("paper-unrealized").textContent=yen(p.unrealized_pnl);
+$("paper-gross").textContent=yen(p.gross_realized_pnl);$("paper-fees").textContent=yen(p.fees_paid);
+$("paper-pf").textContent=p.profit_factor==null?(p.closed_trades&&p.realized_pnl>0?"∞":"-"):Number(p.profit_factor).toFixed(2);
+$("paper-dd").textContent=yen(p.max_drawdown)+" / "+pct(p.max_drawdown_pct);
+$("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.win_rate==null?"-":pct(p.win_rate);
+$("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実BID/ASK"+(p.cost_model?.slippage_units?(" / slippage "+p.cost_model.slippage_units+" "+(instrumentSpec()?.move_unit_label||"")):"")+(p.cost_model?.short_is_synthetic?" / SHORTは仮想ショート":"");
+$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
 function renderDecision(d){if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";return}$("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms"}
 
@@ -386,7 +410,7 @@ async function init(){try{state.config=await api("/api/config");$("instrument").
 
 document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")}));
 ["ind-ma20","ind-ma200"].forEach(id=>$(id).addEventListener("change",()=>{const active=state.lastStatus?.instrument_id===$("instrument").value;const live=active?(state.lastStatus?.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[])}));
-$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
+$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>
