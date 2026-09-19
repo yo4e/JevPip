@@ -129,7 +129,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 <div class="terminal-resizer" id="terminal-resizer" title="ドラッグして下部パネルの高さを変更。ダブルクリックで標準サイズへ戻します。"></div>
 <section class="terminal">
   <nav class="tabs">
-    <button class="tabbtn active" data-tab="dashboard">口座・建玉</button><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">バックテスト</button><button class="tabbtn" data-tab="logs">ログ</button>
+    <button class="tabbtn active" data-tab="dashboard">口座・建玉</button><button class="tabbtn" data-tab="strategybt">戦略BT</button><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">統計リプレイ</button><button class="tabbtn" data-tab="logs">ログ</button>
   </nav>
 
   <section class="tab active" id="tab-dashboard">
@@ -178,6 +178,38 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
     </div>
   </section>
 
+  <section class="tab" id="tab-strategybt">
+    <div class="back-wrap">
+      <div class="mode-grid">
+        <div class="field"><label class="label">日付</label><input id="sbt-date" type="date"></div>
+        <div class="field"><label class="label">最大本数</label><input id="sbt-limit" type="number" placeholder="空欄=全件"></div>
+      </div>
+      <div class="mode-grid">
+        <div class="field"><label class="label">Momentum参照（1分足本数）</label><input id="sbt-lookback" type="number" value="1" min="1"></div>
+        <div class="field"><label class="label">最大保有（1分足本数）</label><input id="sbt-hold" type="number" value="8" min="1"></div>
+        <div class="field"><label class="label">再entry待機（1分足本数）</label><input id="sbt-cool" type="number" value="1" min="0"></div>
+      </div>
+      <label class="toggle"><input id="sbt-supervisor" type="checkbox" checked><span>安全監督あり<small>historical spread上限を含むcode-only guardを使います。BTCはhistorical spreadがないためfee/slippage中心の近似です。</small></span></label>
+      <div class="notice" id="sbt-config-note" style="margin-top:8px">右側の自動売買設定を読み込みます。</div>
+      <button class="btn primary" id="sbt-run" style="margin-top:8px">現在設定で戦略バックテスト</button>
+      <div class="back-result" id="sbt-result" style="display:none">
+        <div class="results">
+          <div class="result"><span>戦略損益</span><strong id="sbt-pnl">-</strong></div>
+          <div class="result"><span>Buy & Hold</span><strong id="sbt-hold-pnl">-</strong></div>
+          <div class="result"><span>No Trade</span><strong id="sbt-no-trade">-</strong></div>
+          <div class="result"><span>Profit Factor</span><strong id="sbt-pf">-</strong></div>
+          <div class="result"><span>最大DD</span><strong id="sbt-dd">-</strong></div>
+          <div class="result"><span>勝率</span><strong id="sbt-win">-</strong></div>
+          <div class="result"><span>決済</span><strong id="sbt-trades">-</strong></div>
+          <div class="result"><span>手数料</span><strong id="sbt-fees">-</strong></div>
+          <div class="result"><span>平均1取引</span><strong id="sbt-avg">-</strong></div>
+        </div>
+        <div class="notice" id="sbt-mode-note" style="margin-top:8px"></div>
+        <div class="muted" id="sbt-exits" style="font-size:10px;margin-top:6px"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="tab" id="tab-backtest">
     <div class="back-wrap">
       <div class="mode-grid">
@@ -185,7 +217,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="field"><label class="label">最大本数</label><input id="bt-limit" type="number" placeholder="空欄=全件"></div>
       </div>
       <div class="muted" id="bt-note" style="font-size:10px;margin:0 0 8px">過去日付を自由に選べます。初期値は前日です。</div>
-      <div class="pillrow" id="bt-summary"></div><button class="btn primary" id="bt-run" style="margin-top:8px">1分足をリプレイ</button>
+      <div class="pillrow" id="bt-summary"></div><button class="btn primary" id="bt-run" style="margin-top:8px">1分足を統計リプレイ</button>
       <div class="back-result" id="bt-result">
         <div class="results">
           <div class="result"><span>本数</span><strong id="bt-rows">-</strong></div>
@@ -245,7 +277,7 @@ function signalPolicy(){return{min_direction_probability:Number($("s-dir").value
 function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
 function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper($("mode").value==="paper"&&active?state.lastStatus.paper:null)}}
-function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true;updateTradeSummary()}
+function strategyChanged(){if($("paper-strategy").value==="jev")$("with-jev").checked=true;updateTradeSummary();updateStrategyBacktestSummary()}
 function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
   const i=instrumentSpec();if(!i)return;
@@ -314,7 +346,7 @@ async function loadHistory(){
     toast(e.message,true)
   }
 }
-async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates()]);refresh()}
+async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates()]);refresh()}
 
 async function start(){const payload={instrument_id:$("instrument").value,profile_name:$("profile").value+" / UI",profile:features(),with_jev:$("with-jev").checked,jev_every_seconds:Number($("jev-every").value||1),signal_policy_name:$("signal-policy").value+" / UI",signal_policy:signalPolicy(),paper_demo:paperConfig()};try{await api("/api/observer/start",{method:"POST",body:JSON.stringify(payload)});toast(payload.paper_demo?"デモ取引を開始しました。":"観測を開始しました。");refresh()}catch(e){toast(e.message,true)}}
 async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}"});toast("停止しました。");refresh()}catch(e){toast(e.message,true)}}
@@ -556,17 +588,79 @@ async function runRawCompare(){
   finally{b.disabled=false;b.textContent="baseline含む5者比較"}
 }
 
-function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
-async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足をリプレイ"}}
+function strategyNameJa(name){return name==="momentum"?"Momentum":name==="rsi_mean_reversion"?"RSI逆張り":name==="ma_trend"?"MAトレンド":name}
+function updateStrategyBacktestSummary(){
+  const i=instrumentSpec();if(!i)return;
+  const strategy=$("paper-strategy").value;
+  const unsupported=strategy==="jev";
+  let signal;
+  if(strategy==="momentum")signal=$("sbt-lookback").value+"本前との変化が ±"+$("p-trigger").value+i.move_unit_label;
+  else if(strategy==="rsi_mean_reversion")signal="RSI("+$("p-rsi-period").value+") "+$("p-rsi-low").value+" / "+$("p-rsi-high").value;
+  else if(strategy==="ma_trend")signal="MA "+$("p-ma-fast").value+" / "+$("p-ma-slow").value+"、差 "+$("p-ma-gap").value+i.move_unit_label;
+  else signal="Jev directはhistorical戦略BT未対応";
+  $("sbt-config-note").innerHTML=unsupported
+    ? '<strong>Jevシグナルは戦略BT未対応です。</strong> Momentum / RSI / MAを選んでください。'
+    : '<strong>'+esc(i.display_symbol)+' / '+esc(strategyNameJa(strategy))+'</strong>　'+esc(signal)+'<br>数量 '+esc($("paper-size").value)+' '+esc(i.quantity_label)+' / TP '+esc($("p-tp").value)+i.move_unit_label+' / SL '+esc($("p-sl").value)+i.move_unit_label+' / slippage '+esc($("p-slip").value||0)+i.move_unit_label+' / '+esc(i.paper_fee_label)+'<br>RSI/MAはhistorical 1分足closeを使用。右側の「RSI/MA入力」tick/5秒等はこのBTでは使いません。';
+  $("sbt-run").disabled=unsupported;
+}
+async function runStrategyBacktest(){
+  const strategy=$("paper-strategy").value,date=$("sbt-date").value;
+  if(strategy==="jev"){toast("Jev directはhistorical戦略BT未対応です。",true);return}
+  if(!date){toast("日付を選んでください。",true);return}
+  const b=$("sbt-run");b.disabled=true;b.textContent="戦略BT中…";
+  try{
+    const payload={
+      instrument_id:$("instrument").value,
+      date:date.replaceAll("-",""),
+      strategy,
+      initial_balance:Number($("paper-balance").value),
+      size:Number($("paper-size").value),
+      max_spread_units:Number($("p-spread").value),
+      take_profit_units:Number($("p-tp").value),
+      stop_loss_units:Number($("p-sl").value),
+      slippage_units:Number($("p-slip").value||0),
+      momentum_lookback_bars:Number($("sbt-lookback").value||1),
+      momentum_trigger_units:Number($("p-trigger").value),
+      rsi_period:Number($("p-rsi-period").value||14),
+      rsi_oversold:Number($("p-rsi-low").value||30),
+      rsi_overbought:Number($("p-rsi-high").value||70),
+      ma_fast_period:Number($("p-ma-fast").value||5),
+      ma_slow_period:Number($("p-ma-slow").value||20),
+      ma_min_gap_units:Number($("p-ma-gap").value||0),
+      max_hold_bars:Number($("sbt-hold").value||8),
+      cooldown_bars:Number($("sbt-cool").value||0),
+      supervisor_enabled:$("sbt-supervisor").checked,
+      limit:$("sbt-limit").value?Number($("sbt-limit").value):null
+    };
+    const r=await api("/api/strategy-backtest",{method:"POST",body:JSON.stringify(payload)}),s=r.summary,hold=r.baselines?.buy_and_hold,noTrade=r.baselines?.no_trade;
+    $("sbt-result").style.display="block";
+    const net=Number(s.net_pnl||0),holdNet=Number(hold?.net_pnl||0);
+    $("sbt-pnl").textContent=(net>=0?"+":"")+yen(net);pnlClass($("sbt-pnl"),net);
+    $("sbt-hold-pnl").textContent=(holdNet>=0?"+":"")+yen(holdNet);pnlClass($("sbt-hold-pnl"),holdNet);
+    $("sbt-no-trade").textContent=yen(noTrade?.net_pnl??0);
+    $("sbt-pf").textContent=s.profit_factor==null?(s.closed_trades&&net>0?"∞":"-"):Number(s.profit_factor).toFixed(2);
+    $("sbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
+    $("sbt-win").textContent=pct(s.win_rate);$("sbt-trades").textContent=s.closed_trades;$("sbt-fees").textContent=yen(s.fees_paid);$("sbt-avg").textContent=s.average_trade_pnl==null?"-":yen(s.average_trade_pnl);
+    $("sbt-exits").textContent=Object.entries(s.exit_reasons||{}).map(([reason,x])=>reason+" "+x.count+"回 "+yen(x.net_pnl)).join(" / ")||"決済なし";
+    $("sbt-mode-note").textContent=r.replay_mode==="crypto_close_only"
+      ?"BTCはhistorical spreadを持たないため bid=ask=close の近似。fee / slippageは反映します。SHORTは仮想ショートです。"
+      :"FX historical BID/ASK closeで売買。1分足close単位の近似で、足内の値動き順序は再現しません。";
+    toast("戦略バックテスト完了");
+  }catch(e){toast(e.message,true)}
+  finally{b.disabled=$("paper-strategy").value==="jev";b.textContent="現在設定で戦略バックテスト"}
+}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);modeChanged();applyInstrumentDefaults();updateBacktestNote();await Promise.all([loadHistory(),loadCompareDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
+function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
+async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
+
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);$("jev-badge").textContent=state.config.typesafe_api_key_configured?"Jevキー設定済み":"Jevキー未設定";if(state.config.typesafe_api_key_configured)$("jev-badge").classList.add("safe");$("gmo-badge").textContent=state.config.gmo_private_credentials_configured?"実口座キー設定済み":"実口座キー未設定";if(state.config.gmo_private_credentials_configured){$("gmo-badge").classList.add("safe");$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();await Promise.all([loadHistory(),loadCompareDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value,live=active?(state.lastStatus?.chart||[]):[];requestAnimationFrame(()=>drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[]))}
 function initTerminalResizer(){const handle=$("terminal-resizer");if(!handle)return;try{const saved=Number(localStorage.getItem("jevpip-terminal-height"));if(saved>0)setTerminalHeight(saved)}catch{}let dragging=false,startY=0,startHeight=0;handle.addEventListener("pointerdown",e=>{if(window.innerWidth<=900)return;dragging=true;startY=e.clientY;startHeight=document.querySelector(".terminal").getBoundingClientRect().height;handle.setPointerCapture(e.pointerId);e.preventDefault()});handle.addEventListener("pointermove",e=>{if(!dragging)return;setTerminalHeight(startHeight+(startY-e.clientY))});const stop=()=>{dragging=false};handle.addEventListener("pointerup",stop);handle.addEventListener("pointercancel",stop);handle.addEventListener("dblclick",()=>setTerminalHeight(300))}
 
 document.querySelectorAll(".tabbtn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabbtn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active");if(b.dataset.tab==="compare")loadCompareDates()}));
 ["ind-ma20","ind-ma200"].forEach(id=>$(id).addEventListener("change",()=>{const active=state.lastStatus?.instrument_id===$("instrument").value;const live=active?(state.lastStatus?.chart||[]):[];drawChart([...(state.history||[]),...live],active?state.lastStatus?.paper?.trades||[]:[])}));
-initTerminalResizer();$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",updateTradeSummary));$("p-bar-seconds").addEventListener("change",updateTradeSummary);$("paper-supervisor").addEventListener("change",updateTradeSummary);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);
+initTerminalResizer();$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>
