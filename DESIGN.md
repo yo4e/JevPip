@@ -700,3 +700,130 @@ UIや豪華なdashboardは後回し。
 ## 19. 一行で言うと
 
 **JevPip = USD/JPYのリアルタイム市場状態をJevに読ませ、確率付き短期判断を大量収集・検証し、十分な根拠が得られた場合だけペーパー売買から段階的に自動売買へ進む研究プロジェクト。**
+
+
+---
+
+## 20. 実装開始時の追加決定（2026-09-19）
+
+初期競合調査と実装検討により、以下を正式方針として追加する。
+
+### 20.1 Feature Lab
+
+Jevに渡す市場情報は一つの固定セットにしない。
+
+Feature profileで、各入力を独立にON/OFFできる構造とする。
+
+初期profile:
+
+- `minimal`
+- `technical`
+- `moon_only`
+- `price_and_moon`
+- `random_control`
+- `kitchen_sink`
+
+月相のような非典型featureも、仮説として排除しない。重要なのは「常識的か」ではなく、同じfuture outcomeに対して公平に比較できること。
+
+`moon_only` では市場価格を評価用には保持するが、Jev stateには送らない。
+
+`random_control` は、無意味な入力に対してJevがもっともらしい確信を形成していないかを見るnegative controlとして使う。
+
+Feature configurationとJev questionsは独立させる。同じ質問を、異なるfeature setへ適用して比較可能にする。
+
+### 20.2 Jev questions と signal rule の分離
+
+初期Jev questionsは次を基本とする。
+
+- direction: UP / DOWN / FLAT
+- market_is_noisy
+- reversal_risk
+- trend_strength
+
+Jevへ直接 `LONG / SHORT / WAIT` を尋ねる方式は初期標準から外す。
+
+Jev answerをresearch signalへ変換するthresholdは、別のSignal Policyとして設定する。
+
+例:
+
+- minimum direction probability
+- UP/DOWN probability margin
+- maximum noise probability
+- maximum reversal probability
+- minimum trend strength
+- maximum spread
+
+signal thresholdは正解として固定しない。収集データ上で複数設定を比較する。
+
+spread、market status、stale data、安全制約等は引き続きcode-owned ruleとする。
+
+### 20.3 Backtestを二層に分ける
+
+#### Historical KLine replay
+
+GMO外国為替FX Public RESTのBID/ASK KLineを使い、1分足以上の粗いhistorical replayを行う。
+
+これは、
+
+- technical featureの動作確認
+- 月相等の長い時間軸の仮説
+- BID/ASKを使ったspread込みoutcome計算
+- feature pipelineの検証
+
+には使える。
+
+一方、1分足では5秒/30秒のpathは再構成できないため、短期scalping性能の証拠には使わない。
+
+#### Raw tick replay
+
+Phase 0から保存するPublic WebSocket raw tickを、将来の精密backtest datasetとする。
+
+同一tick列へ複数feature profile / signal policyを適用し、公平に比較する。
+
+### 20.4 予測結果と売買可能edgeを分離する
+
+future outcomeにはmidだけでなくBID/ASKを保持する。
+
+LONGの実質edgeは概念的に、
+
+```text
+future_bid - current_ask
+```
+
+SHORTの実質edgeは、
+
+```text
+current_bid - future_ask
+```
+
+で評価する。
+
+「方向は当たったがspreadを越えられない」を明示的に区別する。
+
+### 20.5 TypeSafe performance resultsは公開しない
+
+2026-09-19時点の TypeSafe Master Customer Agreement 2.3(f) は、Servicesについてbenchmarkまたはperformance informationをpublishすることを禁止している。
+
+そのため、
+
+- 評価コード・計算方法・schemaはpublic repoへ置いてよい
+- Jevの実測accuracy、Brier score、calibration、PnL等はpublic repoへcommitしない
+- 実測結果はgit-ignoredなlocal dataとして扱う
+
+を正式運用とする。
+
+参考:
+https://typesafe.ai/legal/mca
+
+### 20.6 UI言語
+
+初期ユーザー向けUI/CLI表記は日本語を基本とする。
+
+GMOコイン外国為替FX APIを対象とした日本向けツールであることを優先し、初期段階でi18nを実装しない。
+
+ただしcode identifier、data field、API boundaryは英語を維持し、将来の翻訳を妨げない構造とする。
+
+### 20.7 類似実装調査
+
+実装開始前調査の詳細は `docs/RESEARCH_2026-09-19.md` を参照。
+
