@@ -7,6 +7,8 @@ from statistics import fmean
 import time
 from typing import Any
 
+import httpx
+
 from jevpip.backtest.kline import replay_kline
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
 from jevpip.broker.comparison import compare_raw_file
@@ -590,12 +592,21 @@ class UIController:
         for days_back in range(max_lookback_days):
             candidate = requested - timedelta(days=days_back)
             candidate_date = candidate.strftime("%Y%m%d")
-            rows = await asyncio.to_thread(
-                fetch_history,
-                instrument_id,
-                candidate_date,
-                interval,
-            )
+            try:
+                rows = await asyncio.to_thread(
+                    fetch_history,
+                    instrument_id,
+                    candidate_date,
+                    interval,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                # GMO FX KLine returns 404 when no candle set exists for the
+                # requested date (for example weekends / market holidays).
+                # In chart history mode this means "try an earlier date", not
+                # "abort the entire chart request".
+                rows = []
             if rows:
                 used_dates.append(candidate_date)
                 empty_streak = 0
