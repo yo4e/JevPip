@@ -114,3 +114,48 @@ def test_backtest_rejects_btc():
         )
         assert response.status_code == 400
         assert "対円FX" in response.json()["detail"]
+
+
+def test_chart_history_walks_back_until_data_exists(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    import jevpip.web.controller as controller_module
+    from jevpip.web.app import controller
+
+    calls = []
+
+    def fake_fetch(instrument_id, date, interval):
+        calls.append((instrument_id, date, interval))
+        if date != "20260918":
+            return []
+        return [
+            SimpleNamespace(
+                open_time_ms=1758153600000,
+                open=147.0,
+                high=148.0,
+                low=146.5,
+                close=147.5,
+            )
+        ]
+
+    monkeypatch.setattr(controller_module, "fetch_history", fake_fetch)
+    payload = asyncio.run(
+        controller.fetch_chart_history(
+            instrument_id="USD_JPY",
+            interval="1min",
+            date="20260920",
+        )
+    )
+
+    assert [date for _, date, _ in calls] == ["20260920", "20260919", "20260918"]
+    assert payload["date"] == "20260918"
+    assert payload["candles"][0]["close"] == 147.5
+
+
+def test_chart_renderer_has_non_finite_and_bid_ask_fallback_guards():
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "function chartPrice" in response.text
+        assert "表示できるチャートデータがありません" in response.text
+        assert "historyCache" in response.text
