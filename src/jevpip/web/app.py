@@ -90,6 +90,20 @@ class ObserverStartRequest(BaseModel):
     paper_demo: PaperDemoInput | None = None
 
 
+class RawCompareRequest(BaseModel):
+    instrument_id: str = Field(min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    strategies: list[Literal["momentum", "rsi_mean_reversion", "ma_trend"]] = Field(
+        default_factory=lambda: ["momentum", "rsi_mean_reversion", "ma_trend"],
+        min_length=1,
+        max_length=3,
+    )
+    initial_balance: float = Field(default=100000, gt=0, le=1000000000)
+    size: float | None = Field(default=None, gt=0, le=100000000)
+    supervisor: bool = True
+    bar_seconds: Literal[0, 5, 15, 60, 300] = 0
+
+
 class BacktestRequest(BaseModel):
     instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{8}$")
@@ -216,6 +230,38 @@ async def get_account(force: bool = False) -> dict[str, Any]:
         raise HTTPException(
             status_code=502,
             detail=f"GMO実口座の参照に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.get("/api/raw/dates")
+async def get_raw_dates(instrument_id: str = "USD_JPY") -> dict[str, Any]:
+    try:
+        return {
+            "instrument_id": instrument_id,
+            "dates": controller.raw_tick_dates(instrument_id),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/compare/raw")
+async def compare_raw(request: RawCompareRequest) -> dict[str, Any]:
+    try:
+        return await controller.compare_raw_date(
+            instrument_id=request.instrument_id,
+            date=request.date,
+            strategies=tuple(dict.fromkeys(request.strategies)),
+            initial_balance=request.initial_balance,
+            size=request.size,
+            supervisor=request.supervisor,
+            bar_seconds=request.bar_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"raw tick比較に失敗しました: {type(exc).__name__}: {exc}",
         ) from exc
 
 
