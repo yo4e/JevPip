@@ -244,7 +244,7 @@ def _parse_boj_date(value: str, default_year: int) -> datetime | None:
     if not normalized or normalized == "-":
         return None
     match = re.search(
-        r"(?P<month>[A-Za-z]+)\.?s+(?P<day>\d{1,2})"
+        r"(?P<month>[A-Za-z]+)\.?\s+(?P<day>\d{1,2})"
         r"(?:\s*\([^)]*\))?"
         r"(?:,?\s*(?P<year>20\d{2}))?",
         normalized,
