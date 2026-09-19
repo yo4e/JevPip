@@ -179,6 +179,8 @@ class UIController:
     def snapshot(self) -> dict[str, Any]:
         if self._task is not None and self._task.done() and self._status == "running":
             self._status = "stopped"
+        if self.running and self._paper is not None:
+            self._paper.heartbeat(datetime.now(timezone.utc))
         return {
             "status": self._status,
             "running": self.running,
