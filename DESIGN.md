@@ -2,11 +2,13 @@
 
 > 現在の実装状態・未実装・次の一手は [docs/CURRENT_STATE.md](./docs/CURRENT_STATE.md) を参照。この文書は設計判断と実装経緯を時系列で残す。
 
-> **Status:** early prototype implemented / Observer + Feature Lab + 1分足replay + local Web UI  
+> **Status:** local market research terminal / paper broker / feature lab / replay & strategy backtest implemented  
 > **Repository:** `yo4e/JevPip`  
 > **Created:** 2026-09-19  
-> **Primary goal:** GMOコインの外国為替FX APIからリアルタイム市場データを受け取り、TypeSafe AI の Jev を「高速な確率付き判断器」として組み込んだ、USD/JPY向けスキャルピング研究システムを作る。  
-> **Important:** 最初から実弾売買はしない。まず観測 → ログ → ペーパー売買 → 評価の順で進める。
+> **Current scope:** 対円FX 12ペアとBTC/JPYを対象に、market observation、paper strategy、historical/raw replay、Jev research layerを同じローカル基盤で比較する。  
+> **Safety invariant:** 実注文POSTは実装しない。Private APIはread-only GETのみ。  
+>
+> **読み方:** Section 1〜20は初期計画・意思決定の履歴を含む。現在の実装状態は `docs/CURRENT_STATE.md`、現在の設計境界は後半のSection 23以降を優先する。
 
 ---
 
@@ -676,32 +678,28 @@ UIや豪華なdashboardは後回し。
 
 ## 18. 次のチャット / 実装担当への申し送り
 
-このリポジトリを開いたAI/開発者は、いきなりbotを完成させようとしないこと。
+このSectionは初期実装前のhandoffとして残すが、現在は内容の大半が完了済み。
 
-まず **Phase 0 + Phase 1** を実装する。
+現在の引き継ぎは **[docs/CURRENT_STATE.md](./docs/CURRENT_STATE.md)** を正とする。
 
-最初のPRまたはコミットで推奨する範囲:
+新しい作業を始めるときは、
 
-1. Python project skeleton
-2. `.gitignore`
-3. `.env.example`
-4. GMO FX Public WebSocket client
-5. USD_JPY tick logger
-6. TypeSafe/Jev client
-7. minimal feature builder
-8. Jev question schema
-9. observer CLI
-10. tests
+1. README.md
+2. docs/CURRENT_STATE.md
+3. 関連Issue
+4. DESIGN.mdの該当Section
 
-**Live order codeはまだ不要。**
+の順に確認する。
 
-また、実装開始時には必ずTypeSafeとGMOの最新公式仕様を再取得し、この設計書の料金・制限・SDK仕様が変わっていないか確認すること。
+次の大きなテーマは、Jev supervisorへ渡すexternal contextの調査と、paper-only A/B/C experiment設計。
+
+**Live order codeは引き続き未実装・対象外。**
 
 ---
 
 ## 19. 一行で言うと
 
-**JevPip = USD/JPYのリアルタイム市場状態をJevに読ませ、確率付き短期判断を大量収集・検証し、十分な根拠が得られた場合だけペーパー売買から段階的に自動売買へ進む研究プロジェクト。**
+**JevPip = 対円FXとBTC/JPYを観測・paper取引・replayし、code-only strategyとJevの付加価値を同じ市場経路とcost modelで比較するローカル研究プロジェクト。**
 
 
 ---
