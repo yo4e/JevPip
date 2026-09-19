@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
-PIP = Decimal("0.01")
 Side = Literal["LONG", "SHORT"]
 Strategy = Literal["momentum", "jev"]
 
@@ -14,13 +13,15 @@ Strategy = Literal["momentum", "jev"]
 @dataclass(frozen=True, slots=True)
 class PaperConfig:
     initial_balance: float = 100000.0
-    size: int = 1000
+    size: float = 1000.0
     strategy: Strategy = "momentum"
+    price_unit: float = 0.01
+    move_unit_label: str = "pips"
     momentum_window_seconds: float = 5.0
-    momentum_trigger_pips: float = 0.6
-    max_spread_pips: float = 1.5
-    take_profit_pips: float = 1.0
-    stop_loss_pips: float = 1.0
+    momentum_trigger_units: float = 0.6
+    max_spread_units: float = 1.5
+    take_profit_units: float = 1.0
+    stop_loss_units: float = 1.0
     max_hold_seconds: float = 8.0
     cooldown_seconds: float = 2.0
     jev_signal_max_age_seconds: float = 3.0
@@ -29,7 +30,7 @@ class PaperConfig:
 @dataclass(slots=True)
 class PaperPosition:
     side: Side
-    size: int
+    size: Decimal
     entry_price: Decimal
     opened_at: datetime
 
@@ -38,7 +39,7 @@ class PaperPosition:
 class PaperTrade:
     action: Literal["OPEN", "CLOSE"]
     side: Side
-    size: int
+    size: float
     price: str
     timestamp: str
     pnl: float | None
@@ -62,6 +63,10 @@ class PaperBroker:
         self._last_ask: Decimal | None = None
         self._last_market_at: datetime | None = None
 
+    @property
+    def price_unit(self) -> Decimal:
+        return Decimal(str(self.config.price_unit))
+
     @staticmethod
     def _dt(value: str) -> datetime:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -80,7 +85,7 @@ class PaperBroker:
         bid = Decimal(str(event["bid"]))
         ask = Decimal(str(event["ask"]))
         mid = (bid + ask) / Decimal("2")
-        spread_pips = (ask - bid) / PIP
+        spread_units = (ask - bid) / self.price_unit
 
         self._last_bid = bid
         self._last_ask = ask
@@ -95,7 +100,7 @@ class PaperBroker:
                 trade = self._close(at, bid, ask, exit_reason)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
 
-        if self.position is None and self._can_enter(at, spread_pips):
+        if self.position is None and self._can_enter(at, spread_units):
             desired = self._desired_signal(at, mid)
             if desired in {"LONG", "SHORT"}:
                 trade = self._open(desired, at, bid, ask)
@@ -108,8 +113,8 @@ class PaperBroker:
         while self._prices and (now - self._prices[0][0]).total_seconds() > keep_seconds:
             self._prices.popleft()
 
-    def _can_enter(self, at: datetime, spread_pips: Decimal) -> bool:
-        if spread_pips > Decimal(str(self.config.max_spread_pips)):
+    def _can_enter(self, at: datetime, spread_units: Decimal) -> bool:
+        if spread_units > Decimal(str(self.config.max_spread_units)):
             return False
         if self._last_exit_at is None:
             return True
@@ -122,29 +127,28 @@ class PaperBroker:
             age = abs((at - self._latest_jev_at).total_seconds())
             return self._latest_jev_signal if age <= self.config.jev_signal_max_age_seconds else "WAIT"
 
-        target_age = self.config.momentum_window_seconds
         previous: Decimal | None = None
         for seen_at, seen_mid in reversed(self._prices):
-            if (at - seen_at).total_seconds() >= target_age:
+            if (at - seen_at).total_seconds() >= self.config.momentum_window_seconds:
                 previous = seen_mid
                 break
         if previous is None:
             return "WAIT"
 
-        move_pips = (mid - previous) / PIP
-        trigger = Decimal(str(self.config.momentum_trigger_pips))
-        if move_pips >= trigger:
+        move_units = (mid - previous) / self.price_unit
+        trigger = Decimal(str(self.config.momentum_trigger_units))
+        if move_units >= trigger:
             return "LONG"
-        if move_pips <= -trigger:
+        if move_units <= -trigger:
             return "SHORT"
         return "WAIT"
 
-    def _position_pips(self, bid: Decimal, ask: Decimal) -> Decimal:
+    def _position_units(self, bid: Decimal, ask: Decimal) -> Decimal:
         if self.position is None:
             return Decimal("0")
         if self.position.side == "LONG":
-            return (bid - self.position.entry_price) / PIP
-        return (self.position.entry_price - ask) / PIP
+            return (bid - self.position.entry_price) / self.price_unit
+        return (self.position.entry_price - ask) / self.price_unit
 
     def _position_pnl(self, bid: Decimal, ask: Decimal) -> Decimal:
         if self.position is None:
@@ -156,10 +160,10 @@ class PaperBroker:
     def _exit_reason(self, at: datetime, bid: Decimal, ask: Decimal) -> str | None:
         if self.position is None:
             return None
-        pips = self._position_pips(bid, ask)
-        if pips >= Decimal(str(self.config.take_profit_pips)):
+        units = self._position_units(bid, ask)
+        if units >= Decimal(str(self.config.take_profit_units)):
             return "take_profit"
-        if pips <= -Decimal(str(self.config.stop_loss_pips)):
+        if units <= -Decimal(str(self.config.stop_loss_units)):
             return "stop_loss"
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
@@ -173,11 +177,12 @@ class PaperBroker:
 
     def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal) -> PaperTrade:
         price = ask if side == "LONG" else bid
-        self.position = PaperPosition(side=side, size=self.config.size, entry_price=price, opened_at=at)
+        size = Decimal(str(self.config.size))
+        self.position = PaperPosition(side=side, size=size, entry_price=price, opened_at=at)
         trade = PaperTrade(
             action="OPEN",
             side=side,
-            size=self.config.size,
+            size=float(size),
             price=str(price),
             timestamp=at.isoformat(),
             pnl=None,
@@ -197,7 +202,7 @@ class PaperBroker:
         trade = PaperTrade(
             action="CLOSE",
             side=position.side,
-            size=position.size,
+            size=float(position.size),
             price=str(price),
             timestamp=at.isoformat(),
             pnl=round(float(pnl), 3),
@@ -208,10 +213,10 @@ class PaperBroker:
 
     def snapshot(self) -> dict[str, Any]:
         unrealized = Decimal("0")
-        current_pips = Decimal("0")
+        current_units = Decimal("0")
         if self.position is not None and self._last_bid is not None and self._last_ask is not None:
             unrealized = self._position_pnl(self._last_bid, self._last_ask)
-            current_pips = self._position_pips(self._last_bid, self._last_ask)
+            current_units = self._position_units(self._last_bid, self._last_ask)
 
         balance = self.initial_balance + self.realized_pnl
         equity = balance + unrealized
@@ -222,11 +227,12 @@ class PaperBroker:
         if self.position is not None:
             position = {
                 "side": self.position.side,
-                "size": self.position.size,
+                "size": float(self.position.size),
                 "entry_price": str(self.position.entry_price),
                 "opened_at": self.position.opened_at.isoformat(),
                 "unrealized_pnl": round(float(unrealized), 3),
-                "current_pips": round(float(current_pips), 3),
+                "current_units": round(float(current_units), 3),
+                "move_unit_label": self.config.move_unit_label,
             }
 
         return {
