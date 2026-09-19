@@ -482,7 +482,13 @@ $("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.w
 const sd=p.strategy_decision||{},sv=p.supervisor||{};
 const age=sv.last_tick_age_seconds==null?"":" / tick age "+Number(sv.last_tick_age_seconds).toFixed(1)+"s";
 $("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAIT")+"</strong> ("+esc(sd.reason||"-")+") / 監督: <strong>"+esc(sv.state||"NORMAL")+"</strong> ("+esc(sv.reason||"-")+")"+esc(age);
-$("paper-cost-note").textContent=(p.cost_model?.fee_label||"")+" / spreadは実BID/ASK"+(p.cost_model?.slippage_units?(" / slippage "+p.cost_model.slippage_units+" "+(instrumentSpec()?.move_unit_label||"")):"")+(p.cost_model?.short_is_synthetic?" / SHORTは仮想ショート":"");
+const cost=p.cost_model||{},unit=instrumentSpec()?.move_unit_label||"";
+let costText=(cost.fee_label||"")+" / spreadは実BID/ASK"+(cost.slippage_units?(" / slippage "+cost.slippage_units+" "+unit):"")+(cost.short_is_synthetic?" / SHORTは仮想ショート":"");
+const breakEven=Number(cost.estimated_fee_break_even_units),tp=Number(p.config?.take_profit_units);
+if(Number.isFinite(breakEven)&&breakEven>0&&Number.isFinite(tp)&&tp<breakEven){
+  costText+=" / ⚠ TP "+tp+unit+" < 手数料損益分岐概算 "+breakEven.toFixed(breakEven>=100?0:2)+unit;
+}
+$("paper-cost-note").textContent=costText;
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
 function signalGateSummary(d){
