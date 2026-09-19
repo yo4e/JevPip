@@ -1847,7 +1847,9 @@ UIの **Jev判断を追加** は、paper modeでは単なる表示オプショ�
 
 ### 32.1 Direction gate
 
-code strategy（Momentum / RSI mean reversion / MA trend）が `LONG` または `SHORT` candidateを出したあと、freshなJev research signalと方向一致した場合だけentry候補を通す。
+code strategy（Momentum / RSI mean reversion / MA trend）が `LONG` または `SHORT` candidateを出したあと、freshなJev direction signalと方向一致した場合だけentry候補を通す。
+
+direction signalは `direction` choiceのprobabilityとUP/DOWN marginだけから作る。market noise / reversal risk / trend strengthはresearch filterとsupervisor評価に残し、direction gate自体のvetoにはしない。
 
 - code LONG + Jev LONG → pass
 - code SHORT + Jev SHORT → pass
