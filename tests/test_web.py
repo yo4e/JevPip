@@ -13,6 +13,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "MA200" in response.text
         assert "BTC/JPY" in response.text
         assert "デモ自動売買" in response.text
+        assert "RSI逆張り" in response.text
+        assert "MAトレンド" in response.text
+        assert "安全監督" in response.text
         assert "Take Profit" in response.text
         assert "Stop Loss" in response.text
         assert "売買条件を読み込み中" in response.text
