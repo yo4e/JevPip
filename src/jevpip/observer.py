@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 from datetime import datetime, timezone
 import inspect
 from pathlib import Path
@@ -9,12 +10,14 @@ import time
 from typing import Any
 
 from jevpip.gmo.public_ws import stream_ticker
+from jevpip.jev.supervisor import derive_jev_supervisor_advice
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.signals import SignalPolicy, classify_research_signal
 from jevpip.storage.jsonl import append_jsonl
 
 UpdateCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+JevStateContextProvider = Callable[[datetime, str], dict[str, Any]]
 
 
 async def _notify(callback: UpdateCallback | None, event: dict[str, Any]) -> None:
@@ -37,6 +40,8 @@ async def observe(
     instrument_id: str = "USD_JPY",
     on_update: UpdateCallback | None = None,
     emit_console: bool = True,
+    jev_state_context_provider: JevStateContextProvider | None = None,
+    jev_supervisor_strategies: tuple[str, ...] = (),
 ) -> None:
     buffer = TickBuffer()
     count = 0
@@ -78,7 +83,22 @@ async def observe(
         if jev_client is not None and now - last_jev_at >= jev_every_seconds:
             started = time.perf_counter()
             try:
-                answer = await asyncio.to_thread(jev_client.decide, features, "5s")
+                jev_state = dict(features)
+                if jev_state_context_provider is not None:
+                    context_state = jev_state_context_provider(
+                        tick.market_timestamp,
+                        tick.instrument_id,
+                    )
+                    if not isinstance(context_state, dict):
+                        raise TypeError("Jev state context provider must return a dict")
+                    jev_state.update(context_state)
+
+                answer = await asyncio.to_thread(
+                    jev_client.decide,
+                    jev_state,
+                    "5s",
+                    supervisor_strategies=jev_supervisor_strategies,
+                )
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
                 research_signal = None
                 signal_detail = None
@@ -88,6 +108,19 @@ async def observe(
                         float(tick.spread_units),
                         signal_policy,
                     )
+                jev_supervisor = None
+                jev_supervisor_detail = None
+                jev_supervisor_error = None
+                if jev_supervisor_strategies:
+                    try:
+                        advice, jev_supervisor_detail = derive_jev_supervisor_advice(
+                            answer,
+                            allowed_strategies=jev_supervisor_strategies,
+                        )
+                        jev_supervisor = asdict(advice)
+                    except Exception as exc:
+                        jev_supervisor_error = f"{type(exc).__name__}: {exc}"
+
                 event = {
                     "kind": "decision",
                     "instrument_id": tick.instrument_id,
@@ -100,12 +133,15 @@ async def observe(
                     "spread_pips": float(tick.spread_units),
                     "move_unit_label": tick.move_unit_label,
                     "profile": profile,
-                    "state": features,
+                    "state": jev_state,
                     "jev": answer,
                     "jev_latency_ms": latency_ms,
                     "research_signal": research_signal,
                     "signal_policy": signal_policy_name,
                     "signal_detail": signal_detail,
+                    "jev_supervisor": jev_supervisor,
+                    "jev_supervisor_detail": jev_supervisor_detail,
+                    "jev_supervisor_error": jev_supervisor_error,
                 }
                 append_jsonl(
                     data_dir / "decisions" / tick.instrument_id / f"{day}.jsonl",
