@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
 
+import httpx
+import jevpip.context_sources as context_sources
 from jevpip.context_sources import (
     bls_risk,
     parse_bls_ics,
+    parse_bls_schedule_html,
     parse_boj_mpm_html,
     parse_fed_fomc_html,
 )
@@ -141,3 +144,96 @@ def test_parse_fed_fomc_statement_schedule():
     assert all(item.currencies == ("USD",) for item in items)
     # October is EDT: 14:00 Eastern = 18:00 UTC.
     assert items[3].scheduled_at == datetime(2026, 10, 28, 18, 0, tzinfo=UTC)
+
+
+
+def test_parse_bls_monthly_schedule_html():
+    html = """
+    <html><body><table>
+      <tr><th>Date</th><th>Time</th><th>Release</th></tr>
+      <tr>
+        <td>Tuesday, September 29, 2026</td>
+        <td>10:00 AM</td>
+        <td><a href="/schedule/news_release/jolts.htm">Job Openings and Labor Turnover Survey</a> for August 2026</td>
+      </tr>
+      <tr>
+        <td>Friday, October 2, 2026</td>
+        <td>08:30 AM</td>
+        <td>Employment Situation for September 2026</td>
+      </tr>
+      <tr>
+        <td>Monday, September 7, 2026</td>
+        <td></td>
+        <td>Labor Day</td>
+      </tr>
+    </table></body></html>
+    """
+    observed = datetime(2026, 9, 20, tzinfo=UTC)
+    items = parse_bls_schedule_html(
+        html,
+        observed_at=observed,
+        source_url="https://www.bls.gov/schedule/2026/09_sched_list.htm",
+    )
+
+    assert len(items) == 2
+    assert items[0].title == "Job Openings and Labor Turnover Survey for August 2026"
+    assert items[0].scheduled_at == datetime(2026, 9, 29, 14, 0, tzinfo=UTC)
+    assert items[0].risk == "medium"
+    assert items[1].title == "Employment Situation for September 2026"
+    assert items[1].scheduled_at == datetime(2026, 10, 2, 12, 30, tzinfo=UTC)
+    assert items[1].risk == "high"
+
+
+def test_fetch_bls_events_falls_back_to_official_html_on_ics_403(monkeypatch):
+    monthly_html = """
+    <table>
+      <tr><th>Date</th><th>Time</th><th>Release</th></tr>
+      <tr>
+        <td>Tuesday, September 29, 2026</td>
+        <td>10:00 AM</td>
+        <td>Job Openings and Labor Turnover Survey for August 2026</td>
+      </tr>
+    </table>
+    """
+
+    class FakeResponse:
+        def __init__(self, url, status_code, text=""):
+            self.request = httpx.Request("GET", url)
+            self.status_code = status_code
+            self.text = text
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                response = httpx.Response(
+                    self.status_code,
+                    request=self.request,
+                )
+                raise httpx.HTTPStatusError(
+                    f"{self.status_code}",
+                    request=self.request,
+                    response=response,
+                )
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, **kwargs):
+            if url == context_sources.BLS_ICS_URL:
+                return FakeResponse(url, 403)
+            return FakeResponse(url, 200, monthly_html)
+
+    monkeypatch.setattr(context_sources.httpx, "Client", FakeClient)
+    items = context_sources.fetch_bls_events(
+        datetime(2026, 9, 20, tzinfo=UTC),
+    )
+
+    assert len(items) == 1
+    assert items[0].source == "bls"
+    assert items[0].title == "Job Openings and Labor Turnover Survey for August 2026"
