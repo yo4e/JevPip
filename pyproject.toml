@@ -1,7 +1,7 @@
 [project]
 name = "jevpip"
 version = "0.1.0"
-description = "GMO外国為替FXとTypeSafe AI Jevを組み合わせたUSD/JPY研究アプリ"
+description = "GMOのFX・BTC市場データを使うローカル市場研究・paper tradingアプリ"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
