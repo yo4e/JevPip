@@ -204,6 +204,30 @@ class PaperBroker:
         self._update_drawdown()
         return generated
 
+    def finalize(
+        self,
+        event: dict[str, Any],
+        *,
+        reason: str = "end_of_sample",
+    ) -> dict[str, Any] | None:
+        """Close an open research position at the end of a replay.
+
+        This method never opens a new position. It exists so finite historical
+        samples finish with realized PnL rather than a dangling position.
+        """
+        at = self._dt(str(event["market_timestamp"]))
+        bid = Decimal(str(event["bid"]))
+        ask = Decimal(str(event["ask"]))
+        self._last_bid = bid
+        self._last_ask = ask
+        self._last_market_at = at
+        if self.position is None:
+            self._update_drawdown()
+            return None
+        trade = self._close(at, bid, ask, reason)
+        self._update_drawdown()
+        return {"kind": "paper_trade", **asdict(trade)}
+
     def heartbeat(self, now: datetime) -> None:
         """Refresh supervisor state even when the market feed goes quiet.
 
