@@ -507,3 +507,119 @@ def test_controller_event_supervisor_blocks_paper_entry():
         event.get("kind") == "paper_trade" and event.get("action") == "OPEN"
         for event in controller._events
     )
+
+
+def test_context_refresh_writes_per_source_revision_logs(tmp_path, monkeypatch):
+    import asyncio
+    import json
+    from datetime import datetime, timezone
+
+    import jevpip.web.controller as controller_module
+    from jevpip.config import Settings
+    from jevpip.context import ExternalContextItem
+    from jevpip.web.controller import UIController
+
+    def event(source, source_id, currency):
+        return ExternalContextItem(
+            source=source,
+            source_id=source_id,
+            kind="scheduled_event",
+            title=f"{source} test event",
+            observed_at=datetime(2026, 9, 19, 14, 0, tzinfo=timezone.utc),
+            source_url=f"https://example.test/{source}",
+            scheduled_at=datetime(2026, 9, 20, 14, 0, tzinfo=timezone.utc),
+            currencies=(currency,),
+            risk="high",
+        )
+
+    monkeypatch.setattr(
+        controller_module,
+        "fetch_bls_events",
+        lambda observed_at: (event("bls", "bls-1", "USD"),),
+    )
+    monkeypatch.setattr(
+        controller_module,
+        "fetch_boj_events",
+        lambda observed_at: (event("boj", "boj-1", "JPY"),),
+    )
+    monkeypatch.setattr(
+        controller_module,
+        "fetch_fed_events",
+        lambda observed_at: (event("fed", "fed-1", "USD"),),
+    )
+
+    controller = UIController(Settings(data_dir=tmp_path))
+    asyncio.run(controller.refresh_external_context("USD_JPY"))
+
+    for source in ("bls", "boj", "fed"):
+        paths = list((tmp_path / "context" / source).glob("*.jsonl"))
+        assert len(paths) == 1
+        row = json.loads(paths[0].read_text(encoding="utf-8").strip())
+        assert row["source"] == source
+        assert row["status"] == "ok"
+        assert row["event_count"] == 1
+
+
+def test_context_refresh_preserves_last_good_source_on_partial_failure(tmp_path, monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+
+    import jevpip.web.controller as controller_module
+    from jevpip.config import Settings
+    from jevpip.context import ExternalContextItem
+    from jevpip.web.controller import UIController
+
+    cached = ExternalContextItem(
+        source="fed",
+        source_id="cached-fed",
+        kind="scheduled_event",
+        title="cached FOMC",
+        observed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        source_url="https://example.test/fed",
+        scheduled_at=datetime(2026, 9, 20, 18, 0, tzinfo=timezone.utc),
+        currencies=("USD",),
+        risk="high",
+    )
+
+    monkeypatch.setattr(controller_module, "fetch_bls_events", lambda observed_at: ())
+    monkeypatch.setattr(controller_module, "fetch_boj_events", lambda observed_at: ())
+
+    def fail_fed(observed_at):
+        raise TimeoutError("fed unavailable")
+
+    monkeypatch.setattr(controller_module, "fetch_fed_events", fail_fed)
+
+    controller = UIController(Settings(data_dir=tmp_path))
+    controller._external_context_items = (cached,)
+    payload = asyncio.run(controller.refresh_external_context("USD_JPY"))
+
+    assert any(item.source_id == "cached-fed" for item in controller._external_context_items)
+    assert "fed:TimeoutError" in payload["error"]
+    log_path = next((tmp_path / "context" / "fed").glob("*.jsonl"))
+    assert '"status":"error"' in log_path.read_text(encoding="utf-8")
+
+
+def test_periodic_context_refresh_has_minimum_interval(monkeypatch):
+    import asyncio
+
+    import jevpip.web.controller as controller_module
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(controller_module.asyncio, "sleep", fake_sleep)
+    controller = UIController(Settings(context_refresh_seconds=1))
+
+    async def run_once():
+        try:
+            await controller._context_refresh_loop("USD_JPY")
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(run_once())
+    assert delays == [60.0]
