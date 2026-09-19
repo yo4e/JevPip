@@ -27,6 +27,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "baseline含む5者比較" in response.text
         assert "1分bar" in response.text
         assert "安全監督" in response.text
+        assert "公式イベント更新" in response.text
         assert "tick age" in response.text
         assert "Take Profit" in response.text
         assert "Stop Loss" in response.text
@@ -423,3 +424,87 @@ def test_strategy_backtest_rejects_jev():
             },
         )
         assert response.status_code == 422
+
+
+def test_context_refresh_api(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_refresh(instrument_id):
+        assert instrument_id == "USD_JPY"
+        return {
+            "fetched_at": "2026-09-19T13:00:00+00:00",
+            "error": None,
+            "supervisor": {
+                "state": "NORMAL",
+                "reason": "event_ok",
+                "allow_entry": True,
+            },
+            "events": [],
+        }
+
+    monkeypatch.setattr(controller, "refresh_external_context", fake_refresh)
+    with TestClient(app) as client:
+        response = client.post("/api/context/refresh?instrument_id=USD_JPY")
+        assert response.status_code == 200
+        assert response.json()["supervisor"]["state"] == "NORMAL"
+
+
+def test_controller_event_supervisor_blocks_paper_entry():
+    import asyncio
+    from datetime import datetime, timezone
+
+    from jevpip.broker.paper import PaperBroker, PaperConfig
+    from jevpip.context import ExternalContextItem
+    from jevpip.web.controller import UIController
+
+    controller = UIController()
+    config = PaperConfig(
+        strategy="momentum",
+        momentum_window_seconds=10,
+        momentum_trigger_units=0,
+        max_spread_units=100,
+        take_profit_units=100,
+        stop_loss_units=100,
+        deterministic_supervisor_enabled=True,
+    )
+    controller._paper_config = config
+    controller._paper = PaperBroker(config)
+    controller._instrument_id = "USD_JPY"
+    controller._external_context_items = (
+        ExternalContextItem(
+            source="bls",
+            source_id="cpi-test",
+            kind="scheduled_event",
+            title="Consumer Price Index",
+            observed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            source_url="https://example.test/cpi",
+            scheduled_at=datetime(2026, 9, 11, 12, 30, tzinfo=timezone.utc),
+            currencies=("USD",),
+            risk="high",
+        ),
+    )
+
+    async def feed():
+        for second, bid in [(0, 100.00), (1, 100.02), (2, 100.04)]:
+            timestamp = f"2026-09-11T12:05:{second:02d}+00:00"
+            await controller._on_update(
+                {
+                    "kind": "tick",
+                    "instrument_id": "USD_JPY",
+                    "symbol": "USD_JPY",
+                    "market_timestamp": timestamp,
+                    "received_at": timestamp,
+                    "bid": f"{bid:.2f}",
+                    "ask": f"{bid + 0.01:.2f}",
+                    "status": "OPEN",
+                }
+            )
+
+    asyncio.run(feed())
+    snapshot = controller.snapshot()
+
+    assert snapshot["external_context"]["supervisor"]["state"] == "PAUSE_ENTRY"
+    assert not any(
+        event.get("kind") == "paper_trade" and event.get("action") == "OPEN"
+        for event in snapshot["events"]
+    )
