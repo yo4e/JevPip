@@ -1004,7 +1004,7 @@ class PaperBroker:
             "max_drawdown": round(float(self._max_drawdown), 3),
             "max_drawdown_pct": round(float(self._max_drawdown_pct), 6),
             "config": asdict(self.config),
-            "trades": [asdict(trade) for trade in list(self.trades)[:50]],
+            "trades": [asdict(trade) for trade in list(self.trades)[-100:]],
             "cost_model": {
                 "spread": "real_bid_ask",
                 "fee_rate_per_execution": self.config.fee_rate,
