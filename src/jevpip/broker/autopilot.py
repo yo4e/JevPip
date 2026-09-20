@@ -42,7 +42,7 @@ class AutopilotBroker(PaperBroker):
                 finite_decimal(value, name)
         if config.fee_rate >= 1 or config.size < self.quantity_step:
             raise ValueError("invalid fee rate or base quantity")
-        if config.autopilot_style not in {"daytrade", "scalp"}:
+        if config.autopilot_style not in {"daytrade", "scalp", "fifty"}:
             raise ValueError("unsupported autopilot style")
         if config.autopilot_horizon_seconds not in {30, 120, 600, 1800}:
             raise ValueError("unsupported autopilot horizon")
@@ -211,7 +211,22 @@ class AutopilotBroker(PaperBroker):
             return "drawdown_or_equity_stop"
         if self.position is None:
             return None
-        net_units = self._position_net_pnl(bid, ask) / self.position.size / self.price_unit
+        net_pnl = self._position_net_pnl(bid, ask)
+        net_units = net_pnl / self.position.size / self.price_unit
+        if cfg.autopilot_style == "fifty":
+            if self.instrument.market_kind == "crypto_spot":
+                target_jpy = Decimal(str(cfg.autopilot_fifty_target_jpy))
+                if net_pnl >= target_jpy:
+                    return "fifty_take_profit"
+                if net_pnl <= -target_jpy:
+                    return "fifty_stop_loss"
+            else:
+                target_units = Decimal(str(cfg.autopilot_fifty_target_units))
+                if net_units >= target_units:
+                    return "fifty_take_profit"
+                if net_units <= -target_units:
+                    return "fifty_stop_loss"
+            return None
         if cfg.autopilot_take_profit_units is not None and net_units >= Decimal(str(cfg.autopilot_take_profit_units)):
             return "net_take_profit"
         if cfg.autopilot_stop_loss_units is not None and net_units <= -Decimal(str(cfg.autopilot_stop_loss_units)):
@@ -253,6 +268,8 @@ class AutopilotBroker(PaperBroker):
         capacity = self._capacity_block(side, quantity, bid, ask)
         if capacity:
             return capacity
+        if cfg.autopilot_style == "fifty":
+            return None
         if cfg.autopilot_max_spread is not None and (ask-bid)/self.price_unit > Decimal(str(cfg.autopilot_max_spread)):
             return "max_spread"
         if cfg.autopilot_entry_loss is not None and self.initial_balance-self._equity() >= Decimal(str(cfg.autopilot_entry_loss)):
@@ -396,12 +413,20 @@ class AutopilotBroker(PaperBroker):
         current_side = "FLAT" if self.position is None else self.position.side
         current_quantity = ZERO if self.position is None else self.position.size
         targets: dict[str, Any] = {}
-        choices = [("KEEP", current_side, current_quantity), ("FLAT", "FLAT", ZERO)]
-        for side in ("LONG", "SHORT"):
-            for label, multiple in (("SMALL", "0.5"), ("BASE", "1"), ("LARGE", "2")):
-                quantity = (Decimal(str(self.config.size))*Decimal(multiple)/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
-                if quantity > 0 and not self._capacity_block(side, quantity, bid, ask):
-                    choices.append((f"{side}_{label}", side, quantity))
+        if self.config.autopilot_style == "fifty":
+            quantity = (Decimal(str(self.config.size))/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
+            choices = []
+            if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask):
+                choices.append(("UP", "LONG", quantity))
+            if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask):
+                choices.append(("DOWN", "SHORT", quantity))
+        else:
+            choices = [("KEEP", current_side, current_quantity), ("FLAT", "FLAT", ZERO)]
+            for side in ("LONG", "SHORT"):
+                for label, multiple in (("SMALL", "0.5"), ("BASE", "1"), ("LARGE", "2")):
+                    quantity = (Decimal(str(self.config.size))*Decimal(multiple)/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
+                    if quantity > 0 and not self._capacity_block(side, quantity, bid, ask):
+                        choices.append((f"{side}_{label}", side, quantity))
         signed_current = current_quantity * (1 if current_side == "LONG" else -1)
         for key, side, quantity in choices:
             signed = quantity * (1 if side == "LONG" else -1)
@@ -422,7 +447,7 @@ class AutopilotBroker(PaperBroker):
         position = snapshot["position"]
         if position is not None:
             position = {**position, "age_seconds": max(0, (as_of-self.position.opened_at).total_seconds())}
-        bar_limit = 5 if self.config.autopilot_style == "scalp" else 30
+        bar_limit = 5 if self.config.autopilot_style in {"scalp", "fifty"} else 30
         autopilot_state = {
             "schema_version": 1, "style": self.config.autopilot_style,
             "instrument_id": self.instrument.id, "session_id": self.session_id,
@@ -443,8 +468,26 @@ class AutopilotBroker(PaperBroker):
             "history_seconds": 0 if not history else (as_of-history[0][0]).total_seconds(),
             "max_tick_gap_seconds": self._max_gap,
         }
-        if self.config.autopilot_style == "scalp":
+        if self.config.autopilot_style in {"scalp", "fifty"}:
             autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        if self.config.autopilot_style == "fifty":
+            autopilot_state["fifty_plus"] = {
+                "always_one_position": True,
+                "waiting_for_direction": self.position is None,
+                "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
+                "target_value": (
+                    self.config.autopilot_fifty_target_jpy
+                    if self.instrument.market_kind == "crypto_spot"
+                    else self.config.autopilot_fifty_target_units
+                ),
+                "target_label": "円" if self.instrument.market_kind == "crypto_spot" else self.config.move_unit_label,
+                "net_of_spread_fees_slippage": True,
+            }
+            # Fifty+ asks only which symmetric boundary is hit first. Account/cost
+            # fields are code-owned and omitted from the model context to keep the
+            # decision focused and token usage low.
+            for key in ("account", "costs", "constraints", "recent_executions"):
+                autopilot_state.pop(key, None)
         return {"autopilot": autopilot_state}
 
     def finalize(self, event: dict[str, Any], *, reason: str = "end_of_sample") -> dict[str, Any] | None:
