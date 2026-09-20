@@ -50,7 +50,7 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                 key: value for key, value in policy["targets"].items()
             },
         },
-        "target_reason": {
+        "decision_factor": {
             "type": "choice",
             "instructions": "Which supplied market/account factor is most relevant to the current paper position decision?",
             "criteria": REASONS,
@@ -86,7 +86,7 @@ def decode_target(
     if not isinstance(answers, dict):
         raise ValueError("missing target answers")
     choice, confidence = _choice(answers.get("target_position"), set(policy["targets"]))
-    reason, _ = _choice(answers.get("target_reason"), set(REASONS))
+    factor, _ = _choice(answers.get("decision_factor"), set(REASONS))
     target = policy["targets"][choice]
     expires_at = min(requested_at, datetime.fromisoformat(policy["as_of"])) + timedelta(seconds=policy["ttl_seconds"])
     return {
@@ -99,7 +99,7 @@ def decode_target(
         "target_quantity": target["quantity"],
         "choice": choice,
         "confidence": confidence,
-        "reason": reason,
+        "reason": factor,
         "horizon_seconds": policy["horizon_seconds"],
         "basis_market_timestamp": policy["as_of"],
         "requested_at": requested_at.isoformat(),
