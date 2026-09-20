@@ -30,7 +30,9 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 .terminal-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;height:100%}.terminal-cell{padding:11px 14px;border-right:1px solid var(--line);overflow:auto}.terminal-cell:last-child{border-right:0}.terminal-cell h3{font-size:11px;margin:0 0 7px;color:var(--muted)}
 .money{font-size:20px;font-weight:900}.pnl{font-size:11px;margin-top:3px}.pnl.pos{color:var(--green)}.pnl.neg{color:var(--red)}.account-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:8px}.stat{padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.stat span{display:block;color:var(--muted);font-size:9px}.stat strong{display:block;font-size:12px;margin-top:3px}.position{font-size:11px;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:6px;background:#fff}.empty{font-size:11px;color:var(--muted);padding:12px;border:1px dashed var(--line);border-radius:6px}.notice{font-size:10px;line-height:1.5;color:#7c5a12;background:#fffbeb;border:1px solid #fde68a;padding:7px;border-radius:6px;margin-top:7px}.notice.safe{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
 .loglist{display:grid;gap:4px;padding:9px}.logrow{display:grid;grid-template-columns:74px 60px 1fr;gap:7px;padding:5px 7px;border-bottom:1px solid var(--line);font-size:10px}.logtime{color:var(--muted)}.logkind{font-weight:900;color:var(--blue)}
-.back-wrap{padding:14px}.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:560px}.back-result{display:none;margin-top:11px}.results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.result{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.result span{font-size:9px;color:var(--muted)}.result strong{display:block;font-size:13px;margin-top:3px}.decision-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.back-wrap{padding:14px}.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:560px}.back-result{display:none;margin-top:11px}.results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.result{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.result span{font-size:9px;color:var(--muted)}.result strong{display:block;font-size:13px;margin-top:3px}
+.execution-wrap{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.execution-title{padding:7px 9px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:11px;font-weight:700}.execution-scroll{overflow:auto;max-height:260px}.execution-table{width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap}.execution-table th,.execution-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}.execution-table th:first-child,.execution-table td:first-child,.execution-table th:nth-child(2),.execution-table td:nth-child(2),.execution-table th:last-child,.execution-table td:last-child{text-align:left}.execution-table th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600;z-index:1}.execution-table tr:last-child td{border-bottom:0}.execution-empty{padding:10px;color:var(--muted);font-size:10px}
+.decision-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .settings-overlay{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.42);display:grid;place-items:center;padding:18px}.settings-overlay[hidden]{display:none}.settings-card{width:min(560px,100%);max-height:min(760px,calc(100vh - 36px));overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.22)}.settings-head{display:flex;align-items:center;gap:10px;padding:15px 17px;border-bottom:1px solid var(--line)}.settings-head h2{font-size:16px;margin:0}.settings-body{padding:16px 17px}.settings-section{padding:13px 0;border-bottom:1px solid var(--line)}.settings-section:first-child{padding-top:0}.settings-section:last-child{border-bottom:0;padding-bottom:0}.settings-status{font-size:10px;font-weight:800;color:var(--muted);margin-left:6px}.secret-actions{display:flex;align-items:center;gap:10px;margin-top:6px}.secret-actions label{font-size:10px;color:var(--muted)}.settings-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 17px;border-top:1px solid var(--line);background:var(--panel2)}.token-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.token-grid .stat strong{font-size:14px}
 .toast{position:fixed;right:12px;bottom:12px;z-index:80;background:#111827;color:#fff;padding:8px 10px;border-radius:6px;font-size:10px;display:none}.toast.error{background:#7f1d1d}
 #quote-big{display:none}
@@ -163,6 +165,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="position" id="paper-strategy-state">戦略判断: - / 監督: -</div>
           <div class="notice" id="paper-cost-note"></div>
           <div class="position" id="paper-position">建玉なし</div><button class="btn" id="paper-reset" disabled style="margin-top:6px">デモ口座リセット</button>
+          <div class="execution-wrap"><div class="execution-title">約定履歴 <span class="muted">現在のpaperセッション</span></div><div id="paper-executions" class="execution-scroll"><div class="execution-empty">まだ約定はありません。</div></div></div>
         </div>
         <div style="display:none"><span id="paper-equity">-</span><span id="paper-pnl">-</span></div>
       </div>
@@ -220,6 +223,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
         <div class="notice" id="sbt-mode-note" style="margin-top:8px"></div>
         <div class="muted" id="sbt-exits" style="font-size:10px;margin-top:6px"></div>
+        <div class="execution-wrap"><div class="execution-title">約定履歴 <span class="muted">戦略BT</span></div><div id="sbt-executions" class="execution-scroll"><div class="execution-empty">バックテスト実行後に表示します。</div></div></div>
       </div>
     </div>
   </section>
@@ -279,6 +283,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="result"><span>平均latency</span><strong id="jbt-latency">-</strong></div>
         </div>
         <div class="notice" id="jbt-result-note" style="margin-top:8px"></div>
+        <div class="execution-wrap"><div class="execution-title">約定履歴 <span class="muted">Jev BT</span></div><div id="jbt-executions" class="execution-scroll"><div class="execution-empty">Jev BT実行後に表示します。</div></div></div>
         <div class="muted" id="jbt-output" style="font-size:9px;margin-top:5px"></div>
       </div>
     </div>
@@ -509,7 +514,21 @@ async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
-function renderPaper(p){if(!p){$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+function executionTime(value,local=false){
+  if(!value)return "-";
+  const d=new Date(value);if(Number.isNaN(d.getTime()))return String(value);
+  return local?d.toLocaleString("ja-JP",{hour12:false}):d.toISOString().replace("T"," ").slice(0,19)+" UTC";
+}
+function renderExecutionHistory(id,trades,{localTime=false,limit=100}={}){
+  const node=$(id);if(!node)return;
+  const rows=Array.isArray(trades)?trades.slice(-limit).reverse():[];
+  if(!rows.length){node.innerHTML='<div class="execution-empty">まだ約定はありません。</div>';return}
+  node.innerHTML=`<table class="execution-table"><thead><tr><th>時刻</th><th>約定</th><th>Side</th><th>価格</th><th>数量</th><th>損益</th><th>手数料</th><th>理由</th></tr></thead><tbody>${rows.map(x=>{
+    const pnl=x.pnl==null?"-":yen(x.pnl),klass=x.pnl==null?"":Number(x.pnl)>0?"pos":Number(x.pnl)<0?"neg":"";
+    return `<tr><td>${esc(executionTime(x.timestamp,localTime))}</td><td>${esc(x.action||"-")}</td><td>${esc(x.side||"-")}</td><td>${esc(x.price??"-")}</td><td>${Number(x.size||0).toLocaleString("ja-JP")}</td><td class="${klass}">${esc(pnl)}</td><td>${esc(yen(x.fees??0))}</td><td>${esc(x.reason||"-")}</td></tr>`
+  }).join("")}</tbody></table>`;
+}
+function renderPaper(p){if(!p){$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;renderExecutionHistory("paper-executions",[],{localTime:true});return}
 $("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;
 $("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;
 $("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);
@@ -529,7 +548,7 @@ if(Number.isFinite(breakEven)&&breakEven>0&&Number.isFinite(tp)&&tp<breakEven){
   costText+=" / ⚠ TP "+tp+unit+" < 手数料損益分岐概算 "+breakEven.toFixed(breakEven>=100?0:2)+unit;
 }
 $("paper-cost-note").textContent=costText;
-$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
+$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"};renderExecutionHistory("paper-executions",p.trades,{localTime:true})
 
 function signalGateSummary(d){
   const x=d?.direction_detail,p=x?.policy;
@@ -900,6 +919,7 @@ async function runJevReplay(){
     $("jbt-win").textContent=pct(s.win_rate);$("jbt-trades").textContent=s.closed_trades??0;
     $("jbt-latency").textContent=s.average_latency_ms==null?"-":Number(s.average_latency_ms).toFixed(0)+" ms";
     $("jbt-result-note").textContent="usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
+    renderExecutionHistory("jbt-executions",s.trades,{localTime:false});
     $("jbt-output").textContent="保存先: "+r.output;
     toast("Jev historical replayが完了しました。");
   }catch(e){toast(e.message,true)}
@@ -991,6 +1011,7 @@ async function runStrategyBacktest(){
     $("sbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("sbt-win").textContent=pct(s.win_rate);$("sbt-trades").textContent=s.closed_trades;$("sbt-fees").textContent=yen(s.fees_paid);$("sbt-avg").textContent=s.average_trade_pnl==null?"-":yen(s.average_trade_pnl);
     $("sbt-exits").textContent=Object.entries(s.exit_reasons||{}).map(([reason,x])=>reason+" "+x.count+"回 "+yen(x.net_pnl)).join(" / ")||"決済なし";
+    renderExecutionHistory("sbt-executions",r.trades,{localTime:false});
     $("sbt-mode-note").textContent=r.replay_mode==="crypto_close_only"
       ?"BTCはhistorical spreadを持たないため bid=ask=close の近似。fee / slippageは反映します。SHORTは仮想ショートです。"
       :"FX historical BID/ASK closeで売買。1分足close単位の近似で、足内の値動き順序は再現しません。";
