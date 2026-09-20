@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from jevpip.config import (
     Settings,
@@ -61,6 +61,24 @@ class SignalPolicyInput(BaseModel):
 
 
 class PaperDemoInput(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+    autopilot_enabled: bool = False
+    autopilot_fundamentals: bool = False
+    autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
+    autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
+    autopilot_confirmations: int = Field(default=2, ge=1, le=5)
+    autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
+    autopilot_max_notional: float | None = Field(default=None, gt=0, le=1000000000)
+    autopilot_max_drawdown: float | None = Field(default=None, gt=0, le=1000000000)
+    autopilot_max_drawdown_pct: float | None = Field(default=None, gt=0, le=1)
+    autopilot_max_change: float | None = Field(default=None, gt=0, le=100000000)
+    autopilot_entry_loss: float | None = Field(default=None, gt=0, le=1000000000)
+    autopilot_max_spread: float | None = Field(default=None, ge=0, le=100000000)
+    autopilot_min_confidence: float | None = Field(default=None, ge=0, le=1)
+    autopilot_cooldown_seconds: float | None = Field(default=None, ge=0, le=3600)
+    autopilot_max_hold_seconds: float | None = Field(default=None, gt=0, le=86400)
+    autopilot_take_profit_units: float | None = Field(default=None, gt=0, le=100000000)
+    autopilot_stop_loss_units: float | None = Field(default=None, gt=0, le=100000000)
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(default=1000, gt=0, le=100000000)
     strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"] = "momentum"

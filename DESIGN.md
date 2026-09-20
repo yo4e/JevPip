@@ -2326,3 +2326,14 @@ UIはrun前に「TypeSafeの課金対象input tokenを消費する」確認を�
 
 runtime結果は `data/jev_replays/` 配下に置き、Jev performance実測値はpublic repoへcommitしない。
 
+## 38. Jevおまかせ target-position paper prototype（2026-09-20）
+
+Issue #17に対応。5秒方向予測＋固定数量＋短い強制exitから、Jevによるコスト込みの目標総数量判断へ進む別モードを追加する。判断cadenceと見通し時間を分離し、同じ目標なら約定しない。既存の方向判定・コード戦略・supervisor・A/B/C/Dは比較用に残す。
+
+実装は `AutopilotBroker(PaperBroker)` とfactoryで分岐し、既存brokerの会計primitive・集計を再利用する。増額は平均建値、部分決済は入口費用の比例配賦、反転は全決済＋新規で扱う。独立cash ledgerとの照合でequityと費用保存を検証する。
+
+Jevはtyped ChoiceでKEEP/FLAT/方向別の数量候補と固定reason分類を返す。コードがsession/version・時刻・ID・数値を所有し、応答受信後の新しいquoteで差分を一度だけ適用する。新規・増額の100%資金制約、数量刻み、quote鮮度、不正応答拒否は必須。ユーザーが選ぶTP/SL等はnullableの任意制約とする。
+
+liveとhistorical replayは同じ質問・state・validator・brokerを共有する。replayは受信時刻＋API実測latencyを使用し、過去のfundamentalsを復元できない場合はONを拒否する。開始処理・API worker・replayは重ねず、キャンセル時は進行中workerが終了してから再開可能にする。
+
+設定、schema、会計の定義、失敗時の動作、暫定部分、検証手順の詳細は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)。有料APIや収益性の検証はこの実装作業では行っていない。

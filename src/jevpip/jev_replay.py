@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 import time
+from threading import Event
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-from statistics import fmean
+from statistics import fmean, median
 from typing import Any, Iterable
+from uuid import uuid4
 
 from jevpip.broker.paper import PaperBroker, PaperConfig
+from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
+from jevpip.jev.autopilot import attach_target
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.market.models import MarketTick
@@ -38,6 +42,8 @@ class JevReplayPlan:
     cadence_seconds: int
     selected_ticks: int
     planned_max_calls: int
+    max_tick_gap_seconds: float
+    median_tick_interval_seconds: float
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -180,6 +186,8 @@ def plan_jev_replay(
         end_at=end_at,
         cadence_seconds=cadence_seconds,
     )
+    gaps = [(right.market_timestamp-left.market_timestamp).total_seconds()
+            for left, right in zip(selected_ticks, selected_ticks[1:])]
     return JevReplayPlan(
         instrument_id=instrument_id,
         date=date,
@@ -192,6 +200,8 @@ def plan_jev_replay(
         cadence_seconds=cadence_seconds,
         selected_ticks=len(selected_ticks),
         planned_max_calls=len(basis),
+        max_tick_gap_seconds=max(gaps, default=0.0),
+        median_tick_interval_seconds=median(gaps) if gaps else 0.0,
     )
 
 
@@ -384,12 +394,13 @@ def _decision_event(
     answer: dict[str, Any],
     signal_policy: SignalPolicy,
     latency_ms: float,
+    autopilot: bool = False,
 ) -> dict[str, Any]:
-    direction_signal, direction_detail = classify_direction_signal(
+    direction_signal, direction_detail = ("WAIT", {}) if autopilot else classify_direction_signal(
         answer,
         signal_policy,
     )
-    position_action, position_action_detail = classify_position_action(answer)
+    position_action, position_action_detail = (None, {}) if autopilot else classify_position_action(answer)
     return {
         "kind": "jev_historical_decision",
         "instrument_id": tick.instrument_id,
@@ -420,6 +431,11 @@ def _summary(
 ) -> dict[str, Any]:
     snapshot = broker.snapshot()
     return {
+        "gross_realized_pnl": snapshot["gross_realized_pnl"],
+        **{key: snapshot[key] for key in (
+            "pnl_breakdown", "turnover_notional", "max_exposure", "average_exposure",
+            "target_changes", "target_changes_per_minute", "max_tick_gap_seconds", "target_status",
+        ) if key in snapshot},
         "planned_max_calls": planned_max_calls,
         "calls": calls,
         "skipped_by_latency": skipped_by_latency,
@@ -465,9 +481,12 @@ def run_jev_historical_replay(
     paper_config: PaperConfig,
     jev_client: Any,
     acknowledged_token_use: bool,
+    cancel_event: Event | None = None,
 ) -> dict[str, Any]:
     if not acknowledged_token_use:
         raise ValueError("Token-use acknowledgement is required.")
+    if paper_config.autopilot_enabled and paper_config.autopilot_fundamentals:
+        raise ValueError("historical fundamentals unavailable: disable fundamentals for replay")
 
     plan = plan_jev_replay(
         data_dir,
@@ -485,22 +504,32 @@ def run_jev_historical_replay(
         )
 
     all_ticks = read_raw_market_ticks(plan.source_path)
+    if paper_config.autopilot_enabled and (
+        any(t.received_at < t.market_timestamp for t in all_ticks)
+        or any(b.received_at < a.received_at for a, b in zip(all_ticks, all_ticks[1:]))
+    ):
+        raise ValueError("autopilot replay requires causal, ordered raw tick timestamps")
     start_at = _parse_timestamp(plan.selected_start)
     end_at = _parse_timestamp(plan.selected_end)
     config = replace(
         paper_config,
+        instrument_id=instrument_id,
         strategy_enabled=False,
         jev_direct_enabled=True,
         jev_direction_gate_enabled=False,
     )
-    broker = PaperBroker(config)
+    broker = make_paper_broker(config)
     buffer = TickBuffer(max_age_seconds=86_400)
 
     run_id = (
         f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-"
-        f"{instrument_id}-{cadence_seconds}s"
+        f"{instrument_id}-{cadence_seconds}s-{uuid4().hex[:8]}"
     )
     output = data_dir / "jev_replays" / instrument_id / f"{run_id}.jsonl"
+    append_jsonl(output, {"kind": "jev_replay_config", "schema_version": 1,
+                          "config": asdict(config), "profile": profile,
+                          "signal_policy": asdict(signal_policy), "cadence_seconds": cadence_seconds,
+                          "source_path": str(plan.source_path), "plan": {**asdict(plan), "source_path": str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
     next_request_at = start_at
     cadence = timedelta(seconds=cadence_seconds)
@@ -509,42 +538,68 @@ def run_jev_historical_replay(
     usages: list[tuple[int, int]] = []
     latencies: list[float] = []
     selected_ticks = 0
+    final_market_at = max(t.market_timestamp for t in all_ticks if start_at <= t.market_timestamp <= end_at)
 
     for tick in all_ticks:
+        if cancel_event is not None and cancel_event.is_set():
+            append_jsonl(output, {"kind": "jev_replay_cancelled", "calls": calls})
+            return {"cancelled": True, "output": str(output), "calls": calls}
         if tick.market_timestamp > end_at:
             break
 
         buffer.append(tick)
         if tick.market_timestamp < start_at:
+            if isinstance(broker, AutopilotBroker):
+                broker.warm_history(tick.as_json_dict())
             continue
 
         selected_ticks += 1
+        clock = tick.received_at if config.autopilot_enabled else tick.market_timestamp
         if (
             pending_decision is not None
-            and pending_decision[0] <= tick.market_timestamp
+            and pending_decision[0] <= clock
         ):
             broker.on_decision(pending_decision[1])
             pending_decision = None
 
-        broker.on_tick(tick.as_json_dict())
+        generated = broker.on_tick(tick.as_json_dict(), allow_entry=(not config.autopilot_enabled or tick.market_timestamp < final_market_at))
+        for execution in generated:
+            append_jsonl(output, execution)
+        if config.autopilot_enabled and broker.last_decision_trace is not None:
+            append_jsonl(output, {"kind": "target_decision_trace", **broker.last_decision_trace})
 
-        if tick.market_timestamp < next_request_at:
+        if config.autopilot_enabled and tick.market_timestamp == final_market_at:
+            continue
+
+        if clock < next_request_at:
             continue
         if pending_decision is not None:
             skipped_by_latency += 1
             continue
+        if calls >= min(plan.planned_max_calls, MAX_JEV_REPLAY_CALLS):
+            continue  # the acknowledged preview is also a runtime spending cap
 
         state = build_features(tick, buffer, profile)
-        state.update(_paper_context(broker, config, as_of=tick.market_timestamp))
+        state.update(broker.decision_state(tick.market_timestamp) if isinstance(broker, AutopilotBroker)
+                     else _paper_context(broker, config, as_of=tick.market_timestamp))
 
-        requested_at = tick.market_timestamp
+        requested_at = clock
         started = time.perf_counter()
-        answer = jev_client.decide(
-            state,
-            "5s",
-            instrument_label=tick.display_symbol,
-        )
+        call_error = None
+        try:
+            answer = jev_client.decide(
+                state,
+                f"{config.autopilot_horizon_seconds}s" if config.autopilot_enabled else "5s",
+                instrument_label=tick.display_symbol,
+            )
+        except Exception as exc:
+            if not config.autopilot_enabled:
+                raise
+            answer = {}
+            call_error = type(exc).__name__
         latency_ms = (time.perf_counter() - started) * 1000
+        if not isinstance(answer, dict):
+            answer = {"malformed_response_type": type(answer).__name__}
         latency = timedelta(milliseconds=latency_ms)
         available_at = requested_at + latency
         event = _decision_event(
@@ -554,7 +609,12 @@ def run_jev_historical_replay(
             answer=answer,
             signal_policy=signal_policy,
             latency_ms=latency_ms,
+            autopilot=config.autopilot_enabled,
         )
+        event["state"] = state
+        if call_error:
+            event["call_error"] = call_error
+        attach_target(event, state)
         append_jsonl(output, event)
         calls += 1
         latencies.append(latency_ms)
@@ -565,7 +625,7 @@ def run_jev_historical_replay(
             usages.append((input_tokens, output_tokens))
 
         pending_decision = (available_at, event)
-        next_request_at = available_at + cadence
+        next_request_at = (requested_at if config.autopilot_enabled else available_at) + cadence
 
     last_tick = next(
         (

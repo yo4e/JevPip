@@ -53,6 +53,24 @@ class PaperConfig:
     deterministic_supervisor_enabled: bool = False
     max_market_age_seconds: float = 5.0
     strategy_bar_seconds: int = 0
+    instrument_id: str = "USD_JPY"
+    autopilot_enabled: bool = False
+    autopilot_fundamentals: bool = False
+    autopilot_horizon_seconds: int = 600
+    autopilot_ttl_seconds: float = 5.0
+    autopilot_confirmations: int = 2
+    autopilot_max_quantity: float | None = None
+    autopilot_max_notional: float | None = None
+    autopilot_max_drawdown: float | None = None
+    autopilot_max_drawdown_pct: float | None = None
+    autopilot_max_change: float | None = None
+    autopilot_entry_loss: float | None = None
+    autopilot_max_spread: float | None = None
+    autopilot_min_confidence: float | None = None
+    autopilot_cooldown_seconds: float | None = None
+    autopilot_max_hold_seconds: float | None = None
+    autopilot_take_profit_units: float | None = None
+    autopilot_stop_loss_units: float | None = None
 
 
 @dataclass(slots=True)

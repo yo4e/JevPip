@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from statistics import fmean
+from threading import Event
 import time
 from typing import Any
 from uuid import uuid4
@@ -15,6 +16,8 @@ from jevpip.backtest.kline import replay_kline
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
 from jevpip.broker.comparison import compare_raw_file
 from jevpip.broker.paper import PaperBroker, PaperConfig
+from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
+from jevpip.async_work import joined_thread
 from jevpip.broker.supervisor import (
     JevSupervisorAdvice,
     SupervisorDecision,
@@ -42,6 +45,8 @@ class UIController:
     """ローカルWeb UIからObserver、paper trading、口座参照を操作する。"""
 
     def __init__(self, settings: Settings | None = None) -> None:
+        self._jev_replay_running = False
+        self._observer_starting = False
         self.settings = settings or Settings()
         self._task: asyncio.Task[None] | None = None
         self._context_task: asyncio.Task[None] | None = None
@@ -82,7 +87,7 @@ class UIController:
 
     @property
     def running(self) -> bool:
-        return self._task is not None and not self._task.done()
+        return self._observer_starting or (self._task is not None and not self._task.done())
 
     async def start_observer(
         self,
@@ -96,117 +101,126 @@ class UIController:
         signal_policy: SignalPolicy,
         paper_config: dict[str, Any] | None = None,
     ) -> None:
-        if self.running:
+        if self.running or self._jev_replay_running:
             raise RuntimeError("観測はすでに実行中です。")
 
-        instrument = get_instrument(instrument_id)
-        await self.refresh_external_context(instrument.id)
+        self._observer_starting = True
+        try:
+            instrument = get_instrument(instrument_id)
+            await self.refresh_external_context(instrument.id)
 
-        jev_client = None
-        jev_supervisor_strategies: tuple[str, ...] = ()
-        if with_jev:
-            if not self.settings.typesafe_api_key:
-                raise ValueError("Jevを使うには .env に TYPESAFE_API_KEY を設定してください。")
-            from jevpip.jev.client import JevClient
+            jev_client = None
+            jev_supervisor_strategies: tuple[str, ...] = ()
+            if with_jev:
+                if not self.settings.typesafe_api_key:
+                    raise ValueError("Jevを使うには .env に TYPESAFE_API_KEY を設定してください。")
+                from jevpip.jev.client import JevClient
 
-            jev_client = JevClient(self.settings.typesafe_api_key)
+                jev_client = JevClient(self.settings.typesafe_api_key)
 
-        if paper_config is not None:
-            normalized = dict(paper_config)
-            normalized["price_unit"] = float(instrument.price_unit)
-            normalized["move_unit_label"] = instrument.move_unit_label
-            normalized["fee_rate"] = float(instrument.paper_fee_rate)
-            normalized["fee_label"] = instrument.paper_fee_label
-            normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
+            if paper_config is not None:
+                normalized = dict(paper_config)
+                normalized["instrument_id"] = instrument.id
+                if normalized.get("autopilot_enabled"):
+                    if not with_jev:
+                        raise ValueError("JevおまかせにはJevをONにしてください。")
+                    normalized["strategy_enabled"] = False
+                normalized["price_unit"] = float(instrument.price_unit)
+                normalized["move_unit_label"] = instrument.move_unit_label
+                normalized["fee_rate"] = float(instrument.paper_fee_rate)
+                normalized["fee_label"] = instrument.paper_fee_label
+                normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
 
-            legacy_jev_strategy = normalized.get("strategy") == "jev"
-            if legacy_jev_strategy and not with_jev:
-                raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
-            if legacy_jev_strategy:
-                normalized["strategy"] = "momentum"
-                normalized["strategy_enabled"] = False
+                legacy_jev_strategy = normalized.get("strategy") == "jev"
+                if legacy_jev_strategy and not with_jev:
+                    raise ValueError("デモ戦略にJevを選ぶ場合は「Jevも使う」をONにしてください。")
+                if legacy_jev_strategy:
+                    normalized["strategy"] = "momentum"
+                    normalized["strategy_enabled"] = False
 
-            strategy_enabled = bool(normalized.get("strategy_enabled", True))
-            normalized["strategy_enabled"] = strategy_enabled
-            normalized["jev_direct_enabled"] = bool(with_jev and not strategy_enabled)
-            normalized["jev_direction_gate_enabled"] = bool(
-                with_jev
-                and strategy_enabled
-            )
-            config = PaperConfig(**normalized)
-            self._paper_config = config
-            self._paper = PaperBroker(config)
-            if (
-                with_jev
-                and config.strategy_enabled
-                and config.deterministic_supervisor_enabled
-            ):
-                jev_supervisor_strategies = (
-                    "momentum",
-                    "rsi_mean_reversion",
-                    "ma_trend",
+                strategy_enabled = bool(normalized.get("strategy_enabled", True))
+                normalized["strategy_enabled"] = strategy_enabled
+                normalized["jev_direct_enabled"] = bool(with_jev and not strategy_enabled)
+                normalized["jev_direction_gate_enabled"] = bool(
+                    with_jev
+                    and strategy_enabled
                 )
-        else:
-            self._paper_config = None
-            self._paper = None
+                config = PaperConfig(**normalized)
+                self._paper_config = config
+                self._paper = make_paper_broker(config)
+                if (
+                    with_jev
+                    and config.strategy_enabled
+                    and config.deterministic_supervisor_enabled
+                ):
+                    jev_supervisor_strategies = (
+                        "momentum",
+                        "rsi_mean_reversion",
+                        "ma_trend",
+                    )
+            else:
+                self._paper_config = None
+                self._paper = None
 
-        self._status = "running"
-        self._started_at = datetime.now(timezone.utc).isoformat()
-        self._instrument_id = instrument.id
-        self._profile_name = profile_name
-        self._signal_policy_name = signal_policy_name if with_jev else None
-        self._with_jev = with_jev
-        self._trace_run_id = uuid4().hex if self._paper is not None else None
-        self._trace_run_config = (
-            None
-            if self._paper_config is None
-            else {
-                "started_at": self._started_at,
-                "profile_name": profile_name,
-                "with_jev": with_jev,
-                "signal_policy_name": (
-                    signal_policy_name if with_jev else None
-                ),
-                "paper": asdict(self._paper_config),
-            }
-        )
-        self._last_decision_trace = None
-        self._last_error = None
-        self._latest_market = None
-        self._latest_decision = None
-        self._jev_supervisor_advice = None
-        self._jev_supervisor_available_at = None
-        self._jev_supervisor_expires_at = None
-        self._jev_supervisor_error = None
-        self._reset_jev_usage()
-        self._chart.clear()
-        self._events.clear()
+            self._status = "running"
+            self._started_at = datetime.now(timezone.utc).isoformat()
+            self._instrument_id = instrument.id
+            self._profile_name = profile_name
+            self._signal_policy_name = signal_policy_name if with_jev else None
+            self._with_jev = with_jev
+            self._trace_run_id = uuid4().hex if self._paper is not None else None
+            self._trace_run_config = (
+                None
+                if self._paper_config is None
+                else {
+                    "started_at": self._started_at,
+                    "profile_name": profile_name,
+                    "with_jev": with_jev,
+                    "signal_policy_name": (
+                        signal_policy_name if with_jev else None
+                    ),
+                    "paper": asdict(self._paper_config),
+                }
+            )
+            self._last_decision_trace = None
+            self._last_error = None
+            self._latest_market = None
+            self._latest_decision = None
+            self._jev_supervisor_advice = None
+            self._jev_supervisor_available_at = None
+            self._jev_supervisor_expires_at = None
+            self._jev_supervisor_error = None
+            self._reset_jev_usage()
+            self._chart.clear()
+            self._events.clear()
 
-        self._task = asyncio.create_task(
-            observe(
-                profile,
-                self.settings.data_dir,
-                jev_client,
-                jev_every_seconds,
-                None,
-                signal_policy if with_jev else None,
-                signal_policy_name if with_jev else None,
-                instrument_id=instrument.id,
-                on_update=self._on_update,
-                emit_console=False,
-                jev_state_context_provider=(
-                    self._jev_state_context if with_jev else None
+            self._task = asyncio.create_task(
+                observe(
+                    profile,
+                    self.settings.data_dir,
+                    jev_client,
+                    jev_every_seconds,
+                    None,
+                    signal_policy if with_jev else None,
+                    signal_policy_name if with_jev else None,
+                    instrument_id=instrument.id,
+                    on_update=self._on_update,
+                    emit_console=False,
+                    jev_state_context_provider=(
+                        self._jev_state_context if with_jev else None
+                    ),
+                    jev_supervisor_strategies=jev_supervisor_strategies,
                 ),
-                jev_supervisor_strategies=jev_supervisor_strategies,
-            ),
-            name=f"jevpip-ui-observer-{instrument.id}",
-        )
-        self._task.add_done_callback(self._observer_done)
-        self._context_task = asyncio.create_task(
-            self._context_refresh_loop(instrument.id),
-            name=f"jevpip-context-refresh-{instrument.id}",
-        )
-        self._context_task.add_done_callback(self._context_refresh_done)
+                name=f"jevpip-ui-observer-{instrument.id}",
+            )
+            self._task.add_done_callback(self._observer_done)
+            self._context_task = asyncio.create_task(
+                self._context_refresh_loop(instrument.id),
+                name=f"jevpip-context-refresh-{instrument.id}",
+            )
+            self._context_task.add_done_callback(self._context_refresh_done)
+        finally:
+            self._observer_starting = False
 
     async def _stop_context_refresh(self) -> None:
         task = self._context_task
@@ -317,6 +331,8 @@ class UIController:
             self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
+            if isinstance(self._paper, AutopilotBroker):
+                self._paper.on_decision({"target_error": "api_error"})
 
         self._events.appendleft(event)
 
@@ -361,7 +377,7 @@ class UIController:
     def reset_paper(self) -> dict[str, Any]:
         if self._paper_config is None:
             raise RuntimeError("デモ口座は有効になっていません。")
-        self._paper = PaperBroker(self._paper_config)
+        self._paper = make_paper_broker(self._paper_config)
         return self._paper.snapshot()
 
     def snapshot(self) -> dict[str, Any]:
@@ -422,6 +438,11 @@ class UIController:
     ) -> dict[str, Any]:
         """Context visible to Jev without exposing account credentials or commands."""
 
+        if isinstance(self._paper, AutopilotBroker):
+            state = self._paper.decision_state(as_of)
+            if self._paper.config.autopilot_fundamentals:
+                state.update(self._jev_context_state(as_of, instrument_id))
+            return state
         state = self._jev_context_state(as_of, instrument_id)
         if self._paper is None or self._paper_config is None:
             return state
@@ -651,6 +672,9 @@ class UIController:
         )
 
     def _update_event_supervisor(self, as_of: datetime, instrument_id: str) -> None:
+        if isinstance(self._paper, AutopilotBroker):
+            self._event_supervisor = SupervisorDecision("NORMAL", "jev_owns_event_judgment", True)
+            return
         if (
             self._paper_config is not None
             and not self._paper_config.deterministic_supervisor_enabled
@@ -973,7 +997,7 @@ class UIController:
         paper_config: dict[str, Any],
         acknowledged_token_use: bool,
     ) -> dict[str, Any]:
-        if self.running:
+        if self.running or self._jev_replay_running:
             raise RuntimeError(
                 "live Observer実行中はJev historical replayを開始できません。"
             )
@@ -984,6 +1008,9 @@ class UIController:
 
         instrument = get_instrument(instrument_id)
         normalized = dict(paper_config)
+        normalized["instrument_id"] = instrument.id
+        if normalized.get("autopilot_enabled") and normalized.get("autopilot_fundamentals"):
+            raise ValueError("historical fundamentals unavailable: ファンダをOFFにしてください。")
         normalized["price_unit"] = float(instrument.price_unit)
         normalized["move_unit_label"] = instrument.move_unit_label
         normalized["fee_rate"] = float(instrument.paper_fee_rate)
@@ -998,20 +1025,27 @@ class UIController:
         from jevpip.jev.client import JevClient
 
         client = JevClient(self.settings.typesafe_api_key)
-        return await asyncio.to_thread(
-            run_jev_historical_replay,
-            self.settings.data_dir,
-            instrument_id=instrument_id,
-            date=date,
-            start_time=start_time,
-            duration_seconds=duration_seconds,
-            cadence_seconds=cadence_seconds,
-            profile=profile,
-            signal_policy=signal_policy,
-            paper_config=parsed_config,
-            jev_client=client,
-            acknowledged_token_use=acknowledged_token_use,
-        )
+        self._jev_replay_running = True
+        cancel_event = Event()
+        try:
+            return await joined_thread(
+                run_jev_historical_replay,
+                self.settings.data_dir,
+                instrument_id=instrument_id,
+                date=date,
+                start_time=start_time,
+                duration_seconds=duration_seconds,
+                cadence_seconds=cadence_seconds,
+                profile=profile,
+                signal_policy=signal_policy,
+                paper_config=parsed_config,
+                jev_client=client,
+                acknowledged_token_use=acknowledged_token_use,
+                cancel_event=cancel_event,
+                on_cancel=cancel_event.set,
+            )
+        finally:
+            self._jev_replay_running = False
 
     async def run_strategy_backtest(
         self,

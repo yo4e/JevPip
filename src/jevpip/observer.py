@@ -11,6 +11,8 @@ from typing import Any
 
 from jevpip.gmo.public_ws import stream_ticker
 from jevpip.jev.supervisor import derive_jev_supervisor_advice
+from jevpip.jev.autopilot import attach_target
+from jevpip.async_work import joined_thread
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.signals import (
@@ -52,6 +54,8 @@ async def observe(
     count = 0
     jev_task: asyncio.Task[None] | None = None
     last_jev_completed_at = float("-inf")
+    last_jev_started_at = float("-inf")
+    autopilot_mode = False
 
     async def run_jev_decision(
         *,
@@ -64,21 +68,23 @@ async def observe(
         requested_at = datetime.now(timezone.utc)
         started = time.perf_counter()
         try:
-            answer = await asyncio.to_thread(
+            answer = await joined_thread(
                 jev_client.decide,
                 jev_state,
-                "5s",
+                f"{jev_state['autopilot']['horizon_seconds']}s" if "autopilot" in jev_state else "5s",
                 supervisor_strategies=jev_supervisor_strategies,
                 instrument_label=tick.display_symbol,
             )
             available_at = datetime.now(timezone.utc)
+            if not isinstance(answer, dict):
+                answer = {"malformed_response_type": type(answer).__name__}
             latency_ms = round((time.perf_counter() - started) * 1000, 2)
             direction_signal = None
             direction_detail = None
             research_signal = None
             signal_detail = None
-            position_action, position_action_detail = classify_position_action(answer)
-            if signal_policy is not None:
+            position_action, position_action_detail = (None, {}) if "autopilot" in jev_state else classify_position_action(answer)
+            if signal_policy is not None and "autopilot" not in jev_state:
                 direction_signal, direction_detail = classify_direction_signal(
                     answer,
                     signal_policy,
@@ -131,6 +137,7 @@ async def observe(
                 "jev_supervisor_detail": jev_supervisor_detail,
                 "jev_supervisor_error": jev_supervisor_error,
             }
+            attach_target(event, jev_state)
             append_jsonl(
                 data_dir / "decisions" / tick.instrument_id / f"{day}.jsonl",
                 event,
@@ -193,7 +200,7 @@ async def observe(
 
             now = time.monotonic()
             task_running = jev_task is not None and not jev_task.done()
-            cadence_ready = now - last_jev_completed_at >= jev_every_seconds
+            cadence_ready = now - (last_jev_started_at if autopilot_mode else last_jev_completed_at) >= jev_every_seconds
             if jev_client is not None and not task_running and cadence_ready:
                 jev_state = dict(features)
                 if jev_state_context_provider is not None:
@@ -204,6 +211,9 @@ async def observe(
                     if not isinstance(context_state, dict):
                         raise TypeError("Jev state context provider must return a dict")
                     jev_state.update(context_state)
+
+                autopilot_mode = "autopilot" in jev_state
+                last_jev_started_at = now
 
                 jev_task = asyncio.create_task(
                     run_jev_decision(

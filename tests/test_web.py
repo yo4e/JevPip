@@ -1034,7 +1034,7 @@ def test_homepage_describes_jev_as_direction_gate():
         response = client.get("/")
     assert response.status_code == 200
     assert "Jev方向一致時だけentry候補を通します" in response.text
-    assert "ON + コード戦略OFFならJev単独" in response.text
+    assert "おまかせOFFでは従来の方向判定" in response.text
 
 
 
