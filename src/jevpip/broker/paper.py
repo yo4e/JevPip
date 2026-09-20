@@ -37,6 +37,9 @@ class PaperConfig:
     cooldown_seconds: float = 2.0
     jev_signal_max_age_seconds: float = 3.0
     jev_direction_gate_enabled: bool = False
+    jev_position_action_max_age_seconds: float = 3.0
+    jev_position_min_hold_seconds: float = 2.0
+    jev_position_close_confirmations: int = 2
     fee_rate: float = 0.0
     fee_label: str = "手数料なし"
     slippage_units: float = 0.0
@@ -110,6 +113,13 @@ class PaperBroker:
         self._latest_jev_basis_at: datetime | None = None
         self._latest_jev_requested_at: datetime | None = None
         self._latest_jev_available_at: datetime | None = None
+        self._latest_jev_position_action: str | None = None
+        self._latest_jev_position_detail: dict[str, Any] = {}
+        self._latest_jev_position_basis_at: datetime | None = None
+        self._latest_jev_position_requested_at: datetime | None = None
+        self._latest_jev_position_available_at: datetime | None = None
+        self._latest_jev_position_target_opened_at: datetime | None = None
+        self._jev_close_confirmation_count = 0
         self._last_exit_at: datetime | None = None
         self._last_bid: Decimal | None = None
         self._last_ask: Decimal | None = None
@@ -164,6 +174,39 @@ class PaperBroker:
         self._latest_jev_requested_at = self._dt(str(raw_requested)) if raw_requested else None
         self._latest_jev_available_at = self._dt(str(raw_available)) if raw_available else None
         self._latest_jev_at = self._latest_jev_available_at
+
+        raw_action = event.get("position_action")
+        action = str(raw_action) if raw_action is not None else None
+        if action not in {"HOLD", "CLOSE"}:
+            action = None
+        self._latest_jev_position_action = action
+        detail = event.get("position_action_detail")
+        self._latest_jev_position_detail = detail if isinstance(detail, dict) else {}
+        self._latest_jev_position_basis_at = self._latest_jev_basis_at
+        self._latest_jev_position_requested_at = self._latest_jev_requested_at
+        self._latest_jev_position_available_at = self._latest_jev_available_at
+
+        target_opened_at = None
+        state = event.get("state")
+        if isinstance(state, dict):
+            paper_context = state.get("paper_context")
+            if isinstance(paper_context, dict):
+                position = paper_context.get("position")
+                if isinstance(position, dict) and position.get("opened_at"):
+                    try:
+                        target_opened_at = self._dt(str(position["opened_at"]))
+                    except (TypeError, ValueError):
+                        target_opened_at = None
+        self._latest_jev_position_target_opened_at = target_opened_at
+
+        if (
+            action == "CLOSE"
+            and self.position is not None
+            and target_opened_at == self.position.opened_at
+        ):
+            self._jev_close_confirmation_count += 1
+        else:
+            self._jev_close_confirmation_count = 0
 
     def on_tick(
         self,
@@ -522,16 +565,57 @@ class PaperBroker:
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
         if self.config.strategy == "jev" or self.config.jev_direct_enabled:
-            desired = self._strategy_decision(
-                at,
-                (bid + ask) / Decimal("2"),
-                decision_at=decision_at,
-            ).signal
-            if desired == "SHORT" and self.position.side == "LONG":
-                return "opposite_jev_signal"
-            if desired == "LONG" and self.position.side == "SHORT":
-                return "opposite_jev_signal"
+            return self._jev_position_exit_reason(at, decision_at=decision_at)
         return None
+
+    def _jev_position_exit_reason(
+        self,
+        at: datetime,
+        *,
+        decision_at: datetime | None = None,
+    ) -> str | None:
+        """Apply bounded Jev HOLD/CLOSE only to the position it was asked about."""
+
+        if self.position is None or self._latest_jev_position_action != "CLOSE":
+            return None
+        if self._latest_jev_position_target_opened_at != self.position.opened_at:
+            return None
+
+        held_seconds = (at - self.position.opened_at).total_seconds()
+        if held_seconds < max(0.0, self.config.jev_position_min_hold_seconds):
+            return None
+
+        clock = decision_at or at
+        age = self._jev_position_action_age(clock)
+        if age is None or age < 0:
+            return None
+        if age > max(0.0, self.config.jev_position_action_max_age_seconds):
+            return None
+
+        required = max(1, int(self.config.jev_position_close_confirmations))
+        if self._jev_close_confirmation_count < required:
+            return None
+        return "jev_position_close"
+
+    def _jev_position_action_age(self, now: datetime) -> float | None:
+        if self._latest_jev_position_available_at is None:
+            return None
+        if now < self._latest_jev_position_available_at:
+            return (now - self._latest_jev_position_available_at).total_seconds()
+        basis = (
+            self._latest_jev_position_requested_at
+            or self._latest_jev_position_available_at
+        )
+        return (now - basis).total_seconds()
+
+    def _reset_jev_position_management(self) -> None:
+        self._latest_jev_position_action = None
+        self._latest_jev_position_detail = {}
+        self._latest_jev_position_basis_at = None
+        self._latest_jev_position_requested_at = None
+        self._latest_jev_position_available_at = None
+        self._latest_jev_position_target_opened_at = None
+        self._jev_close_confirmation_count = 0
 
     def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal, reason: str) -> PaperTrade:
         size = Decimal(str(self.config.size))
@@ -548,6 +632,7 @@ class PaperBroker:
             entry_fee=entry_fee,
             entry_slippage_cost=entry_slippage,
         )
+        self._reset_jev_position_management()
         self.fees_paid += entry_fee
         self.slippage_cost += entry_slippage
 
@@ -597,6 +682,7 @@ class PaperBroker:
         stats["gross_pnl"] = Decimal(stats["gross_pnl"]) + gross_pnl
         self.position = None
         self._last_exit_at = at
+        self._reset_jev_position_management()
 
         trade = PaperTrade(
             action="CLOSE",
@@ -707,6 +793,22 @@ class PaperBroker:
             "jev_direct_enabled": self.config.jev_direct_enabled,
             "jev_direction_gate_enabled": self.config.jev_direction_gate_enabled,
             "latest_jev_signal": self._latest_jev_signal,
+            "jev_position_management": {
+                "latest_action": self._latest_jev_position_action,
+                "detail": dict(self._latest_jev_position_detail),
+                "target_opened_at": (
+                    None
+                    if self._latest_jev_position_target_opened_at is None
+                    else self._latest_jev_position_target_opened_at.isoformat()
+                ),
+                "close_confirmations": self._jev_close_confirmation_count,
+                "required_close_confirmations": max(
+                    1, int(self.config.jev_position_close_confirmations)
+                ),
+                "min_hold_seconds": self.config.jev_position_min_hold_seconds,
+                "action_max_age_seconds": self.config.jev_position_action_max_age_seconds,
+                "position_horizon_seconds": self.config.max_hold_seconds,
+            },
             "strategy_bar_seconds": self.config.strategy_bar_seconds,
             "strategy_bars": len(self._bar_prices),
             "strategy_decision": asdict(self._latest_strategy_decision),
