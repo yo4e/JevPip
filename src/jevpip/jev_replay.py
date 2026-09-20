@@ -417,6 +417,7 @@ def _summary(
     skipped_by_latency: int,
     usages: list[tuple[int, int]],
     latencies: list[float],
+    trades: list[dict[str, Any]],
 ) -> dict[str, Any]:
     snapshot = broker.snapshot()
     return {
@@ -448,7 +449,7 @@ def _summary(
         "slippage_cost": snapshot["slippage_cost"],
         "average_trade_pnl": snapshot["average_trade_pnl"],
         "exit_reasons": snapshot["exit_reasons"],
-        "trades": snapshot["trades"],
+        "trades": trades,
     }
 
 
@@ -509,6 +510,7 @@ def run_jev_historical_replay(
     usages: list[tuple[int, int]] = []
     latencies: list[float] = []
     selected_ticks = 0
+    trades: list[dict[str, Any]] = []
 
     for tick in all_ticks:
         if tick.market_timestamp > end_at:
@@ -526,7 +528,7 @@ def run_jev_historical_replay(
             broker.on_decision(pending_decision[1])
             pending_decision = None
 
-        broker.on_tick(tick.as_json_dict())
+        trades.extend(broker.on_tick(tick.as_json_dict()))
 
         if tick.market_timestamp < next_request_at:
             continue
@@ -589,13 +591,8 @@ def run_jev_historical_replay(
         reason="end_of_replay",
     )
     if final_trade is not None:
-        append_jsonl(
-            output,
-            {
-                "kind": "paper_trade",
-                **final_trade,
-            },
-        )
+        trades.append(final_trade)
+        append_jsonl(output, final_trade)
 
     summary = _summary(
         broker,
@@ -604,6 +601,7 @@ def run_jev_historical_replay(
         skipped_by_latency=skipped_by_latency,
         usages=usages,
         latencies=latencies,
+        trades=trades,
     )
     result = {
         "kind": "jev_historical_replay_summary",
