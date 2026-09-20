@@ -54,6 +54,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "常に1ポジション" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
+        assert 'id="paper-max-spread"' in response.text
+        assert "この値を超えるspreadでは新規取引をしません" in response.text
         assert "最大DDで停止" in response.text
         assert 'id="fifty-cost-warning"' in response.text
         assert "スプレッド等の取引コストが高いため取引しません" in response.text
