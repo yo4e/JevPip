@@ -30,6 +30,10 @@ from jevpip.decision_trace import append_decision_trace, build_decision_trace
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.instruments import get_instrument
+from jevpip.jev_replay import (
+    preview_jev_replay as build_jev_replay_preview,
+    run_jev_historical_replay,
+)
 from jevpip.observer import observe
 from jevpip.signals import SignalPolicy
 
@@ -935,6 +939,79 @@ class UIController:
         payload["fetched_at"] = datetime.now(timezone.utc).isoformat()
         self._real_account_cache = (now, payload)
         return payload
+
+    async def preview_jev_replay(
+        self,
+        *,
+        instrument_id: str,
+        date: str,
+        start_time: str | None,
+        duration_seconds: int,
+        cadence_seconds: int,
+    ) -> dict[str, Any]:
+        get_instrument(instrument_id)
+        return await asyncio.to_thread(
+            build_jev_replay_preview,
+            self.settings.data_dir,
+            instrument_id=instrument_id,
+            date=date,
+            start_time=start_time,
+            duration_seconds=duration_seconds,
+            cadence_seconds=cadence_seconds,
+        )
+
+    async def run_jev_replay(
+        self,
+        *,
+        instrument_id: str,
+        date: str,
+        start_time: str | None,
+        duration_seconds: int,
+        cadence_seconds: int,
+        profile: dict[str, Any],
+        signal_policy: SignalPolicy,
+        paper_config: dict[str, Any],
+        acknowledged_token_use: bool,
+    ) -> dict[str, Any]:
+        if self.running:
+            raise RuntimeError(
+                "live Observer実行中はJev historical replayを開始できません。"
+            )
+        if not self.settings.typesafe_api_key:
+            raise ValueError(
+                "Jev historical replayにはTYPESAFE_API_KEYが必要です。"
+            )
+
+        instrument = get_instrument(instrument_id)
+        normalized = dict(paper_config)
+        normalized["price_unit"] = float(instrument.price_unit)
+        normalized["move_unit_label"] = instrument.move_unit_label
+        normalized["fee_rate"] = float(instrument.paper_fee_rate)
+        normalized["fee_label"] = instrument.paper_fee_label
+        normalized["short_is_synthetic"] = instrument.paper_short_is_synthetic
+        normalized["strategy"] = "momentum"
+        normalized["strategy_enabled"] = False
+        normalized["jev_direct_enabled"] = True
+        normalized["jev_direction_gate_enabled"] = False
+        parsed_config = PaperConfig(**normalized)
+
+        from jevpip.jev.client import JevClient
+
+        client = JevClient(self.settings.typesafe_api_key)
+        return await asyncio.to_thread(
+            run_jev_historical_replay,
+            self.settings.data_dir,
+            instrument_id=instrument_id,
+            date=date,
+            start_time=start_time,
+            duration_seconds=duration_seconds,
+            cadence_seconds=cadence_seconds,
+            profile=profile,
+            signal_policy=signal_policy,
+            paper_config=parsed_config,
+            jev_client=client,
+            acknowledged_token_use=acknowledged_token_use,
+        )
 
     async def run_strategy_backtest(
         self,
