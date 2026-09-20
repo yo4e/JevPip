@@ -699,7 +699,7 @@ def test_jev_signal_ttl_counts_from_request_time_not_response_time():
     assert broker.snapshot()["strategy_decision"]["reason"] == "jev_stale_or_wait"
 
 
-def test_jev_direct_close_never_reverses_on_the_same_tick():
+def test_jev_direct_opposite_direction_does_not_close_or_reverse():
     broker = PaperBroker(
         PaperConfig(
             strategy_enabled=False,
@@ -730,18 +730,16 @@ def test_jev_direct_close_never_reverses_on_the_same_tick():
             "recorded_at": "2026-09-20T00:00:01+00:00",
         }
     )
-    flipped = broker.on_tick(
+    assert broker.on_tick(
         tick("2026-09-20T00:00:01.500000+00:00", "150.000", "150.002")
-    )
-    assert [event["action"] for event in flipped] == ["CLOSE"]
-    assert flipped[0]["reason"] == "opposite_jev_signal"
-    assert broker.snapshot()["position"] is None
+    ) == []
+    snapshot = broker.snapshot()
+    assert snapshot["position"]["side"] == "LONG"
 
-    next_tick = broker.on_tick(
+    assert broker.on_tick(
         tick("2026-09-20T00:00:02+00:00", "150.000", "150.002")
-    )
-    assert [event["action"] for event in next_tick] == ["OPEN"]
-    assert next_tick[0]["side"] == "SHORT"
+    ) == []
+    assert broker.snapshot()["position"]["side"] == "LONG"
 
 
 
