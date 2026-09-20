@@ -328,6 +328,14 @@ class UIController:
             self._record_jev_usage(event)
             if self._paper is not None:
                 self._paper.on_decision(event)
+                if (
+                    isinstance(self._paper, AutopilotBroker)
+                    and self._paper.config.autopilot_style == "fifty"
+                    and event.get("available_at")
+                ):
+                    available_at = self._parse_timestamp(str(event["available_at"]))
+                    for paper_event in self._paper.execute_fifty_pending(available_at):
+                        self._events.appendleft(paper_event)
             self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")

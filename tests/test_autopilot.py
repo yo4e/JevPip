@@ -135,6 +135,44 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert _should_request_jev(b.decision_state(START + timedelta(seconds=2))) is True
 
 
+def test_fifty_plus_can_open_on_latest_fresh_quote_without_waiting_for_next_tick():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+        max_market_age_seconds=5,
+    )
+    b.on_tick(tick(0))
+    event = event_for(b, 0, "UP")
+    b.on_decision(event)
+
+    opened = b.execute_fifty_pending(START + timedelta(seconds=0.1))
+    assert opened and opened[0]["action"] == "OPEN"
+    assert b.position is not None
+    assert b.position.side == "LONG"
+    assert b.snapshot()["target_status"] == "executed"
+
+
+def test_fifty_plus_rejects_stale_quote_and_reasks_on_next_fresh_tick():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        fee_rate=0,
+        slippage_units=0,
+        max_market_age_seconds=5,
+    )
+    b.on_tick(tick(0))
+    b.on_decision(event_for(b, 0, "DOWN"))
+    assert b.execute_fifty_pending(START + timedelta(seconds=6)) == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "rejected:stale_quote"
+
+    b.on_tick(tick(7))
+    assert _should_request_jev(b.decision_state(START + timedelta(seconds=7))) is True
+
+
 def test_fifty_plus_fx_stop_is_symmetric_net_units():
     b = broker(
         autopilot_style="fifty",

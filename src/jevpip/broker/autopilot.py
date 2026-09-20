@@ -235,7 +235,8 @@ class AutopilotBroker(PaperBroker):
             return "max_hold"
         return None
 
-    def _capacity_block(self, side: str, quantity: Decimal, bid: Decimal, ask: Decimal) -> str | None:
+    def _capacity_block(self, side: str, quantity: Decimal, bid: Decimal, ask: Decimal,
+                        *, optional_limits: bool = True) -> str | None:
         old = self.position
         if quantity == 0 or (old is not None and side == old.side and quantity <= old.size):
             return None
@@ -244,6 +245,8 @@ class AutopilotBroker(PaperBroker):
         projected_equity = self._equity() - added * self._round_trip_cost(bid, ask)
         if notional > max(ZERO, projected_equity):
             return "capital_limit"
+        if not optional_limits:
+            return None
         if self.config.autopilot_max_quantity is not None and quantity > Decimal(str(self.config.autopilot_max_quantity)):
             return "max_quantity"
         if self.config.autopilot_max_notional is not None and notional > Decimal(str(self.config.autopilot_max_notional)):
@@ -257,19 +260,25 @@ class AutopilotBroker(PaperBroker):
         desired = quantity * (1 if side == "LONG" else -1)
         increasing = quantity > 0 and (old is None or side != old.side or quantity > old.size)
         cfg = self.config
-        if cfg.autopilot_max_change is not None and abs(desired-current) > Decimal(str(cfg.autopilot_max_change)):
-            return "max_position_change"
         if not increasing:
             return None
         if self._halted:
             return "risk_halted"
+        if cfg.autopilot_style == "fifty":
+            # Fifty+ is intentionally always-in-market. Optional entry gates
+            # and supervisor pauses do not turn it into an abstaining strategy;
+            # only the mandatory capital invariant and fresh/open quote checks
+            # outside this helper may block an entry.
+            return self._capacity_block(
+                side, quantity, bid, ask, optional_limits=False
+            )
+        if cfg.autopilot_max_change is not None and abs(desired-current) > Decimal(str(cfg.autopilot_max_change)):
+            return "max_position_change"
         if not allow_entry:
             return "external_supervisor"
         capacity = self._capacity_block(side, quantity, bid, ask)
         if capacity:
             return capacity
-        if cfg.autopilot_style == "fifty":
-            return None
         if cfg.autopilot_max_spread is not None and (ask-bid)/self.price_unit > Decimal(str(cfg.autopilot_max_spread)):
             return "max_spread"
         if cfg.autopilot_entry_loss is not None and self.initial_balance-self._equity() >= Decimal(str(cfg.autopilot_entry_loss)):
@@ -285,6 +294,143 @@ class AutopilotBroker(PaperBroker):
         if self._confirmations < cfg.autopilot_confirmations:
             return "confirming_target"
         return None
+
+    def _apply_pending_target(
+        self,
+        *,
+        at: datetime,
+        now: datetime,
+        bid: Decimal,
+        ask: Decimal,
+        allow_entry: bool,
+        require_new_market: bool,
+    ) -> list[dict[str, Any]]:
+        target = self._pending
+        if target is None:
+            return []
+        available, expires = self._dt(target["available_at"]), self._dt(target["expires_at"])
+        if now > expires:
+            self._pending = None
+            self._target_status = "rejected:expired"
+            return []
+        if now < available or (require_new_market and at < available):
+            return []
+
+        self._pending = None  # one response can be applied at most once
+        if target["account_version"] != self.account_version:
+            self._target_status = "rejected:account_changed"
+            return []
+
+        side, quantity = target["target_side"], Decimal(str(target["target_quantity"]))
+        old = self.position
+        same = (old is None and quantity == 0) or (
+            old is not None and old.side == side and old.size == quantity
+        )
+        if same:
+            self._target_status = "hold"
+            self._candidate, self._confirmations = None, 0
+            return []
+
+        block = self._target_block(
+            side, quantity, target["confidence"], at, bid, ask, allow_entry
+        )
+        self._target_status = block or "executed"
+        if block is not None:
+            return []
+
+        trades: list[dict[str, Any]] = []
+        reason, decision_id = target["reason"], target["decision_id"]
+        if old is not None and (side != old.side or quantity < old.size):
+            amount = old.size if side != old.side else old.size-quantity
+            trades.append(self._reduce(amount, at, bid, ask, reason, decision_id))
+        current = ZERO if self.position is None else self.position.size
+        if quantity > current:
+            trades.append(self._add(side, quantity-current, at, bid, ask, reason, decision_id))
+        return trades
+
+    def _finish_cycle(
+        self,
+        *,
+        at: datetime,
+        now: datetime,
+        bid: Decimal,
+        ask: Decimal,
+        before: int,
+        trades: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if trades:
+            self._target_changes += 1
+            self._last_change_at = at
+            self._candidate, self._confirmations = None, 0
+        elif self._pending is None and self._target_status != "confirming_target":
+            self._candidate, self._confirmations = None, 0
+        self._update_drawdown()
+        self._previous_exposure = ZERO if self.position is None else self.position.size*(bid+ask)/2
+        self._max_exposure = max(self._max_exposure, self._previous_exposure)
+        self._latest_strategy_decision = StrategyDecision(
+            "WAIT" if self.position is None else self.position.side, self._target_status, {})
+        empty = {"signal": "WAIT", "reason": "autopilot", "metrics": {}}
+        self._last_decision_trace = {
+            "market": {"market_timestamp": at.isoformat(), "received_at": now.isoformat(),
+                       "bid": str(bid), "ask": str(ask), "status": self._last_market_status},
+            "code_candidate": empty, "entry_candidate": asdict(self._latest_strategy_decision),
+            "jev_direction": {"signal": self._latest_strategy_decision.signal},
+            "deterministic_supervisor": {"state": "PAUSE_ENTRY" if self._halted else "NORMAL"},
+            "blocked_entry_reason": None if trades or self._target_status == "hold" else self._target_status,
+            "position_management": {"target": self._last_target, "status": self._target_status,
+                                    "account_version_before": before, "account_version_after": self.account_version},
+            "final_action": trades[-1]["action"] if trades else "NOOP", "holding_seconds": None,
+            "turnover_size": sum(t["size"] for t in trades),
+            "trade_link": {"trade": trades[0] if trades else None, "executions": trades},
+        }
+        return trades
+
+    def execute_fifty_pending(self, now: datetime) -> list[dict[str, Any]]:
+        """Apply a Fifty+ direction immediately on the latest still-fresh quote.
+
+        The normal autopilot waits for a later market tick after the Jev
+        response. Fifty+ instead trades once per completed round, so waiting
+        for another sparse ticker update can make every decision expire. This
+        paper-only path reuses the last observed BID/ASK only while that quote
+        is still within max_market_age_seconds. It never fabricates a price.
+        """
+
+        if self.config.autopilot_style != "fifty" or self._pending is None:
+            return []
+        if (
+            self._last_bid is None
+            or self._last_ask is None
+            or self._last_received_at is None
+            or self._last_market_status != "OPEN"
+        ):
+            self._pending = None
+            self._target_status = "rejected:market_unavailable"
+            return []
+
+        age = (now - self._last_received_at).total_seconds()
+        max_age = self.config.max_market_age_seconds
+        if age < 0 or age > max_age:
+            self._pending = None
+            self._target_status = "rejected:stale_quote"
+            return []
+
+        before = self.account_version
+        trades = self._apply_pending_target(
+            at=now,
+            now=now,
+            bid=self._last_bid,
+            ask=self._last_ask,
+            allow_entry=True,
+            require_new_market=False,
+        )
+        return self._finish_cycle(
+            at=now,
+            now=now,
+            bid=self._last_bid,
+            ask=self._last_ask,
+            before=before,
+            trades=trades,
+        )
 
     def on_tick(self, event: dict[str, Any], *, allow_entry: bool = True,
                 strategy_override: Any = None, entry_gate_reason: str | None = None) -> list[dict[str, Any]]:
@@ -320,59 +466,22 @@ class AutopilotBroker(PaperBroker):
                 self._target_status = forced
                 self._pending = None
             elif self._pending is not None:
-                target = self._pending
-                available, expires = self._dt(target["available_at"]), self._dt(target["expires_at"])
-                if now > expires:
-                    self._pending = None
-                    self._target_status = "rejected:expired"
-                elif now >= available and at >= available:
-                    self._pending = None  # one response can be applied at most once
-                    if target["account_version"] != self.account_version:
-                        self._target_status = "rejected:account_changed"
-                    else:
-                        side, quantity = target["target_side"], Decimal(str(target["target_quantity"]))
-                        old = self.position
-                        same = (old is None and quantity == 0) or (old is not None and old.side == side and old.size == quantity)
-                        if same:
-                            self._target_status = "hold"
-                            self._candidate, self._confirmations = None, 0
-                        else:
-                            block = self._target_block(side, quantity, target["confidence"], at, bid, ask, allow_entry)
-                            self._target_status = block or "executed"
-                            if block is None:
-                                reason, decision_id = target["reason"], target["decision_id"]
-                                if old is not None and (side != old.side or quantity < old.size):
-                                    amount = old.size if side != old.side else old.size-quantity
-                                    trades.append(self._reduce(amount, at, bid, ask, reason, decision_id))
-                                current = ZERO if self.position is None else self.position.size
-                                if quantity > current:
-                                    trades.append(self._add(side, quantity-current, at, bid, ask, reason, decision_id))
-        if trades:
-            self._target_changes += 1
-            self._last_change_at = at
-            self._candidate, self._confirmations = None, 0
-        elif self._pending is None and self._target_status != "confirming_target":
-            self._candidate, self._confirmations = None, 0
-        self._update_drawdown()
-        self._previous_exposure = ZERO if self.position is None else self.position.size*(bid+ask)/2
-        self._max_exposure = max(self._max_exposure, self._previous_exposure)
-        self._latest_strategy_decision = StrategyDecision(
-            "WAIT" if self.position is None else self.position.side, self._target_status, {})
-        empty = {"signal": "WAIT", "reason": "autopilot", "metrics": {}}
-        self._last_decision_trace = {
-            "market": {"market_timestamp": at.isoformat(), "received_at": now.isoformat(),
-                       "bid": str(bid), "ask": str(ask), "status": self._last_market_status},
-            "code_candidate": empty, "entry_candidate": asdict(self._latest_strategy_decision),
-            "jev_direction": {"signal": self._latest_strategy_decision.signal},
-            "deterministic_supervisor": {"state": "PAUSE_ENTRY" if self._halted else "NORMAL"},
-            "blocked_entry_reason": None if trades or self._target_status == "hold" else self._target_status,
-            "position_management": {"target": self._last_target, "status": self._target_status,
-                                    "account_version_before": before, "account_version_after": self.account_version},
-            "final_action": trades[-1]["action"] if trades else "NOOP", "holding_seconds": None,
-            "turnover_size": sum(t["size"] for t in trades),
-            "trade_link": {"trade": trades[0] if trades else None, "executions": trades},
-        }
-        return trades
+                trades.extend(self._apply_pending_target(
+                    at=at,
+                    now=now,
+                    bid=bid,
+                    ask=ask,
+                    allow_entry=allow_entry,
+                    require_new_market=True,
+                ))
+        return self._finish_cycle(
+            at=at,
+            now=now,
+            bid=bid,
+            ask=ask,
+            before=before,
+            trades=trades,
+        )
 
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
@@ -416,9 +525,9 @@ class AutopilotBroker(PaperBroker):
         if self.config.autopilot_style == "fifty":
             quantity = (Decimal(str(self.config.size))/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
             choices = []
-            if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask):
+            if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask, optional_limits=False):
                 choices.append(("UP", "LONG", quantity))
-            if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask):
+            if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask, optional_limits=False):
                 choices.append(("DOWN", "SHORT", quantity))
         else:
             choices = [("KEEP", current_side, current_quantity), ("FLAT", "FLAT", ZERO)]
