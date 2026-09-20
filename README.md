@@ -189,7 +189,7 @@ paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision trace�
 
 supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
-## 3つの検証機能
+## 4つの検証機能
 
 ### 1. 戦略BT
 
@@ -280,6 +280,44 @@ CLI:
 ```bash
 uv run jevpip backtest --date 20260918 --profile technical
 ```
+
+### 4. A/B/C/D experiment
+
+Jev + code strategy + 安全監督をすべてONにしたsource run（C-run）のdecision traceを、Jevへ再問い合わせせず再生します。
+
+```bash
+uv run jevpip experiment \
+  --trace data/decision_traces/USD_JPY/2026-09-20.jsonl
+```
+
+1ファイルに複数runがある場合:
+
+```bash
+uv run jevpip experiment \
+  --trace data/decision_traces/USD_JPY/2026-09-20.jsonl \
+  --run-id <run_id>
+```
+
+比較するvariant:
+
+- **A**: technical only
+- **B**: technical + deterministic supervisor
+- **C**: technical + deterministic + Jev supervisor
+- **D**: Jev direct direction control
+
+同じmarket pathと同じpaper cost modelを使い、net PnL / PF / max drawdown / trade count / fee / turnover / pause duration等を比較します。
+
+B / Cについては、supervisorやJev direction gateに止められたcode candidateを、同じ後続market pathで1-positionだけ仮想実行します。これにより、
+
+- avoided loss
+- missed profit
+- false pause count
+
+を集計します。連続した同一blockは1 episodeとして扱い、仮想tradeが重なるcandidateは二重計上しません。
+
+Dはsource C-runで記録済みのJev directionだけを再利用します。source runではcounterfactualなD position向け `position_action` を因果的に取得できないため、DのexitはTP / SL / max hold等のcode-owned exitだけで比較します。
+
+`--json` でmachine-readableな結果を出せます。Jev performanceの実測結果はpublic repoへcommitしません。
 
 ## Jevの現在地
 
@@ -473,4 +511,4 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-次の大きなテーマは、**同じmarket path / cost modelで technical only・deterministic event supervisor・Jev supervisor・Jev direct signal を比較するexperiment harnessを作ること**です。
+A/B/C/D experiment harnessまで実装済みです。次の大きなテーマは、実際に採取したC-run traceで比較を行い、counterfactual指標の解釈と妥当性を検証することです。
