@@ -11,7 +11,7 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}button:disa
 .brand{flex-shrink:0;white-space:nowrap;display:flex;align-items:center;gap:9px;font-weight:900;padding-right:12px;border-right:1px solid var(--line)}
 .logo{width:30px;height:30px;border-radius:8px;background:#111827;color:#fff;display:grid;place-items:center;font-size:16px}
 .grow{flex:1}.topbar select{height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;font-weight:750}
-.symbol-select{min-width:128px}.time-select{width:86px}.top-price{font-weight:900;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums}.top-spread{font-size:11px;color:var(--muted);white-space:nowrap}
+.symbol-select{min-width:128px}.time-select{width:86px}.top-price{font-weight:900;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums}.top-spread{font-size:11px;color:var(--muted);white-space:nowrap}.top-spread.warn{color:#b45309;font-weight:850}
 .status-pill{font-size:10px;padding:5px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);white-space:nowrap}.status-pill.safe{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
 .mini-btn{flex-shrink:0;white-space:nowrap;height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 12px;font-weight:800}.mini-btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.mini-btn.danger{color:var(--red)}
 .workspace{display:grid;grid-template-columns:minmax(0,1fr) 342px;min-height:0}
@@ -391,7 +391,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div><script>
 const $=id=>document.getElementById(id);
-const state={config:null,lastStatus:null,lastAccountAt:0,history:[],historyRequestId:0,historyCache:{},historyLoading:false,historyError:false,ready:false,pendingSession:null,syncedSession:null,jevReplayPreview:null};
+const state={config:null,lastStatus:null,lastAccountAt:0,history:[],historyRequestId:0,historyCache:{},historyLoading:false,historyError:false,ready:false,pendingSession:null,syncedSession:null,jevReplayPreview:null,previewQuote:null,previewQuoteAt:0,previewQuotePending:false,previewQuoteRequestId:0};
 
 function toast(msg,error=false){const n=$("toast");n.textContent=msg;n.className="toast"+(error?" error":"");n.style.display="block";clearTimeout(n.t);n.t=setTimeout(()=>n.style.display="none",4200)}
 async function api(path,opt={}){const r=await fetch(path,{headers:{"Content-Type":"application/json",...(opt.headers||{})},...opt});let d=null;try{d=await r.json()}catch{}if(!r.ok)throw new Error(d?.detail||`HTTP ${r.status}`);return d}
@@ -646,7 +646,47 @@ async function loadHistory(){
     }
   }
 }
-async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.history=[];$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates()]);refresh()}
+function renderTopQuote(m,preview=false){
+  const spec=instrumentSpec();
+  if(!m){
+    $("mid").textContent="-";
+    $("spread").textContent="spread -";
+    $("spread").className="top-spread";
+    $("spread").title="";
+    $("quote-big").innerHTML="-<small>"+esc(spec?.display_symbol||"USD/JPY")+"</small>";
+    return;
+  }
+  const mid=(Number(m.bid)+Number(m.ask))/2;
+  const dec=spec?.price_decimals??3;
+  const price=mid.toLocaleString("ja-JP",{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  const spreadValue=Number(m.spread_units??m.spread_pips);
+  const unit=m.move_unit_label||spec?.move_unit_label||"";
+  const maxSpread=Number($("paper-max-spread")?.value);
+  const spreadBlocked=$("mode").value==="paper"&&$("autopilot").checked&&Number.isFinite(spreadValue)&&Number.isFinite(maxSpread)&&spreadValue>maxSpread;
+  $("mid").textContent=price;
+  $("quote-big").innerHTML=price+"<small>"+esc(spec?.display_symbol||m.display_symbol||"")+"</small>";
+  $("spread").textContent="spread "+(Number.isFinite(spreadValue)?spreadValue:"-")+" "+unit+(preview?" · preview":"");
+  $("spread").className="top-spread"+(spreadBlocked?" warn":"");
+  $("spread").title=preview?"GMO Public RESTの停止中プレビュー。保存・売買判断には使いません。":"live WebSocket quote";
+}
+async function refreshPreviewQuote(force=false){
+  if(!state.ready||state.lastStatus?.running||state.pendingSession==="start"||state.previewQuotePending)return;
+  const instrument=$("instrument").value,now=Date.now();
+  if(!force&&state.previewQuote?.instrument_id===instrument&&now-state.previewQuoteAt<4500){
+    renderTopQuote(state.previewQuote,true);return;
+  }
+  const requestId=++state.previewQuoteRequestId;
+  state.previewQuotePending=true;
+  try{
+    const q=await api("/api/quote?instrument_id="+encodeURIComponent(instrument)+(force?"&force=true":""));
+    if(requestId!==state.previewQuoteRequestId||state.lastStatus?.running||instrument!==$("instrument").value)return;
+    state.previewQuote=q;state.previewQuoteAt=Date.now();renderTopQuote(q,true);
+  }catch(e){
+    if(!state.previewQuote||state.previewQuote.instrument_id!==instrument)renderTopQuote(null,true);
+    console.debug("preview quote unavailable",e);
+  }finally{state.previewQuotePending=false}
+}
+async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.history=[];state.previewQuote=null;state.previewQuoteAt=0;$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);refresh()}
 
 async function start(){
   if(!state.ready||state.pendingSession||state.lastStatus?.running)return;
@@ -662,7 +702,7 @@ async function stop(){
   state.pendingSession="stop";syncSessionControls(state.lastStatus||{},true);$("status").textContent="停止中…";
   try{await api("/api/observer/stop",{method:"POST",body:"{}"});toast("停止しました。");}
   catch(e){toast(e.message,true)}
-  finally{state.pendingSession=null;await refresh();syncSessionControls(state.lastStatus||{},true);}
+  finally{state.pendingSession=null;await refresh();await refreshPreviewQuote(true);syncSessionControls(state.lastStatus||{},true);}
 }
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
@@ -946,19 +986,9 @@ async function refresh(){
         syncSessionControls(s,activeInstrument);
     const spec=state.config?.instruments?.[selectedInstrument]||instrumentSpec();
     $("session-data-state").textContent=state.pendingSession==="start"?"起動準備中…":state.pendingSession==="stop"?"停止処理中…":s.running&&activeInstrument?((s.latest_market?"● raw tick収集中":"価格を待機中")+" · Jev API "+(s.with_jev?"ON":"OFF")):"停止中 · 開始するとraw tickを保存";
-    const m=activeInstrument?s.latest_market:null;
-    if(m){
-      const mid=(Number(m.bid)+Number(m.ask))/2;
-      const dec=spec?.price_decimals??3;
-      const price=mid.toLocaleString("ja-JP",{minimumFractionDigits:dec,maximumFractionDigits:dec});
-      $("mid").textContent=price;
-      $("quote-big").innerHTML=price+"<small>"+esc(spec?.display_symbol||m.display_symbol||"")+"</small>";
-      $("spread").textContent="spread "+(m.spread_units??m.spread_pips??"-")+" "+(m.move_unit_label||spec?.move_unit_label||"");
-    }else{
-      $("mid").textContent="-";
-      $("spread").textContent="spread -";
-      $("quote-big").innerHTML="-<small>"+esc(spec?.display_symbol||"USD/JPY")+"</small>";
-    }
+    const m=s.running&&activeInstrument?s.latest_market:(!s.running&&state.previewQuote?.instrument_id===selectedInstrument?state.previewQuote:null);
+    renderTopQuote(m,!s.running&&Boolean(m));
+    if(!s.running)refreshPreviewQuote();
     const d=activeInstrument?s.latest_decision:null;
     $("signal").textContent=d?.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d?.direction_signal||d?.research_signal||"-";
     $("signal-sub").textContent=s.running&&activeInstrument?(s.with_jev?"Jev ON":"Jev OFF"):"";
@@ -1174,7 +1204,7 @@ async function runStrategyBacktest(){
 function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
 async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();autopilotChanged();strategyEnabledChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates()]);}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();autopilotChanged();strategyEnabledChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 
 const autoLimits=[
