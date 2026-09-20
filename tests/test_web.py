@@ -51,7 +51,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "公式イベントを見る" in response.text
         assert "スキャルピング" in response.text
         assert "Fifty+" in response.text
-        assert "常に1ポジション" in response.text
+        assert "1ポジションずつ" in response.text
+        assert 'id="fifty-reentry-seconds"' in response.text
+        assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
         assert 'id="paper-max-spread"' in response.text
