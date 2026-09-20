@@ -57,6 +57,8 @@ class AutopilotBroker(PaperBroker):
             raise ValueError("confirmations must be 1..5")
         if config.autopilot_ttl_seconds > 60:
             raise ValueError("target TTL must be <= 60 seconds")
+        if config.autopilot_fifty_reentry_seconds > 3600:
+            raise ValueError("Fifty+ reentry wait must be <= 3600 seconds")
         if config.autopilot_min_confidence is not None and config.autopilot_min_confidence > 1:
             raise ValueError("confidence must be <= 1")
         if config.autopilot_max_drawdown_pct is not None and config.autopilot_max_drawdown_pct > 1:
