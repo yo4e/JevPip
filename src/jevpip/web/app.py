@@ -63,6 +63,7 @@ class SignalPolicyInput(BaseModel):
 class PaperDemoInput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
     autopilot_enabled: bool = False
+    autopilot_style: Literal["daytrade", "scalp"] = "daytrade"
     autopilot_fundamentals: bool = False
     autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
     autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
@@ -128,7 +129,7 @@ class ObserverStartRequest(BaseModel):
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
     with_jev: bool = False
-    jev_every_seconds: float = Field(default=1.0, ge=0.25, le=60)
+    jev_every_seconds: float = Field(default=300.0, ge=0.25, le=600)
     signal_policy_name: str = Field(default="custom", min_length=1, max_length=80)
     signal_policy: SignalPolicyInput
     paper_demo: PaperDemoInput | None = None
@@ -139,7 +140,7 @@ class JevReplayPreviewRequest(BaseModel):
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}:\d{2}$")
     duration_seconds: int = Field(default=60, ge=1, le=86400)
-    cadence_seconds: Literal[1, 2, 5, 10, 30, 60] = 1
+    cadence_seconds: Literal[1, 2, 5, 10, 30, 60, 300] = 1
 
 
 class JevReplayRunRequest(JevReplayPreviewRequest):
