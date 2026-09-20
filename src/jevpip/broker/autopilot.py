@@ -494,6 +494,28 @@ class AutopilotBroker(PaperBroker):
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
 
+    def _fifty_entry_gate(self, bid: Decimal, ask: Decimal) -> dict[str, Any]:
+        quantity = (
+            Decimal(str(self.config.size)) / self.quantity_step
+        ).to_integral_value(rounding=ROUND_DOWN) * self.quantity_step
+        round_trip_per_unit = self._round_trip_cost(bid, ask)
+        estimated_round_trip_jpy = round_trip_per_unit * quantity
+        if self.instrument.market_kind == "crypto_spot":
+            target_jpy = Decimal(str(self.config.autopilot_fifty_target_jpy))
+            target_units: Decimal | None = None
+        else:
+            target_units = Decimal(str(self.config.autopilot_fifty_target_units))
+            target_jpy = target_units * quantity * self.price_unit
+        ready = quantity > 0 and target_jpy > estimated_round_trip_jpy
+        return {
+            "ready": ready,
+            "reason": None if ready else "round_trip_cost_at_or_above_target",
+            "estimated_round_trip_cost_jpy": float(estimated_round_trip_jpy),
+            "estimated_round_trip_cost_units": float(round_trip_per_unit / self.price_unit),
+            "target_jpy": float(target_jpy),
+            "target_units": None if target_units is None else float(target_units),
+        }
+
     def _remember_market(self, at: datetime, bid: Decimal, ask: Decimal) -> None:
         mid = (bid + ask) / 2
         previous_mid = None
@@ -530,10 +552,12 @@ class AutopilotBroker(PaperBroker):
         current_side = "FLAT" if self.position is None else self.position.side
         current_quantity = ZERO if self.position is None else self.position.size
         targets: dict[str, Any] = {}
+        fifty_entry_gate: dict[str, Any] | None = None
         if self.config.autopilot_style == "fifty":
             quantity = (Decimal(str(self.config.size))/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
+            fifty_entry_gate = self._fifty_entry_gate(bid, ask)
             choices = []
-            if not self._halted:
+            if not self._halted and fifty_entry_gate["ready"]:
                 if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask, optional_limits=False):
                     choices.append(("UP", "LONG", quantity))
                 if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask, optional_limits=False):
@@ -605,6 +629,7 @@ class AutopilotBroker(PaperBroker):
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
+                "entry_gate": fifty_entry_gate,
                 "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
                 "target_value": (
                     self.config.autopilot_fifty_target_jpy
@@ -644,8 +669,16 @@ class AutopilotBroker(PaperBroker):
         unrealized = ZERO
         if self.position is not None and self._last_bid is not None and self._last_ask is not None:
             unrealized = self._position_net_pnl(self._last_bid, self._last_ask) + open_fee
+        fifty_entry_gate = None
+        if (
+            self.config.autopilot_style == "fifty"
+            and self._last_bid is not None
+            and self._last_ask is not None
+        ):
+            fifty_entry_gate = self._fifty_entry_gate(self._last_bid, self._last_ask)
         result.update(
             strategy="jev_autopilot", strategy_enabled=False, autopilot_enabled=True,
+            fifty_entry_gate=fifty_entry_gate,
             balance=float(self.initial_balance+self.closed_net_pnl-open_fee),
             unrealized_pnl=float(unrealized),
             trades=list(self._executions)[:100], account_version=self.account_version,
