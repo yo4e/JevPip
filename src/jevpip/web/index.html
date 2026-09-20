@@ -72,7 +72,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevおまかせ<small>コスト込みで保有方向と目標数量を判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
         <div id="autopilot-controls" style="margin-top:12px">
           <div class="field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
-          <label class="toggle"><input id="auto-fundamentals" type="checkbox"><span>ファンダメンタルを見る<small>観測済みの公式イベント予定を渡します。過去BTでは利用できません。</small></span></label>
+          <label class="toggle"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
           <details><summary>Jevを縛る・詳細設定</summary><div class="details-body">
             <div class="pair"><div class="field"><label class="label">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
             <div id="auto-limits"></div>
@@ -232,6 +232,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
         <div class="notice" id="sbt-mode-note" style="margin-top:8px"></div>
         <div class="muted" id="sbt-exits" style="font-size:10px;margin-top:6px"></div>
+        <details style="margin-top:8px"><summary>約定履歴</summary><div id="sbt-executions" class="table-scroll"></div></details>
       </div>
     </div>
   </section>
@@ -599,7 +600,7 @@ function renderDecision(d,sup){
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
   if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
-  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=d.target_decision?"—":pct(pr.UP||0);$("down").textContent=d.target_decision?"—":pct(pr.DOWN||0);$("flat").textContent=d.target_decision?"—":pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=d.target_error|| (d.target_decision?(d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence)):signalGateSummary(d))
+  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=d.target_decision?"—":pct(pr.UP||0);$("down").textContent=d.target_decision?"—":pct(pr.DOWN||0);$("flat").textContent=d.target_decision?"—":pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=d.target_error|| (d.target_decision?("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence)):signalGateSummary(d))
 }
 
 function chartPrice(p){
@@ -1030,6 +1031,7 @@ async function runStrategyBacktest(){
     $("sbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("sbt-win").textContent=pct(s.win_rate);$("sbt-trades").textContent=s.closed_trades;$("sbt-fees").textContent=yen(s.fees_paid);$("sbt-avg").textContent=s.average_trade_pnl==null?"-":yen(s.average_trade_pnl);
     $("sbt-exits").textContent=Object.entries(s.exit_reasons||{}).map(([reason,x])=>reason+" "+x.count+"回 "+yen(x.net_pnl)).join(" / ")||"決済なし";
+    renderExecutions("sbt-executions",r.trades||[]);
     $("sbt-mode-note").textContent=r.replay_mode==="crypto_close_only"
       ?"BTCはhistorical spreadを持たないため bid=ask=close の近似。fee / slippageは反映します。SHORTは仮想ショートです。"
       :"FX historical BID/ASK closeで売買。1分足close単位の近似で、足内の値動き順序は再現しません。";
