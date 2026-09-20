@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 Signal = Literal["LONG", "SHORT", "WAIT"]
+PositionAction = Literal["HOLD", "CLOSE"]
+
+POSITION_CLOSE_PROBABILITY = 0.70
+POSITION_CLOSE_MARGIN = 0.20
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,4 +125,57 @@ def classify_research_signal(
         "policy": {
             name: getattr(policy, name) for name in policy.__dataclass_fields__
         },
+    }
+
+
+
+def classify_position_action(
+    response: dict[str, Any],
+) -> tuple[PositionAction | None, dict[str, Any]]:
+    """Classify a bounded HOLD/CLOSE answer for an already-open paper position.
+
+    CLOSE is deliberately harder to accept than HOLD. Thresholds are code-owned;
+    Jev cannot choose confirmation count, minimum hold time, or the position horizon.
+    """
+
+    answer = _answer(response, "position_action")
+    raw_choice = answer.get("choice")
+    choice = str(raw_choice) if raw_choice is not None else ""
+    if choice not in {"HOLD", "CLOSE"}:
+        return None, {"reason": "missing_or_invalid_position_action"}
+
+    probabilities = answer.get("probabilities")
+    probs = probabilities if isinstance(probabilities, dict) else {}
+
+    def probability(name: str) -> float:
+        raw = probs.get(name)
+        if raw is None and choice == name:
+            raw = answer.get("confidence")
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = 0.0
+        return max(0.0, min(1.0, value))
+
+    hold_probability = probability("HOLD")
+    close_probability = probability("CLOSE")
+    close_margin = close_probability - hold_probability
+    accepted: PositionAction = "HOLD"
+    reason = "bounded_hold"
+    if (
+        choice == "CLOSE"
+        and close_probability >= POSITION_CLOSE_PROBABILITY
+        and close_margin >= POSITION_CLOSE_MARGIN
+    ):
+        accepted = "CLOSE"
+        reason = "bounded_close"
+
+    return accepted, {
+        "choice": choice,
+        "hold_probability": hold_probability,
+        "close_probability": close_probability,
+        "close_margin": close_margin,
+        "close_probability_threshold": POSITION_CLOSE_PROBABILITY,
+        "close_margin_threshold": POSITION_CLOSE_MARGIN,
+        "reason": reason,
     }

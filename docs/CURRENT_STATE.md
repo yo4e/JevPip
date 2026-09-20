@@ -1,6 +1,6 @@
 # JevPip Current State
 
-更新日: 2026-09-19
+更新日: 2026-09-20
 
 この文書は、JevPipの**現在の実装状態と次の作業境界**を短く把握するためのhandoffです。
 
@@ -181,6 +181,16 @@ Jev schemaには含めない:
 - コード戦略OFF + Jev ONではJev direction単独でpaper entry
 - コード戦略OFF + Jev OFFでは新規entryなし
 - 安全監督OFFではmarket status / stale / spread / official eventのentry vetoを無効化
+- Jev directのposition managementをdirection predictionから分離
+- open position中だけbounded `HOLD / CLOSE` questionを追加
+- 反対directionだけではcloseしない
+- code-owned CLOSE probability / margin threshold
+- 標準2回のdistinct CLOSE confirmation
+- HOLDでconfirmation reset
+- 標準2秒minimum hold
+- stale / future position action拒否
+- decisionが参照した `opened_at` と現在positionが一致するときだけ適用
+- TP / SL / max holdは引き続きcode-ownedで優先
 
 未実装:
 
@@ -326,11 +336,11 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. A/B/C/D experiment harnessを実装
-2. A: technical only
-3. B: technical + deterministic event supervisor
-4. C: technical + deterministic + Jev supervisor
-5. D: Jev direct signal control（research control）
+1. A/B/C/D decision trace schemaを固定・永続化
+2. run config / cost model version / code candidate / Jev directionを記録
+3. deterministic / event / Jev supervisor各gateとblocked-entry reasonを記録
+4. position-management decision / final action / holding time / turnover / trade linkageを記録
+5. traceを使ってA/B/C/D experiment harnessを実装
 6. blocked candidate entryのcounterfactualを同一market path / cost modelで計算
 7. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
 
@@ -358,4 +368,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> A/B/C/D experiment harnessとblocked-entry counterfactual metricsを実装する。
+> A/B/C/D decision trace schemaを固定・永続化し、そのtraceを土台にexperiment harnessとblocked-entry counterfactual metricsへ進む。

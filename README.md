@@ -17,6 +17,17 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
 
+
+## ライセンス・免責・サポート
+
+JevPipは **MIT License** で公開しています。利用・改変・再配布はMIT Licenseの条件に従って自由に行えます。
+
+JevPipは実験的な市場研究ソフトウェアです。**利益、収益性、動作、データの正確性、特定目的への適合性を保証しません。** 利用によって生じた取引損失・逸失利益・その他の損害について、作者は責任を負いません。実運用を含め、利用は各自の判断と責任で行ってください。
+
+JevPipが役に立ったり、もしこれで利益が出たりしたら、開発者にコーヒーを1杯奢ってもらえるとうれしいです。☕
+
+- [Ko-fiでコーヒーを奢る](https://ko-fi.com/yo4e)
+
 ## Quick start
 
 Python 3.12 と [uv](https://docs.astral.sh/uv/) を用意します。
@@ -268,6 +279,7 @@ Jevは現在、research componentです。
 - market_is_noisy
 - reversal_risk
 - trend_strength
+- position_action（Jev directでpaper position保有中のみ、HOLD / CLOSE）
 
 Jev answerとcode側のstrategy / safety ruleは分離しつつ、paper modeで **Jev判断を追加** をONにした場合はJevをdirection gateとして新規entryへ反映します。
 
@@ -277,7 +289,18 @@ Jev answerとcode側のstrategy / safety ruleは分離しつつ、paper modeで 
 - noise / reversal / trend は research filter と supervisor 用に残し、direction gateそのものは止めない
 - 既存positionのTP / SL / max hold決済はJev WAITで止めない
 
-Jev direct signal strategyは引き続きresearch controlとして別系統です。
+Jev direct signal strategyは引き続きresearch controlとして別系統です。Jev directでpositionを持っている間は、方向予測とは別のboundedな `HOLD / CLOSE` 判断を使います。
+
+- 反対方向のdirection予測だけではpositionを閉じない
+- `CLOSE` はcode-owned thresholdを満たした強い回答だけ採用
+- 標準では別々のJev decisionで2回連続 `CLOSE` を確認
+- `HOLD` が入るとCLOSE confirmationをreset
+- 標準2秒のminimum holdを越えるまでJev CLOSEを適用しない
+- position actionにも鮮度制限を掛け、古い回答は無視
+- 判断は、そのJev callが参照した同じpositionの `opened_at` と一致するときだけ有効
+- TP / SL / `max_hold_seconds` は引き続きcode-ownedで先に評価する
+
+`max_hold_seconds` はJev directでもposition horizonとして働き、Jevが延長することはできません。
 
 Jevには選択Featureに加え、look-ahead-safeなofficial event contextと、最小限のpaper state（configured strategy、直近strategy判断、position side / age）を渡します。API key、secret、口座credentialsは渡しません。
 

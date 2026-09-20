@@ -16,6 +16,7 @@ from jevpip.market.features import build_features
 from jevpip.signals import (
     SignalPolicy,
     classify_direction_signal,
+    classify_position_action,
     classify_research_signal,
 )
 from jevpip.storage.jsonl import append_jsonl
@@ -76,6 +77,7 @@ async def observe(
             direction_detail = None
             research_signal = None
             signal_detail = None
+            position_action, position_action_detail = classify_position_action(answer)
             if signal_policy is not None:
                 direction_signal, direction_detail = classify_direction_signal(
                     answer,
@@ -121,6 +123,8 @@ async def observe(
                 "direction_signal": direction_signal,
                 "direction_detail": direction_detail,
                 "research_signal": research_signal,
+                "position_action": position_action,
+                "position_action_detail": position_action_detail,
                 "signal_policy": signal_policy_name,
                 "signal_detail": signal_detail,
                 "jev_supervisor": jev_supervisor,

@@ -72,3 +72,25 @@ def supervisor_question_specs(allowed_strategies: tuple[str, ...]) -> dict:
             "criteria": criteria,
         }
     return specs
+
+
+
+def position_question_specs() -> dict:
+    """Bounded position-management question for an already-open paper position."""
+
+    return {
+        "position_action": {
+            "type": "choice",
+            "instructions": (
+                "A paper position is already open. Based only on the supplied state, "
+                "should that CURRENT paper position be held or closed before its "
+                "code-owned position horizon? Choose CLOSE only when there is enough "
+                "evidence to exit now. Do not reverse direction, choose a new side, "
+                "change quantity, TP/SL, leverage, or create any other order command."
+            ),
+            "criteria": {
+                "HOLD": "Keep the current paper position open.",
+                "CLOSE": "Close the current paper position now.",
+            },
+        }
+    }
