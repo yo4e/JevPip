@@ -14,7 +14,7 @@ function runtime(){
   };
   $('instrument').value='USD_JPY';$('chart-interval').value='1min';$('mode').value='paper';
   const state={ready:true,config:{typesafe_api_key_configured:true},syncedSession:null};
-  const context=vm.createContext({$,state,autoLimits:[['max_spread']],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
+  const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
   vm.runInContext(source('function chartPrice(', 'window.addEventListener("resize"'),context);
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
@@ -86,8 +86,8 @@ test('reload restores the running BTC paper settings, including zero-valued sett
   assert.equal($('instrument').value,'BTC');assert.equal($('mode').value,'paper');
   assert.equal($('paper-size').value,.002);assert.equal($('paper-balance').value,200000);
   assert.equal($('auto-style').value,'fifty');assert.equal($('fifty-target-jpy').value,700);
-  assert.equal($('p-cool').value,0);assert.equal($('auto-max_spread').value,0);
-  assert.equal($('auto-max_spread-on').checked,true);assert.equal($('jev-every').value,2);
+  assert.equal($('p-cool').value,0);assert.equal($('paper-max-spread').value,0);
+  assert.equal($('jev-every').value,2);
   assert.equal(state.restoredSignal.min_direction_probability,.75);
   assert.equal(c.restoreSession(snapshot),false);
 });
