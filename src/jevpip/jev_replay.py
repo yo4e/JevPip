@@ -528,7 +528,10 @@ def run_jev_historical_replay(
             broker.on_decision(pending_decision[1])
             pending_decision = None
 
-        trades.extend(broker.on_tick(tick.as_json_dict()))
+        generated_trades = broker.on_tick(tick.as_json_dict())
+        trades.extend(generated_trades)
+        for trade in generated_trades:
+            append_jsonl(output, trade)
 
         if tick.market_timestamp < next_request_at:
             continue
