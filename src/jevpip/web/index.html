@@ -267,7 +267,10 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="back-result" id="jbt-result" style="display:none">
         <div class="results">
           <div class="result"><span>Jev calls</span><strong id="jbt-calls">-</strong></div>
-          <div class="result"><span>token実績</span><strong id="jbt-tokens">-</strong></div>
+          <div class="result"><span>課金対象 input</span><strong id="jbt-input-tokens">-</strong></div>
+          <div class="result"><span>無料 output</span><strong id="jbt-output-tokens">-</strong></div>
+          <div class="result"><span>reported total</span><strong id="jbt-tokens">-</strong></div>
+          <div class="result"><span>概算API cost</span><strong id="jbt-cost">-</strong></div>
           <div class="result"><span>損益</span><strong id="jbt-pnl">-</strong></div>
           <div class="result"><span>Profit Factor</span><strong id="jbt-pf">-</strong></div>
           <div class="result"><span>最大DD</span><strong id="jbt-dd">-</strong></div>
@@ -316,9 +319,9 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="label">Jev API使用量（現在の観測セッション）</div>
         <div class="token-grid">
           <div class="stat"><span>calls</span><strong id="settings-usage-calls">0</strong></div>
-          <div class="stat"><span>input</span><strong id="settings-usage-input">0</strong></div>
-          <div class="stat"><span>output</span><strong id="settings-usage-output">0</strong></div>
-          <div class="stat"><span>total</span><strong id="settings-usage-total">0</strong></div>
+          <div class="stat"><span>input（課金対象）</span><strong id="settings-usage-input">0</strong></div>
+          <div class="stat"><span>output（無料）</span><strong id="settings-usage-output">0</strong></div>
+          <div class="stat"><span>reported total</span><strong id="settings-usage-total">0</strong></div>
         </div>
         <div class="muted" id="settings-usage-note" style="font-size:10px;margin-top:7px">TypeSafeがusageを返したcallだけ集計します。</div>
       </div>
@@ -361,7 +364,7 @@ function renderJevUsage(u){
   $("settings-usage-output").textContent=Number(x.output_tokens||0).toLocaleString("ja-JP");
   $("settings-usage-total").textContent=Number(x.total_tokens||0).toLocaleString("ja-JP");
   $("settings-usage-note").textContent=calls
-    ? `usage報告 ${reported}/${calls} calls / 最新 input ${latest.input_tokens??"-"} + output ${latest.output_tokens??"-"}`
+    ? `usage報告 ${reported}/${calls} calls / 最新 input ${latest.input_tokens??"-"}（課金対象） + output ${latest.output_tokens??"-"}（無料）`
     : "まだJev API callはありません。";
   $("jev-token-summary").textContent=calls
     ? `Jev tokens: ${Number(x.total_tokens||0).toLocaleString("ja-JP")} total (in ${Number(x.input_tokens||0).toLocaleString("ja-JP")} / out ${Number(x.output_tokens||0).toLocaleString("ja-JP")})`
@@ -843,6 +846,10 @@ function formatTokenEstimate(x){
   if(x==null)return "推定不能（usage実績なし）";
   return Number(x).toLocaleString("ja-JP")+" tokens";
 }
+function formatUsd(x){
+  if(x==null)return "推定不能";
+  return "$"+Number(x).toFixed(6);
+}
 async function previewJevReplay(silent=false){
   const base=jevReplayBasePayload();
   if(!base.date){if(!silent)toast("Jev BT用のraw tickデータがありません。",true);return null}
@@ -850,9 +857,9 @@ async function previewJevReplay(silent=false){
   try{
     const r=await api("/api/jev-replay/preview",{method:"POST",body:JSON.stringify(base)});
     state.jevReplayPreview=r;
-    const t=r.token_estimate||{},estimate=formatTokenEstimate(t.estimated_total_tokens);
+    const t=r.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
     const range=new Date(r.selected_start).toISOString().slice(11,19)+"〜"+new Date(r.selected_end).toISOString().slice(11,19)+" UTC";
-    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>対象 ${esc(range)} / raw tick ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong> / token目安 <strong>${esc(estimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均）":""}<br>1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
+    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>対象 ${esc(range)} / raw tick ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
     $("jbt-run").disabled=!r.within_call_limit||!state.config?.typesafe_api_key_configured;
     return r;
   }catch(e){
@@ -866,13 +873,15 @@ async function previewJevReplay(silent=false){
 async function runJevReplay(){
   if(!state.config?.typesafe_api_key_configured){toast("⚙ 設定でTypeSafe / Jev API keyを保存してください。",true);return}
   const preview=await previewJevReplay(true);if(!preview||!preview.within_call_limit)return;
-  const estimate=formatTokenEstimate(preview.token_estimate?.estimated_total_tokens);
+  const t=preview.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
   const ok=window.confirm(
-    "⚠ Jev APIを使用します。TypeSafeのトークンを消費します。\n\n"+
+    "⚠ Jev APIを使用します。TypeSafeの課金対象input tokenを消費します。output tokenは無料です。\n\n"+
     "最大Jev call数: "+Number(preview.planned_max_calls).toLocaleString("ja-JP")+" 回\n"+
-    "token消費目安: "+estimate+"\n"+
+    "課金対象input目安: "+inputEstimate+"\n"+
+    "output目安: "+outputEstimate+"（無料）\n"+
+    "概算API cost: "+costEstimate+"\n"+
     "判断間隔: "+preview.cadence_seconds+"秒\n\n"+
-    "この見積りは直近usage平均による概算で、実際の消費量・料金を保証しません。\n実行しますか？"
+    "この見積りは直近usage平均と現在の公開価格による概算で、実際の請求額を保証しません。\n実行しますか？"
   );
   if(!ok)return;
   const b=$("jbt-run");b.disabled=true;b.textContent="Jev BT実行中…";
@@ -881,13 +890,16 @@ async function runJevReplay(){
     const r=await api("/api/jev-replay/run",{method:"POST",body:JSON.stringify(payload)}),s=r.summary||{};
     $("jbt-result").style.display="block";
     $("jbt-calls").textContent=Number(s.calls||0).toLocaleString("ja-JP")+" / max "+Number(s.planned_max_calls||0).toLocaleString("ja-JP");
+    $("jbt-input-tokens").textContent=s.reported_usage_calls?Number(s.billable_input_tokens||0).toLocaleString("ja-JP"):"usage未報告";
+    $("jbt-output-tokens").textContent=s.reported_usage_calls?Number(s.output_tokens||0).toLocaleString("ja-JP")+"（無料）":"usage未報告";
     $("jbt-tokens").textContent=s.reported_usage_calls?Number(s.total_tokens||0).toLocaleString("ja-JP"):"usage未報告";
+    $("jbt-cost").textContent=s.reported_usage_calls?formatUsd(s.estimated_cost_usd):"usage未報告";
     const net=Number(s.net_pnl||0);$("jbt-pnl").textContent=(net>=0?"+":"")+yen(net);pnlClass($("jbt-pnl"),net);
     $("jbt-pf").textContent=s.profit_factor==null?(s.closed_trades&&net>0?"∞":"-"):Number(s.profit_factor).toFixed(2);
     $("jbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("jbt-win").textContent=pct(s.win_rate);$("jbt-trades").textContent=s.closed_trades??0;
     $("jbt-latency").textContent=s.average_latency_ms==null?"-":Number(s.average_latency_ms).toFixed(0)+" ms";
-    $("jbt-result-note").textContent="現在のJevを過去raw tickへ再生。API実latencyをhistorical timeへ反映し、Jev応答待ち中は次callを開始しません。official event contextはこの初版では注入しません。";
+    $("jbt-result-note").textContent="usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
     toast("Jev historical replayが完了しました。");
   }catch(e){toast(e.message,true)}
