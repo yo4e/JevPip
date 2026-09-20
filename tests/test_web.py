@@ -35,6 +35,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
         assert "公式イベントを見る" in response.text
+        assert "スキャルピング" in response.text
+        assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
         assert 'id="sbt-executions"' in response.text
         assert "約定履歴" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
