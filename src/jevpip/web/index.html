@@ -1206,6 +1206,13 @@ function autopilotChanged(){
   updateTradeSummary();updateJevAccess();
 }
 function diagnosticsText(s){
+  const gate=s?.fifty_entry_gate;
+  if(gate&&!gate.ready){
+    const crypto=instrumentSpec()?.market_kind==="crypto_spot";
+    const cost=crypto?yen(gate.estimated_round_trip_cost_jpy):Number(gate.estimated_round_trip_cost_units||0).toFixed(2)+" pips";
+    const target=crypto?yen(gate.target_jpy):Number(gate.target_units||0).toFixed(2)+" pips";
+    return "Fifty+待機: 往復コスト "+cost+" が勝負幅 "+target+" 以上です。spreadが狭くなるまでJevを呼ばず、新規建玉を作りません。";
+  }
   const b=s?.pnl_breakdown;
   if(!b)return s?.fees_paid!=null?"手数料合計 "+yen(s.fees_paid):"";
   return "決済損益: 値動き "+yen(b.market_pnl)+" − spread "+yen(b.spread_cost)+" − 滑り "+yen(b.slippage_cost)+" − 手数料 "+yen(b.fees)+" = "+yen(b.net_realized_pnl)+
