@@ -56,6 +56,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert 'id="paper-max-dd-pct"' in response.text
         assert 'id="paper-max-spread"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
+        assert "GMO Public RESTの停止中プレビュー" in response.text
+        assert "public_rest_preview" in response.text
         assert "最大DDで停止" in response.text
         assert 'id="fifty-cost-warning"' in response.text
         assert "スプレッド等の取引コストが高いため取引しません" in response.text
@@ -87,6 +89,33 @@ def test_config_exposes_btc_profiles_and_safety_flags():
         assert "research_default" in payload["signal_policies"]
         assert payload["live_trading_available"] is False
         assert "gmo_private_credentials_configured" in payload
+
+
+def test_public_quote_endpoint_is_read_only_preview(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_quote(instrument_id, *, force=False):
+        assert instrument_id == "USD_JPY"
+        assert force is True
+        return {
+            "instrument_id": "USD_JPY",
+            "display_symbol": "USD/JPY",
+            "bid": 157.0,
+            "ask": 157.015,
+            "spread_units": 1.5,
+            "move_unit_label": "pips",
+            "market_timestamp": "2026-09-21T00:00:00Z",
+            "status": "OPEN",
+            "source": "public_rest_preview",
+        }
+
+    monkeypatch.setattr(controller, "fetch_public_quote", fake_quote)
+    with TestClient(app) as client:
+        response = client.get("/api/quote?instrument_id=USD_JPY&force=true")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["spread_units"] == 1.5
+        assert payload["source"] == "public_rest_preview"
 
 
 def test_chart_history_endpoint_routes_btc(monkeypatch):
