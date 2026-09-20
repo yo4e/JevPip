@@ -19,6 +19,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
+- Jevおまかせには銘柄別のspread上限を初期設定する。UIの「資金・損失上限」から調整でき、USD/JPYの初期値は1.5 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
 - Fifty+では方向選択に不要なaccount / cost / constraints / recent executionをJev stateから外し、直近tickと短い価格履歴を中心に渡す。コストを理由に棄権する選択肢はない。
 - デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
 
