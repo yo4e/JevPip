@@ -108,9 +108,12 @@ class AutopilotBroker(PaperBroker):
                     "basis_market_timestamp", "requested_at", "available_at", "expires_at"
                 )
             )
-            if not basis <= requested <= available <= expires:
+            max_clock_skew = self.config.max_market_age_seconds
+            if not requested <= available <= expires:
                 raise ValueError("expired_or_invalid_clock")
-            if (expires - requested).total_seconds() > self.config.autopilot_ttl_seconds:
+            if abs((requested - basis).total_seconds()) > max_clock_skew:
+                raise ValueError("basis_request_clock_skew")
+            if (expires - min(requested, basis)).total_seconds() > self.config.autopilot_ttl_seconds:
                 raise ValueError("invalid_expiry")
             if self._last_request_at is not None and requested <= self._last_request_at:
                 raise ValueError("duplicate_or_out_of_order")
