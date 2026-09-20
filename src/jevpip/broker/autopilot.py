@@ -24,12 +24,19 @@ class AutopilotBroker(PaperBroker):
     """One net position, weighted average cost, proportional lot cost allocation.
 
     A closed trade is a realized closing leg (partial reductions included).
-    Equity is marked at liquidation value including estimated exit fees. New
-    exposure is collateralized at 100% of notional, including synthetic shorts.
+    Equity is marked at liquidation value including estimated exit fees. FX
+    exposure uses configurable paper leverage (max 25x); crypto spot remains 1x.
     """
 
     def __init__(self, config: PaperConfig) -> None:
         self.instrument = get_instrument(config.instrument_id)
+        if self.instrument.market_kind == "crypto_spot" and config.paper_leverage != 1:
+            config = replace(config, paper_leverage=1.0)
+        self.paper_leverage = finite_decimal(
+            config.paper_leverage, "paper_leverage", positive=True
+        )
+        if self.paper_leverage < 1 or self.paper_leverage > 25:
+            raise ValueError("paper leverage must be between 1x and 25x")
         self.quantity_step = Decimal("0.0001") if self.instrument.market_kind == "crypto_spot" else Decimal("1")
         for name in ("initial_balance", "size", "price_unit", "max_market_age_seconds", "autopilot_ttl_seconds"):
             finite_decimal(getattr(config, name), name, positive=True)
@@ -243,7 +250,8 @@ class AutopilotBroker(PaperBroker):
         notional = quantity * max(bid, ask)
         added = quantity if old is None or old.side != side else quantity-old.size
         projected_equity = self._equity() - added * self._round_trip_cost(bid, ask)
-        if notional > max(ZERO, projected_equity):
+        required_margin = notional / self.paper_leverage
+        if required_margin > max(ZERO, projected_equity):
             return "capital_limit"
         if not optional_limits:
             return None
@@ -525,10 +533,11 @@ class AutopilotBroker(PaperBroker):
         if self.config.autopilot_style == "fifty":
             quantity = (Decimal(str(self.config.size))/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
             choices = []
-            if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask, optional_limits=False):
-                choices.append(("UP", "LONG", quantity))
-            if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask, optional_limits=False):
-                choices.append(("DOWN", "SHORT", quantity))
+            if not self._halted:
+                if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask, optional_limits=False):
+                    choices.append(("UP", "LONG", quantity))
+                if quantity > 0 and not self._capacity_block("SHORT", quantity, bid, ask, optional_limits=False):
+                    choices.append(("DOWN", "SHORT", quantity))
         else:
             choices = [("KEEP", current_side, current_quantity), ("FLAT", "FLAT", ZERO)]
             for side in ("LONG", "SHORT"):
@@ -566,13 +575,17 @@ class AutopilotBroker(PaperBroker):
             "instrument_id": self.instrument.id, "session_id": self.session_id,
             "account_version": self.account_version, "as_of": as_of.isoformat(),
             "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
+            "paper_leverage": float(self.paper_leverage), "risk_halted": self._halted,
             "targets": targets, "quote": {"bid": str(bid), "ask": str(ask), "spread": str(ask-bid)},
             "account": {key: snapshot[key] for key in ("balance", "equity", "realized_pnl", "unrealized_pnl")},
             "position": position, "costs": {
                 "fee_per_execution": self.config.fee_rate, "slippage_per_unit": str(self.slippage_price),
                 "estimated_round_trip_cost_per_unit": str(self._round_trip_cost(bid, ask)),
                 "estimated_break_even_move_units": float(self._round_trip_cost(bid, ask)/self.price_unit),
-                "quantity_step": str(self.quantity_step), "capital_limit_notional_jpy": max(0, snapshot["equity"]),
+                "quantity_step": str(self.quantity_step),
+                "paper_leverage": float(self.paper_leverage),
+                "margin_rate": float(Decimal("1") / self.paper_leverage),
+                "capital_limit_notional_jpy": max(0, snapshot["equity"]) * float(self.paper_leverage),
                 "short_is_synthetic": self.config.short_is_synthetic,
             },
             "constraints": {k: v for k, v in asdict(self.config).items() if k.startswith("autopilot_")},
