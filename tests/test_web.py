@@ -948,6 +948,8 @@ def test_homepage_has_local_api_settings_ui():
     assert "settings-jev-key" in response.text
     assert "settings-gmo-secret" in response.text
     assert "Jev API使用量" in response.text
+    assert "input（課金対象）" in response.text
+    assert "output（無料）" in response.text
 
 
 
@@ -1110,9 +1112,13 @@ def test_homepage_has_separate_token_warned_jev_backtest_ui():
     assert 'id="jbt-cadence"' in response.text
     assert '<option value="1" selected>1秒</option>' in response.text
     assert '<option value="86400">1日</option>' in response.text
-    assert "TypeSafeのトークンを消費します" in response.text
+    assert "TypeSafeの課金対象input tokenを消費します" in response.text
+    assert "output tokenは無料" in response.text
     assert "最大Jev call数" in response.text
-    assert "token消費目安" in response.text
+    assert "課金対象input目安" in response.text
+    assert 'id="jbt-input-tokens"' in response.text
+    assert 'id="jbt-output-tokens"' in response.text
+    assert 'id="jbt-cost"' in response.text
 
 
 def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
