@@ -23,6 +23,7 @@ Side = Literal["LONG", "SHORT"]
 class PaperConfig:
     initial_balance: float = 100000.0
     size: float = 1000.0
+    paper_leverage: float = 25.0
     strategy: StrategyName = "momentum"
     strategy_enabled: bool = True
     jev_direct_enabled: bool = False
