@@ -16,6 +16,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 - `daytrade`: 現行Jevおまかせのrolling market historyを維持し、最大30本の確定1分足を渡す。標準cadenceは300秒。
 - `scalp`: 直近40 tickの時刻・MID・spread・前tick比を `autopilot.recent_ticks` として渡し、確定1分足は最大5本に絞る。標準cadenceは1秒。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後にだけ次の方向判断を要求する。
+  - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
 - Fifty+では方向選択に不要なaccount / cost / constraints / recent executionをJev stateから外し、直近tickと短い価格履歴を中心に渡す。コストを理由に棄権する選択肢はない。
 - デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
