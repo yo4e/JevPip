@@ -159,35 +159,31 @@ def moon_phase_signal(*, at: datetime) -> StrategyDecision:
     )
 
 
-_ZODIAC = (
-    ("capricorn", (1, 20)),
-    ("aquarius", (2, 19)),
-    ("pisces", (3, 21)),
-    ("aries", (4, 20)),
-    ("taurus", (5, 21)),
-    ("gemini", (6, 22)),
-    ("cancer", (7, 23)),
-    ("leo", (8, 23)),
-    ("virgo", (9, 23)),
-    ("libra", (10, 24)),
-    ("scorpio", (11, 23)),
-    ("sagittarius", (12, 22)),
-    ("capricorn", (12, 32)),
+_ZODIAC_STARTS = (
+    ((1, 20), "aquarius"),
+    ((2, 19), "pisces"),
+    ((3, 21), "aries"),
+    ((4, 20), "taurus"),
+    ((5, 21), "gemini"),
+    ((6, 22), "cancer"),
+    ((7, 23), "leo"),
+    ((8, 23), "virgo"),
+    ((9, 23), "libra"),
+    ((10, 24), "scorpio"),
+    ((11, 23), "sagittarius"),
+    ((12, 22), "capricorn"),
 )
 _POSITIVE_SIGNS = {"aries", "gemini", "leo", "libra", "sagittarius", "aquarius"}
-
 
 def zodiac_polarity_signal(*, at: datetime) -> StrategyDecision:
     """Calendar sun-sign polarity baseline for reproducible astrology experiments."""
     month, day = at.month, at.day
     sign = "capricorn"
-    previous = "capricorn"
-    for candidate, (end_month, end_day) in _ZODIAC:
-        if month < end_month or (month == end_month and day < end_day):
-            sign = previous
+    for (start_month, start_day), candidate in _ZODIAC_STARTS:
+        if (month, day) >= (start_month, start_day):
+            sign = candidate
+        else:
             break
-        previous = candidate
-        sign = candidate
     signal: Signal = "LONG" if sign in _POSITIVE_SIGNS else "SHORT"
     return StrategyDecision(
         signal,
