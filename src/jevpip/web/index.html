@@ -93,17 +93,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
             <div class="field"><label class="label" for="paper-balance">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
           </div>
           <div id="autopilot-controls">
-            <details class="session-details" id="paper-risk-settings">
-              <summary>資金・損失上限</summary>
-              <div class="details-body">
-                <div class="pair">
-                  <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
-                  <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
-                </div>
-                <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1.5" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
-                <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
-              </div>
-            </details>
+            
 
             <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small><details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details></div>
             <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
@@ -129,6 +119,17 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field legacy-exit"><label class="label" id="p-spread-label" for="p-spread">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
             </div>
           </div>
+          <details class="session-details" id="paper-risk-settings">
+              <summary>ドローダウン・レバレッジ</summary>
+              <div class="details-body">
+                <div class="pair">
+                  <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
+                  <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
+                </div>
+                <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1.5" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
+                <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
+              </div>
+            </details>
           <details class="session-details"><summary>動作・コストの詳細</summary><div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div></details>
         </div>
       </div>
@@ -1255,6 +1256,7 @@ function autopilotStyleChanged(applyDefaults=true){
 function autopilotChanged(){
   const enabled=$("autopilot").checked;
   $("autopilot-controls").style.display=enabled?"block":"none";
+  $("paper-risk-settings").style.display=enabled?"block":"none";
   $("legacy-strategies").style.display=enabled?"none":"block";
   document.querySelectorAll(".legacy-exit").forEach(el=>el.style.display=enabled?"none":"block");
   if(enabled&&$("mode").value==="paper")$("with-jev").checked=true;
