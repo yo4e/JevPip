@@ -23,7 +23,7 @@ UIの基本paper modeはJevおまかせです。Jev OFFのコード戦略、従�
 
 UIは機能を削らず、Jevおまかせ中心へ整理しています。
 
-- 右サイドのprimary workflowは「銘柄 / 取引モード / Jev API / Jevおまかせ / 基準数量 / 仮想残高」を中心にする
+- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jev API / Jevおまかせ / 基準数量 / 仮想残高」を中心にする
 - 実行中は `raw tick収集中 / Jev API ON|OFF / 銘柄` を常時表示し、Jev OFFでもデータ収集されることを明示する
 - paper口座、建玉、最新Jev判断、約定履歴、損益内訳は下部の「現在」へ集約する
 - Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる
