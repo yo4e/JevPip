@@ -100,6 +100,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
                   <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
                   <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
                 </div>
+                <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1.5" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
                 <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
               </div>
             </details>
@@ -488,6 +489,7 @@ const paperFields={
   "p-rsi-high":"rsi_overbought","p-ma-fast":"ma_fast_period","p-ma-slow":"ma_slow_period",
   "p-ma-gap":"ma_min_gap_units","p-stale":"max_market_age_seconds","p-bar-seconds":"strategy_bar_seconds",
   "fifty-target-units":"autopilot_fifty_target_units","fifty-target-jpy":"autopilot_fifty_target_jpy",
+  "paper-max-spread":"autopilot_max_spread",
   "auto-horizon":"autopilot_horizon_seconds","auto-ttl":"autopilot_ttl_seconds","auto-confirmations":"autopilot_confirmations"
 };
 function restoreSession(s){
@@ -563,11 +565,11 @@ function updateTradeSummary(){
     const mode=$("auto-style").value;
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
-      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 常に1ポジション。決済した時だけJevがUP / DOWNを二択で判断します。";
+      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 常に1ポジション。決済した時だけJevがUP / DOWNを二択で判断します。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
-    box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
+    box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
     return;
   }
   const unit=i.move_unit_label;
@@ -601,6 +603,8 @@ function applyInstrumentDefaults(){
   $("paper-leverage").value=i.market_kind==="crypto_spot"?1:25;
   $("paper-leverage").disabled=i.market_kind==="crypto_spot";
   $("paper-max-dd-pct").value=20;
+  $("paper-max-spread").value=i.default_max_spread;
+  $("paper-max-spread-label").textContent="取引する最大spread（"+i.move_unit_label+"）";
   $("paper-risk-note").textContent=i.market_kind==="crypto_spot"
     ?"BTC現物paperは1x固定。最大DD到達時は建玉を決済し、新規判断を停止します。"
     :"FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。";
@@ -676,9 +680,14 @@ if(costWarning){
   costWarning.style.display=costBlocked?"block":"none";
   if(costBlocked){
     const crypto=instrumentSpec()?.market_kind==="crypto_spot";
-    const cost=crypto?yen(costGate.estimated_round_trip_cost_jpy):Number(costGate.estimated_round_trip_cost_units||0).toFixed(2)+" pips";
-    const target=crypto?yen(costGate.target_jpy):Number(costGate.target_units||0).toFixed(2)+" pips";
-    costWarning.textContent="⚠ スプレッド等の取引コストが高いため取引しません。往復コスト "+cost+" ≥ 勝負幅 "+target+"。狭くなれば自動再開します。";
+    if(costGate.reason==="spread_above_limit"){
+      const unit=instrumentSpec()?.move_unit_label||"";
+      costWarning.textContent="⚠ スプレッドが高いため取引しません。現在 "+Number(costGate.spread_units||0).toFixed(2)+" "+unit+" > 許容 "+Number(costGate.max_spread_units||0).toFixed(2)+" "+unit+"。狭くなれば自動再開します。";
+    }else{
+      const cost=crypto?yen(costGate.estimated_round_trip_cost_jpy):Number(costGate.estimated_round_trip_cost_units||0).toFixed(2)+" pips";
+      const target=crypto?yen(costGate.target_jpy):Number(costGate.target_units||0).toFixed(2)+" pips";
+      costWarning.textContent="⚠ スプレッド等の取引コストが高いため取引しません。往復コスト "+cost+" ≥ 勝負幅 "+target+"。狭くなれば自動再開します。";
+    }
   }
 }
 $("session-paper-state").textContent=p.position?(p.position.side+" "+Number(p.position.size).toLocaleString()):("建玉なし / "+yen(p.equity));
@@ -1172,14 +1181,14 @@ const autoLimits=[
   ["max_quantity","最大保有数量",1], ["max_notional","最大保有額（円）",50000],
   ["max_drawdown","最大ドローダウン（円）",5000],
   ["max_change","1回の最大数量変更",1], ["entry_loss","新規停止損失（円）",3000],
-  ["max_spread","最大spread（銘柄の値幅単位）",3], ["min_confidence","最低confidence（0〜1）",0.6],
+  ["min_confidence","最低confidence（0〜1）",0.6],
   ["cooldown_seconds","増額・反転の待機（秒）",5], ["max_hold_seconds","強制最大保有（秒）",600],
   ["take_profit_units","手数料後TP（銘柄の値幅単位）",10], ["stop_loss_units","手数料後SL（銘柄の値幅単位）",10]
 ];
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
   const fifty=$("auto-style").value==="fifty";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1226,6 +1235,10 @@ function diagnosticsText(s){
   const gate=s?.fifty_entry_gate;
   if(gate&&!gate.ready){
     const crypto=instrumentSpec()?.market_kind==="crypto_spot";
+    if(gate.reason==="spread_above_limit"){
+      const unit=instrumentSpec()?.move_unit_label||"";
+      return "Fifty+待機: spread "+Number(gate.spread_units||0).toFixed(2)+" "+unit+" が許容値 "+Number(gate.max_spread_units||0).toFixed(2)+" "+unit+" を超えています。狭くなるまでJevを呼ばず、新規建玉を作りません。";
+    }
     const cost=crypto?yen(gate.estimated_round_trip_cost_jpy):Number(gate.estimated_round_trip_cost_units||0).toFixed(2)+" pips";
     const target=crypto?yen(gate.target_jpy):Number(gate.target_units||0).toFixed(2)+" pips";
     return "Fifty+待機: 往復コスト "+cost+" が勝負幅 "+target+" 以上です。spreadが狭くなるまでJevを呼ばず、新規建玉を作りません。";
@@ -1261,6 +1274,7 @@ $("fifty-target-units").addEventListener("input",updateTradeSummary);
 $("fifty-target-jpy").addEventListener("input",updateTradeSummary);
 $("paper-leverage").addEventListener("input",updateTradeSummary);
 $("paper-max-dd-pct").addEventListener("input",updateTradeSummary);
+$("paper-max-spread").addEventListener("input",updateTradeSummary);
 $("jev-every").addEventListener("input",updateTradeSummary);
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");$("terminal-resizer").setAttribute("aria-valuenow",Math.round(height));$("terminal-resizer").setAttribute("aria-valuemin",min);$("terminal-resizer").setAttribute("aria-valuemax",max);try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value;requestAnimationFrame(()=>drawChart(activeChartPoints(),active?state.lastStatus?.paper?.trades||[]:[]))}
