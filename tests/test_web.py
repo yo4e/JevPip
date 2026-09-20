@@ -52,6 +52,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "スキャルピング" in response.text
         assert "Fifty+" in response.text
         assert "常に1ポジション" in response.text
+        assert 'id="paper-leverage"' in response.text
+        assert 'id="paper-max-dd-pct"' in response.text
+        assert "最大DDで停止" in response.text
         assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
         assert 'id="sbt-executions"' in response.text
         assert "開くとコスト内訳" in response.text
