@@ -40,6 +40,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月相" in response.text
         assert "過去日付を自由に選べます" in response.text
+        assert "収集時はJev OFFで構いません" in response.text
         assert "terminal-resizer" in response.text
         assert "https://ko-fi.com/yo4e" in response.text
         assert "☕ コーヒーを奢る" in response.text
