@@ -78,6 +78,20 @@ def _market_at(row: dict[str, Any]) -> datetime:
     )
 
 
+def _cost_model_identity(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("Trace cost_model is required.")
+    keys = (
+        "version",
+        "spread",
+        "fee_rate_per_execution",
+        "fee_label",
+        "slippage_units",
+        "short_is_synthetic",
+    )
+    return {key: value.get(key) for key in keys}
+
+
 def _validate_source_run(rows: list[dict[str, Any]]) -> None:
     first = rows[0]
     for row in rows:
@@ -116,15 +130,14 @@ def _validate_source_run(rows: list[dict[str, Any]]) -> None:
     expected_instrument = first.get("instrument_id")
     expected_run_config = json.dumps(run_config, sort_keys=True, default=str)
     first_cost_model = first.get("cost_model")
-    if not isinstance(first_cost_model, dict):
-        raise ValueError("Trace cost_model is required.")
+    cost_identity = _cost_model_identity(first_cost_model)
     expected_cost_model = json.dumps(
-        first_cost_model, sort_keys=True, default=str
+        cost_identity, sort_keys=True, default=str
     )
-    if first_cost_model.get("version") != COST_MODEL_VERSION:
+    if cost_identity.get("version") != COST_MODEL_VERSION:
         raise ValueError(
             f"Unsupported cost model version: "
-            f"{first_cost_model.get('version')!r}"
+            f"{cost_identity.get('version')!r}"
         )
 
     for row in rows:
@@ -134,7 +147,11 @@ def _validate_source_run(rows: list[dict[str, Any]]) -> None:
             raise ValueError("Selected run contains multiple instruments.")
         if json.dumps(row.get("run_config"), sort_keys=True, default=str) != expected_run_config:
             raise ValueError("run_config changed inside one trace run.")
-        if json.dumps(row.get("cost_model"), sort_keys=True, default=str) != expected_cost_model:
+        if json.dumps(
+            _cost_model_identity(row.get("cost_model")),
+            sort_keys=True,
+            default=str,
+        ) != expected_cost_model:
             raise ValueError("cost_model changed inside one trace run.")
 
 
@@ -197,11 +214,15 @@ def _feed_jev_direction(broker: PaperBroker, row: dict[str, Any]) -> None:
     signal = str(jev.get("signal") or "WAIT")
     if signal not in {"LONG", "SHORT", "WAIT"}:
         signal = "WAIT"
-    requested = (
+    if not (
         jev.get("requested_at")
+        or jev.get("available_at")
         or jev.get("basis_at")
-        or row["market"]["market_timestamp"]
-    )
+    ):
+        # No Jev response existed yet at this tick. Preserve warmup semantics
+        # instead of fabricating a fresh WAIT decision at replay time.
+        return
+    requested = jev.get("requested_at") or jev.get("basis_at")
     available = jev.get("available_at") or requested
     broker.on_decision(
         {
@@ -438,7 +459,10 @@ def _pause_seconds(rows: list[dict[str, Any]], variant: str) -> float:
                 or not _allow(_gate(row, "event"))
             )
         elif variant == "C":
-            paused = not _allow(_gate(row, "combined_supervisor"))
+            paused = (
+                not _allow(_gate(row, "deterministic"))
+                or not _allow(_gate(row, "combined_supervisor"))
+            )
         else:
             paused = False
         if not paused:
@@ -456,7 +480,7 @@ def _strategy_switches(rows: list[dict[str, Any]], base_strategy: str) -> int:
     switches = 0
     for row in rows:
         gate = _gate(row, "combined_supervisor")
-        if not _allow(gate):
+        if not _allow(_gate(row, "deterministic")) or not _allow(gate):
             continue
         current = str(gate.get("strategy") or base_strategy)
         if previous is not None and current != previous:
