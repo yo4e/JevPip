@@ -105,7 +105,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               </div>
             </details>
 
-            <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small></div>
+            <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small><details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details></div>
             <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
             <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
             <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -489,7 +489,7 @@ const paperFields={
   "p-rsi-high":"rsi_overbought","p-ma-fast":"ma_fast_period","p-ma-slow":"ma_slow_period",
   "p-ma-gap":"ma_min_gap_units","p-stale":"max_market_age_seconds","p-bar-seconds":"strategy_bar_seconds",
   "fifty-target-units":"autopilot_fifty_target_units","fifty-target-jpy":"autopilot_fifty_target_jpy",
-  "paper-max-spread":"autopilot_max_spread",
+  "fifty-reentry-seconds":"autopilot_fifty_reentry_seconds","paper-max-spread":"autopilot_max_spread",
   "auto-horizon":"autopilot_horizon_seconds","auto-ttl":"autopilot_ttl_seconds","auto-confirmations":"autopilot_confirmations"
 };
 function restoreSession(s){
@@ -720,7 +720,9 @@ if(costWarning){
   costWarning.style.display=costBlocked?"block":"none";
   if(costBlocked){
     const crypto=instrumentSpec()?.market_kind==="crypto_spot";
-    if(costGate.reason==="spread_above_limit"){
+    if(costGate.reason==="post_close_wait"){
+      costWarning.textContent="Fifty+待機中。決済後の再判断まであと "+Math.ceil(Number(costGate.reentry_remaining_seconds||0))+"秒です。";
+    }else if(costGate.reason==="spread_above_limit"){
       const unit=instrumentSpec()?.move_unit_label||"";
       costWarning.textContent="⚠ スプレッドが高いため取引しません。現在 "+Number(costGate.spread_units||0).toFixed(2)+" "+unit+" > 許容 "+Number(costGate.max_spread_units||0).toFixed(2)+" "+unit+"。狭くなれば自動再開します。";
     }else{
@@ -1218,7 +1220,7 @@ const autoLimits=[
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
   const fifty=$("auto-style").value==="fifty";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1242,6 +1244,7 @@ function autopilotStyleChanged(applyDefaults=true){
   updateFiftyTargetUi();
   if(applyDefaults){
     $("auto-horizon").value=(scalp||fifty)?"30":"600";
+    if(fifty)$("fifty-reentry-seconds").value="60";
     $("jev-every").value=(scalp||fifty)?"1":"300";
     $("jbt-cadence").value=(scalp||fifty)?"1":"300";
     state.jevReplayPreview=null;
@@ -1265,6 +1268,9 @@ function diagnosticsText(s){
   const gate=s?.fifty_entry_gate;
   if(gate&&!gate.ready){
     const crypto=instrumentSpec()?.market_kind==="crypto_spot";
+    if(gate.reason==="post_close_wait"){
+      return "Fifty+待機: 決済後の再判断まであと "+Math.ceil(Number(gate.reentry_remaining_seconds||0))+"秒。急変直後の連続再entryを避けています。";
+    }
     if(gate.reason==="spread_above_limit"){
       const unit=instrumentSpec()?.move_unit_label||"";
       return "Fifty+待機: spread "+Number(gate.spread_units||0).toFixed(2)+" "+unit+" が許容値 "+Number(gate.max_spread_units||0).toFixed(2)+" "+unit+" を超えています。狭くなるまでJevを呼ばず、新規建玉を作りません。";
@@ -1302,6 +1308,7 @@ $("auto-style").addEventListener("change",()=>autopilotStyleChanged(true));
 $("auto-horizon").addEventListener("change",updateTradeSummary);
 $("fifty-target-units").addEventListener("input",updateTradeSummary);
 $("fifty-target-jpy").addEventListener("input",updateTradeSummary);
+$("fifty-reentry-seconds").addEventListener("input",updateTradeSummary);
 $("paper-leverage").addEventListener("input",updateTradeSummary);
 $("paper-max-dd-pct").addEventListener("input",updateTradeSummary);
 $("paper-max-spread").addEventListener("input",updateTradeSummary);
