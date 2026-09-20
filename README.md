@@ -327,6 +327,8 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 
 通常の1分足バックテストとは分離して、**保存済みraw tickに現在のJevを再実行する研究リプレイ**をUIの「Jev BT」タブから実行できます。
 
+**BT用raw tickの収集にJev APIは不要です。** UIで対象銘柄を選び、観測を開始している間は、Jev判断をOFFにしていてもGMO Public WebSocketのtickerを `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl` へ保存します。保存されるのは観測していた銘柄・時間帯だけです。たとえば1時間のJev BTをしたい場合は、その銘柄について少なくとも1時間ぶんのraw tickを事前に収集しておく必要があります。JevをONにするのは、後からその保存データをJev BTで再生するときだけで構いません。
+
 - sourceは `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl`
 - historical 1min KLineは使わない
 - 検証時間: 30秒 / 1分 / 5分 / 15分 / 1時間 / 6時間 / 1日
