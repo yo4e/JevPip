@@ -32,6 +32,7 @@ from jevpip.context_sources import fetch_bls_events, fetch_boj_events, fetch_fed
 from jevpip.decision_trace import append_decision_trace, build_decision_trace
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
+from jevpip.gmo.public_rest import fetch_public_ticker
 from jevpip.instruments import get_instrument
 from jevpip.jev_replay import (
     preview_jev_replay as build_jev_replay_preview,
@@ -68,6 +69,7 @@ class UIController:
         self._trace_run_config: dict[str, Any] | None = None
         self._last_decision_trace: dict[str, Any] | None = None
         self._real_account_cache: tuple[float, dict[str, Any]] | None = None
+        self._public_quote_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._external_context_items: tuple[ExternalContextItem, ...] = ()
         self._external_context_fetched_at: datetime | None = None
         self._external_context_error: str | None = None
@@ -827,6 +829,35 @@ class UIController:
 
         self._update_event_supervisor(observed_at, target)
         return self._external_context_snapshot(observed_at, target)
+
+    async def fetch_public_quote(
+        self,
+        instrument_id: str,
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Return a non-trading Public REST quote for the stopped UI."""
+        instrument = get_instrument(instrument_id)
+        now = time.monotonic()
+        cached = self._public_quote_cache.get(instrument.id)
+        if not force and cached is not None and now - cached[0] < 3.0:
+            return dict(cached[1])
+
+        ticker = await asyncio.to_thread(fetch_public_ticker, instrument.id)
+        payload = {
+            "instrument_id": instrument.id,
+            "display_symbol": instrument.display_symbol,
+            "bid": float(ticker.bid),
+            "ask": float(ticker.ask),
+            "spread_units": float((ticker.ask - ticker.bid) / instrument.price_unit),
+            "move_unit_label": instrument.move_unit_label,
+            "market_timestamp": ticker.timestamp,
+            "status": ticker.status,
+            "source": "public_rest_preview",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._public_quote_cache[instrument.id] = (now, payload)
+        return dict(payload)
 
     async def fetch_chart_history(
         self,

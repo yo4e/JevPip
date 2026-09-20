@@ -68,6 +68,7 @@ class PaperDemoInput(BaseModel):
     autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
     autopilot_fifty_target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
+    autopilot_fifty_reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
     autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
     autopilot_confirmations: int = Field(default=2, ge=1, le=5)
     autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
@@ -284,6 +285,23 @@ async def update_credentials(request: CredentialSettingsInput) -> dict[str, Any]
 @app.get("/api/status")
 async def get_status() -> dict[str, Any]:
     return controller.snapshot()
+
+
+@app.get("/api/quote")
+async def get_public_quote(
+    instrument_id: str = "USD_JPY",
+    force: bool = False,
+) -> dict[str, Any]:
+    try:
+        get_instrument(instrument_id)
+        return await controller.fetch_public_quote(instrument_id, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"最新レート取得に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
 
 
 @app.post("/api/context/refresh")

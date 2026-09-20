@@ -97,12 +97,15 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
     defaults = PaperDemoInput()
     assert defaults.paper_leverage == 25
     assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
+    assert defaults.autopilot_fifty_reentry_seconds == pytest.approx(60)
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
     with pytest.raises(ValueError):
         PaperDemoInput(paper_leverage=25.1)
+    with pytest.raises(ValueError):
+        PaperDemoInput(autopilot_fifty_reentry_seconds=3600.1)
 
 
 def test_fx_fifty_plus_uses_margin_capacity_and_crypto_stays_one_x():
@@ -175,8 +178,102 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert closed[0]["reason"] == "fifty_take_profit"
     assert closed[0]["pnl"] == pytest.approx(50)
     assert b.position is None
-    assert _should_request_jev(b.decision_state(START + timedelta(seconds=2))) is True
+    waiting = b.decision_state(START + timedelta(seconds=2))
+    gate = waiting["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "post_close_wait"
+    assert gate["reentry_remaining_seconds"] == pytest.approx(60)
+    assert _should_request_jev(waiting) is False
 
+    almost = b.decision_state(START + timedelta(seconds=61))
+    assert almost["autopilot"]["fifty_plus"]["entry_gate"]["reentry_remaining_seconds"] == pytest.approx(1)
+    assert _should_request_jev(almost) is False
+
+    ready = b.decision_state(START + timedelta(seconds=62))
+    assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
+    assert _should_request_jev(ready) is True
+
+
+
+def test_fifty_plus_waits_when_round_trip_cost_already_exceeds_target():
+    b = broker(
+        initial_balance=100000,
+        size=1000,
+        price_unit=0.01,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=10,
+        fee_rate=0.00002,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=157.000, ask=157.099))
+    state = b.decision_state(START)
+    gate = state["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "round_trip_cost_at_or_above_target"
+    assert gate["estimated_round_trip_cost_units"] == pytest.approx(10.528198)
+    assert gate["estimated_round_trip_cost_jpy"] == pytest.approx(105.28198)
+    assert state["autopilot"]["targets"] == {}
+    assert _should_request_jev(state) is False
+    snapshot = b.snapshot()
+    assert snapshot["fifty_entry_gate"]["ready"] is False
+
+    b.on_tick(tick(1, bid=157.000, ask=157.002))
+    ready_state = b.decision_state(START + timedelta(seconds=1))
+    assert ready_state["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready_state["autopilot"]["targets"]) == {"UP", "DOWN"}
+    assert _should_request_jev(ready_state) is True
+
+
+def test_fifty_plus_waits_when_spread_exceeds_configured_limit():
+    b = broker(
+        initial_balance=100000,
+        size=1000,
+        price_unit=0.01,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=20,
+        autopilot_max_spread=1.5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=157.000, ask=157.020))
+    state = b.decision_state(START)
+    gate = state["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "spread_above_limit"
+    assert gate["spread_units"] == pytest.approx(2.0)
+    assert gate["max_spread_units"] == pytest.approx(1.5)
+    assert state["autopilot"]["targets"] == {}
+    assert _should_request_jev(state) is False
+
+    b.on_tick(tick(1, bid=157.000, ask=157.010))
+    ready = b.decision_state(START + timedelta(seconds=1))
+    assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
+
+
+def test_fifty_plus_rechecks_spread_before_execution():
+    b = broker(
+        size=10,
+        price_unit=1,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=10,
+        autopilot_max_spread=1,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=100, ask=101))
+    event = event_for(b, 0, "UP")
+    b.on_decision(event)
+    rows = b.on_tick(tick(0.2, bid=100, ask=102))
+    assert rows == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "max_spread"
 
 def test_fifty_plus_can_open_on_latest_fresh_quote_without_waiting_for_next_tick():
     b = broker(

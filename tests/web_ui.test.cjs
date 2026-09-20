@@ -14,11 +14,12 @@ function runtime(){
   };
   $('instrument').value='USD_JPY';$('chart-interval').value='1min';$('mode').value='paper';
   const state={ready:true,config:{typesafe_api_key_configured:true},syncedSession:null};
-  const context=vm.createContext({$,state,autoLimits:[['max_spread']],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
+  const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
   vm.runInContext(source('function chartPrice(', 'window.addEventListener("resize"'),context);
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
+  vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -81,13 +82,14 @@ test('starting and running lock every start-time input, even before instrument r
 
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{
   const {context:c,$,state}=runtime();
-  const snapshot={running:true,status:'running',started_at:'2026-09-20T00:00:00Z',instrument_id:'BTC',profile_name:'custom / UI',with_jev:true,signal_policy_name:'policy / UI',session_config:{profile:{quote:true},signal_policy:{min_direction_probability:.75},jev_every_seconds:2},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',size:.002,initial_balance:200000,autopilot_fifty_target_jpy:700,autopilot_fifty_target_units:7,cooldown_seconds:0,slippage_units:0,autopilot_max_spread:0,deterministic_supervisor_enabled:false}}};
+  const snapshot={running:true,status:'running',started_at:'2026-09-20T00:00:00Z',instrument_id:'BTC',profile_name:'custom / UI',with_jev:true,signal_policy_name:'policy / UI',session_config:{profile:{quote:true},signal_policy:{min_direction_probability:.75},jev_every_seconds:2},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',size:.002,initial_balance:200000,autopilot_fifty_target_jpy:700,autopilot_fifty_target_units:7,autopilot_fifty_reentry_seconds:90,cooldown_seconds:0,slippage_units:0,autopilot_max_spread:0,deterministic_supervisor_enabled:false}}};
   assert.equal(c.restoreSession(snapshot),true);
   assert.equal($('instrument').value,'BTC');assert.equal($('mode').value,'paper');
   assert.equal($('paper-size').value,.002);assert.equal($('paper-balance').value,200000);
   assert.equal($('auto-style').value,'fifty');assert.equal($('fifty-target-jpy').value,700);
-  assert.equal($('p-cool').value,0);assert.equal($('auto-max_spread').value,0);
-  assert.equal($('auto-max_spread-on').checked,true);assert.equal($('jev-every').value,2);
+  assert.equal($('fifty-reentry-seconds').value,90);
+  assert.equal($('p-cool').value,0);assert.equal($('paper-max-spread').value,0);
+  assert.equal($('jev-every').value,2);
   assert.equal(state.restoredSignal.min_direction_probability,.75);
   assert.equal(c.restoreSession(snapshot),false);
 });
@@ -112,4 +114,16 @@ test('current fill list is newest first for either backend ordering and escapes 
     assert.ok(markup.indexOf(recent.timestamp)<markup.indexOf(old.timestamp));
     assert.ok(markup.includes('&lt;script&gt;bad&lt;/script&gt;'));
   }
+});
+
+
+test('stopped preview quote shows spread and warns above configured ceiling',()=>{
+  const {context:c,$}=runtime();
+  $('mode').value='paper';$('autopilot').checked=true;$('paper-max-spread').value='1.5';
+  c.renderTopQuote({bid:157.000,ask:157.099,spread_units:9.9,move_unit_label:'pips',display_symbol:'USD/JPY'},true);
+  assert.ok($('spread').textContent.includes('spread 9.9 pips · preview'));
+  assert.equal($('spread').className,'top-spread warn');
+  assert.ok($('spread').title.includes('保存・売買判断には使いません'));
+  c.renderTopQuote({bid:157.000,ask:157.010,spread_units:1.0,move_unit_label:'pips',display_symbol:'USD/JPY'},true);
+  assert.equal($('spread').className,'top-spread');
 });

@@ -18,7 +18,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
 
-UIの基本paper modeは **Jevおまかせ** です。現在は **デイトレ / スキャルピング / Fifty+** の3スタイルを選べます。デイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tickを中心に標準1秒ごとに30秒先を再評価します。Fifty+は常に1ポジションを持つ実験モードで、ポジション決済時だけJevへ次の `UP / DOWN` 二択を問い合わせ、同じ幅のネット利確・損切りへ進みます。FXはpips、BTCは円損益で勝負幅を指定できます。見通す時間は判断間隔と独立し、従来の固定TP/SL・8秒決済は適用しません。任意制約、手数料込みの損益内訳、約定履歴をlive paperとJev BTで共用します。おまかせOFFで従来モードに戻せます。仕様・制限・検証手順は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) を参照してください。Fifty+の発想、実験仮説、1:1の考え方は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) にまとめています。
+UIの基本paper modeは **Jevおまかせ** です。現在は **デイトレ / スキャルピング / Fifty+** の3スタイルを選べます。デイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tickを中心に標準1秒ごとに30秒先を再評価します。Fifty+は1ポジションずつ持つ実験モードで、ポジション決済後は標準60秒待ってからJevへ次の `UP / DOWN` 二択を問い合わせ、同じ幅のネット利確・損切りへ進みます。FXはpips、BTCは円損益で勝負幅を指定できます。見通す時間は判断間隔と独立し、従来の固定TP/SL・8秒決済は適用しません。任意制約、手数料込みの損益内訳、約定履歴をlive paperとJev BTで共用します。おまかせOFFで従来モードに戻せます。仕様・制限・検証手順は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) を参照してください。Fifty+の発想、実験仮説、1:1の考え方は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) にまとめています。
 
 
 ## ライセンス・免責・サポート
@@ -70,6 +70,7 @@ UIは日本語です。中央にチャート、右にJevおまかせ中心のセ
 
 - 対円FX 12ペア / BTC/JPY の切替
 - GMO Public APIのlive ticker
+- 停止中もPublic RESTで価格 / spreadを5秒程度ごとにプレビュー（保存・売買判断には不使用）
 - historical KLine
 - 1分 / 5分 / 15分 / 1時間チャート
 - MA20 / MA200
@@ -116,7 +117,7 @@ PaperBrokerでは比較研究のためLONG / SHORT両方向を扱いますが、
 
 - **デイトレ**: 1分足中心、標準5分ごとに10分先を再評価
 - **スキャルピング**: 直近tick中心、標準1秒ごとに30秒先を再評価
-- **Fifty+**: 常に1ポジション。決済時だけJevが次の `UP / DOWN` を二択で判断
+- **Fifty+**: 1ポジションずつ。決済後は標準60秒待ってからJevが次の `UP / DOWN` を二択で判断
 
 Fifty+では数量やTP/SLをJevへ任せず、コード側が対称のネット損益境界、spread、fee、slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 

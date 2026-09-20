@@ -61,6 +61,7 @@ class PaperConfig:
     autopilot_horizon_seconds: int = 600
     autopilot_fifty_target_units: float = 5.0
     autopilot_fifty_target_jpy: float = 500.0
+    autopilot_fifty_reentry_seconds: float = 60.0
     autopilot_ttl_seconds: float = 5.0
     autopilot_confirmations: int = 2
     autopilot_max_quantity: float | None = None
