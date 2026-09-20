@@ -76,6 +76,7 @@ UIは日本語です。中央にチャート、右にpaper strategy設定、下�
 - Jev ON / OFF
 - read-onlyなGMO FX実口座表示
 - 下部ターミナルの高さをドラッグで変更
+- 右サイド下部の控えめなKo-fi支援リンク
 
 UI上で変更した設定は、現時点では恒久保存しません。下部ターミナルの高さだけはブラウザのlocalStorageへ保存します。
 
@@ -167,6 +168,26 @@ CPI / PPI / Employment Situation等のrisk分類はBLS公式の重要度では�
 supervisorはリスクを**厳しくする方向にしか動けません**。
 
 Jev supervisorも同じ境界へ接続済みです。Jev ON + code strategy + 安全監督ONでは、external contextを含むbounded questionsから `NORMAL / CAUTION / PAUSE_ENTRY` とallowlist済みstrategy候補を作り、paper entry gateへ反映します。Jevのadviceには15〜30秒のTTLがあり、期限切れで自動失効します。code側の `PAUSE_ENTRY / PAUSE_ALL` をJevが解除することはできません。
+
+## Decision trace
+
+paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision traceを `data/decision_traces/<instrument>/YYYY-MM-DD.jsonl` へ保存します。schema versionは明示し、現在は `1` です。
+
+1行には最低限、次を残します。
+
+- run config
+- cost model version
+- gate適用前のcode candidate
+- Jev directionとdecision timing
+- Jev direction gate適用後のentry candidate
+- deterministic / official event / Jev supervisor / combined gate
+- blocked-entry reason
+- Jev direct position-management decision
+- final action
+- holding time / turnover
+- paper trade linkage
+
+supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
 ## 3つの検証機能
 
@@ -415,6 +436,8 @@ data/
 ├── raw_ticks/
 │   └── <instrument>/
 ├── decisions/
+│   └── <instrument>/
+├── decision_traces/
 │   └── <instrument>/
 ├── context/
 │   └── <source>/
