@@ -286,6 +286,23 @@ async def get_status() -> dict[str, Any]:
     return controller.snapshot()
 
 
+@app.get("/api/quote")
+async def get_public_quote(
+    instrument_id: str = "USD_JPY",
+    force: bool = False,
+) -> dict[str, Any]:
+    try:
+        get_instrument(instrument_id)
+        return await controller.fetch_public_quote(instrument_id, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"最新レート取得に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
 @app.post("/api/context/refresh")
 async def refresh_context(
     instrument_id: str = "USD_JPY",
