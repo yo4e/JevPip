@@ -26,7 +26,7 @@ from jevpip.storage.jsonl import append_jsonl
 
 MAX_JEV_REPLAY_CALLS = 10_000
 JEV_INPUT_USD_PER_MILLION_TOKENS = 0.042
-ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60)
+ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60, 300)
 
 
 @dataclass(frozen=True, slots=True)
