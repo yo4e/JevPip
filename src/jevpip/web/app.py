@@ -86,7 +86,14 @@ class PaperDemoInput(BaseModel):
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(default=1000, gt=0, le=100000000)
     paper_leverage: float = Field(default=25.0, ge=1, le=25)
-    strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"] = "momentum"
+    strategy: Literal[
+        "momentum",
+        "rsi_mean_reversion",
+        "ma_trend",
+        "moon_phase",
+        "zodiac_polarity",
+        "jev",
+    ] = "momentum"
     strategy_enabled: bool = True
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
     momentum_trigger_units: float = Field(default=0.6, gt=0, le=100000000)
