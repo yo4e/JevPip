@@ -346,7 +346,11 @@ class PaperBroker:
                     )
 
             self._latest_code_candidate = code_candidate
-            self._latest_strategy_decision = entry_candidate
+            local_block = self._entry_block_reason(at, spread_units)
+            if allow_entry and local_block is None:
+                # Preserve the pre-trace UI semantics: strategy_decision only
+                # advances when the normal entry gates would have evaluated it.
+                self._latest_strategy_decision = entry_candidate
 
             if (
                 code_candidate.signal in {"LONG", "SHORT"}
@@ -357,27 +361,22 @@ class PaperBroker:
             if entry_candidate.signal in {"LONG", "SHORT"}:
                 if not allow_entry:
                     blocked_entry_reason = entry_gate_reason or "external_supervisor"
+                elif local_block is not None:
+                    blocked_entry_reason = local_block
                 else:
-                    local_block = self._entry_block_reason(at, spread_units)
-                    if local_block is not None:
-                        blocked_entry_reason = local_block
-                    else:
-                        trade = self._open(
-                            entry_candidate.signal,
-                            at,
-                            bid,
-                            ask,
-                            entry_candidate.reason,
-                        )
-                        generated.append({"kind": "paper_trade", **asdict(trade)})
+                    trade = self._open(
+                        entry_candidate.signal,
+                        at,
+                        bid,
+                        ask,
+                        entry_candidate.reason,
+                    )
+                    generated.append({"kind": "paper_trade", **asdict(trade)})
         elif closed_this_tick:
             code_candidate = StrategyDecision("WAIT", "closed_this_tick", {})
             entry_candidate = code_candidate
-            self._latest_code_candidate = code_candidate
-            self._latest_strategy_decision = entry_candidate
         else:
             self._latest_code_candidate = code_candidate
-            self._latest_strategy_decision = entry_candidate
 
         self._update_drawdown()
 
