@@ -504,11 +504,25 @@ def run_jev_historical_replay(
         )
 
     all_ticks = read_raw_market_ticks(plan.source_path)
-    if paper_config.autopilot_enabled and (
-        any(t.received_at < t.market_timestamp for t in all_ticks)
-        or any(b.received_at < a.received_at for a, b in zip(all_ticks, all_ticks[1:]))
-    ):
-        raise ValueError("autopilot replay requires causal, ordered raw tick timestamps")
+    if paper_config.autopilot_enabled:
+        max_clock_skew = paper_config.max_market_age_seconds
+        future_skews = [
+            (tick.market_timestamp - tick.received_at).total_seconds()
+            for tick in all_ticks
+            if tick.market_timestamp > tick.received_at
+        ]
+        if future_skews and max(future_skews) > max_clock_skew:
+            raise ValueError(
+                "autopilot replay raw tick clock skew exceeds the allowed "
+                f"{max_clock_skew:g}s tolerance"
+            )
+        if any(
+            later.received_at < earlier.received_at
+            for earlier, later in zip(all_ticks, all_ticks[1:])
+        ):
+            raise ValueError(
+                "autopilot replay raw ticks are out of causal arrival order"
+            )
     start_at = _parse_timestamp(plan.selected_start)
     end_at = _parse_timestamp(plan.selected_end)
     config = replace(
