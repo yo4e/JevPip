@@ -289,7 +289,8 @@ class AutopilotBroker(PaperBroker):
         trades: list[dict[str, Any]] = []
         before = self.account_version
         market_age = (now-at).total_seconds()
-        if self._last_market_status != "OPEN" or not 0 <= market_age <= self.config.max_market_age_seconds:
+        max_age = self.config.max_market_age_seconds
+        if self._last_market_status != "OPEN" or not -max_age <= market_age <= max_age:
             self._target_status = "market_closed_or_stale"
         else:
             forced = self._risk_exit(at, bid, ask)
@@ -426,7 +427,9 @@ class AutopilotBroker(PaperBroker):
         at = self._dt(str(event["market_timestamp"]))
         bid, ask = finite_decimal(event["bid"], "bid", positive=True), finite_decimal(event["ask"], "ask", positive=True)
         now = self._dt(str(event.get("received_at") or event["market_timestamp"]))
-        if ask < bid or event.get("status") != "OPEN" or not 0 <= (now-at).total_seconds() <= self.config.max_market_age_seconds:
+        market_age = (now-at).total_seconds()
+        max_age = self.config.max_market_age_seconds
+        if ask < bid or event.get("status") != "OPEN" or not -max_age <= market_age <= max_age:
             return None  # do not invent an executable terminal quote
         self._last_bid, self._last_ask = bid, ask
         row = self._reduce(self.position.size, at, bid, ask, reason, None)
