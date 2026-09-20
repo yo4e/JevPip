@@ -5,7 +5,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 ## 始め方
 
 1. デモ自動売買で「Jevおまかせ」をON（UI初期値）。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevおまかせスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は常に1ポジションを持ち、決済時だけJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
+2. 銘柄、基準数量、仮想残高、Jevおまかせスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
@@ -15,7 +15,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 
 - `daytrade`: 現行Jevおまかせのrolling market historyを維持し、最大30本の確定1分足を渡す。標準cadenceは300秒。
 - `scalp`: 直近40 tickの時刻・MID・spread・前tick比を `autopilot.recent_ticks` として渡し、確定1分足は最大5本に絞る。標準cadenceは1秒。
-- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後にだけ次の方向判断を要求する。
+- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
