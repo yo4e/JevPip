@@ -367,8 +367,8 @@ function renderJevUsage(u){
     ? `usage報告 ${reported}/${calls} calls / 最新 input ${latest.input_tokens??"-"}（課金対象） + output ${latest.output_tokens??"-"}（無料）`
     : "まだJev API callはありません。";
   $("jev-token-summary").textContent=calls
-    ? `Jev tokens: ${Number(x.total_tokens||0).toLocaleString("ja-JP")} total (in ${Number(x.input_tokens||0).toLocaleString("ja-JP")} / out ${Number(x.output_tokens||0).toLocaleString("ja-JP")})`
-    : "Jev tokens: -";
+    ? `Jev usage: input ${Number(x.input_tokens||0).toLocaleString("ja-JP")} 課金対象 / output ${Number(x.output_tokens||0).toLocaleString("ja-JP")} 無料 / reported total ${Number(x.total_tokens||0).toLocaleString("ja-JP")}`
+    : "Jev usage: -";
 }
 function openSettings(){
   ["settings-jev-key","settings-gmo-key","settings-gmo-secret"].forEach(id=>$(id).value="");
