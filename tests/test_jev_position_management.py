@@ -14,24 +14,24 @@ def tick(at: str, bid: str = "150.000", ask: str = "150.002"):
 
 
 def direct_broker(**overrides):
-    config = PaperConfig(
-        strategy="momentum",
-        strategy_enabled=False,
-        jev_direct_enabled=True,
-        size=1000,
-        price_unit=0.01,
-        max_spread_units=10,
-        take_profit_units=100,
-        stop_loss_units=100,
-        max_hold_seconds=30,
-        cooldown_seconds=0,
-        jev_signal_max_age_seconds=5,
-        jev_position_action_max_age_seconds=5,
-        jev_position_min_hold_seconds=2,
-        jev_position_close_confirmations=2,
-        **overrides,
-    )
-    return PaperBroker(config)
+    values = {
+        "strategy": "momentum",
+        "strategy_enabled": False,
+        "jev_direct_enabled": True,
+        "size": 1000,
+        "price_unit": 0.01,
+        "max_spread_units": 10,
+        "take_profit_units": 100,
+        "stop_loss_units": 100,
+        "max_hold_seconds": 30,
+        "cooldown_seconds": 0,
+        "jev_signal_max_age_seconds": 5,
+        "jev_position_action_max_age_seconds": 5,
+        "jev_position_min_hold_seconds": 2,
+        "jev_position_close_confirmations": 2,
+    }
+    values.update(overrides)
+    return PaperBroker(PaperConfig(**values))
 
 
 def direction_event(signal: str, requested: str, available: str):
