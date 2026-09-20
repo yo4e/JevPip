@@ -37,11 +37,13 @@ class AutopilotBroker(PaperBroker):
             finite_decimal(getattr(config, name), name)
         for name, value in asdict(config).items():
             if name.startswith("autopilot_") and value is not None and name not in {
-                "autopilot_enabled", "autopilot_fundamentals",
+                "autopilot_enabled", "autopilot_style", "autopilot_fundamentals",
             }:
                 finite_decimal(value, name)
         if config.fee_rate >= 1 or config.size < self.quantity_step:
             raise ValueError("invalid fee rate or base quantity")
+        if config.autopilot_style not in {"daytrade", "scalp"}:
+            raise ValueError("unsupported autopilot style")
         if config.autopilot_horizon_seconds not in {30, 120, 600, 1800}:
             raise ValueError("unsupported autopilot horizon")
         if type(config.autopilot_confirmations) is not int or not 1 <= config.autopilot_confirmations <= 5:
@@ -64,6 +66,7 @@ class AutopilotBroker(PaperBroker):
         self._last_change_at: datetime | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
+        self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
         self._entry_mid = ZERO
         self._entry_spread_cost = ZERO
         self._market_realized = ZERO
@@ -285,9 +288,7 @@ class AutopilotBroker(PaperBroker):
         self._last_market_at, self._last_received_at = at, now
         self._last_market_status = str(event.get("status", "UNKNOWN"))
         self._last_spread_units = (ask-bid)/self.price_unit
-        self._prices.append((at, (bid+ask)/2))
-        while self._prices and (at-self._prices[0][0]).total_seconds() > 1800:
-            self._prices.popleft()
+        self._remember_market(at, bid, ask)
         self._update_drawdown()
         trades: list[dict[str, Any]] = []
         before = self.account_version
@@ -359,6 +360,25 @@ class AutopilotBroker(PaperBroker):
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
 
+    def _remember_market(self, at: datetime, bid: Decimal, ask: Decimal) -> None:
+        mid = (bid + ask) / 2
+        previous_mid = None
+        if self._tick_tape:
+            previous_mid = Decimal(str(self._tick_tape[-1]["mid"]))
+        self._prices.append((at, mid))
+        while self._prices and (at-self._prices[0][0]).total_seconds() > 1800:
+            self._prices.popleft()
+        self._tick_tape.append({
+            "at": at.isoformat(),
+            "mid": float(mid),
+            "spread_units": float((ask-bid)/self.price_unit),
+            "delta_units": (
+                None
+                if previous_mid is None
+                else float((mid-previous_mid)/self.price_unit)
+            ),
+        })
+
     def warm_history(self, event: dict[str, Any]) -> None:
         """Seed only past chart observations before a replay's trading window."""
         at = self._dt(str(event["market_timestamp"]))
@@ -366,9 +386,7 @@ class AutopilotBroker(PaperBroker):
         ask = finite_decimal(event["ask"], "ask", positive=True)
         if ask < bid:
             raise ValueError("crossed historical quote")
-        self._prices.append((at, (bid+ask)/2))
-        while self._prices and (at-self._prices[0][0]).total_seconds() > 1800:
-            self._prices.popleft()
+        self._remember_market(at, bid, ask)
 
     def decision_state(self, as_of: datetime) -> dict[str, Any]:
         bid, ask = self._last_bid, self._last_ask
@@ -404,8 +422,10 @@ class AutopilotBroker(PaperBroker):
         position = snapshot["position"]
         if position is not None:
             position = {**position, "age_seconds": max(0, (as_of-self.position.opened_at).total_seconds())}
-        return {"autopilot": {
-            "schema_version": 1, "instrument_id": self.instrument.id, "session_id": self.session_id,
+        bar_limit = 5 if self.config.autopilot_style == "scalp" else 30
+        autopilot_state = {
+            "schema_version": 1, "style": self.config.autopilot_style,
+            "instrument_id": self.instrument.id, "session_id": self.session_id,
             "account_version": self.account_version, "as_of": as_of.isoformat(),
             "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
             "targets": targets, "quote": {"bid": str(bid), "ask": str(ask), "spread": str(ask-bid)},
@@ -418,10 +438,14 @@ class AutopilotBroker(PaperBroker):
                 "short_is_synthetic": self.config.short_is_synthetic,
             },
             "constraints": {k: v for k, v in asdict(self.config).items() if k.startswith("autopilot_")},
-            "recent_executions": list(self._executions)[:8], "closed_1m_bars": list(bars.values())[-30:],
+            "recent_executions": list(self._executions)[:8],
+            "closed_1m_bars": list(bars.values())[-bar_limit:],
             "history_seconds": 0 if not history else (as_of-history[0][0]).total_seconds(),
             "max_tick_gap_seconds": self._max_gap,
-        }}
+        }
+        if self.config.autopilot_style == "scalp":
+            autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        return {"autopilot": autopilot_state}
 
     def finalize(self, event: dict[str, Any], *, reason: str = "end_of_sample") -> dict[str, Any] | None:
         self._pending = None
