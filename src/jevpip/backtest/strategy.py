@@ -161,7 +161,7 @@ def run_strategy_backtest(
             "exit_reasons": snapshot["exit_reasons"],
         },
         "baselines": baselines,
-        "trades": snapshot["trades"],
+        "trades": [event for event in generated if event.get("kind") == "paper_trade"],
         "generated_events": len(generated),
     }
     return result

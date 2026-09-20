@@ -17,7 +17,22 @@ JevPipはローカルで動くmarket research terminalです。
 3. Observer / Feature Lab
 4. Backtester
 
-Jevはoptionalなresearch / supervisor componentです。
+UIの基本paper modeはJevおまかせです。Jev OFFのコード戦略、従来の方向判定・supervisorも比較用に残しています。
+
+## Jevおまかせ（Issue #17）
+
+実装済みのpaper prototype:
+
+- 基準数量の0.5/1/2倍とKEEP/FLATから目標総数量を選び、差分だけ約定
+- 増額・部分決済・全決済・反転、加重平均建値と費用配賦
+- 口座/equity・コスト・直近約定・確定足を同じJev stateへ投入
+- 標準1秒判断と独立した見通し時間、従来の8秒強制exitを不適用
+- 全任意制約のcheckbox、必須の鮮度・資金・session/version検証
+- liveとhistorical raw replayで同一policy、historicalファンダONは拒否
+- 約定表、損益分解、保有額・turnover・目標変更頻度・tick間隔
+- 同時開始/重複API call抑止、停止時のworker終了待ち
+
+詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md)。有料APIでの収益性検証は未実施。以下のコード戦略・direction/supervisor・A/B/C/Dの説明は従来モードを指します。
 
 ## 対応市場
 
@@ -383,17 +398,16 @@ Non-JPY FX pairs with historical cross-rate JPY accounting.
 
 ## 次の大きなテーマ
 
-Jevを「相場方向を直接当てる主体」よりも、**code strategyが負けやすい局面を避けるsupervisor**として検証する。
+Jevおまかせがコストを認識して売買頻度・保有数量を調整できるかを、期間を分けて検証する。従来のsupervisorの価値も比較対象として残す。
 
 次の順序を推奨:
 
-1. 保存済みraw tickで短いJev historical replay（30秒〜5分）を実行し、call/token/latency/売買結果を確認
-2. Jev + code strategy + safety supervisorをONにしたC-run traceを実際に採取
-3. `uv run jevpip experiment --trace ...` でA/B/C/Dを再生
-4. B/Cのavoided loss / missed profit / false pauseを確認
-5. candidate episode / overlap skip / pause durationの定義が実データで妥当か検証
-6. 必要ならexperiment resultの保存・UI表示を追加
-7. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
+1. 十分な頻度のraw tickを蓄積し、短いおまかせreplayでcall/token/latency・約定を確認
+2. 条件を固定し、別日・別区間でおまかせ / 従来Jev / code-only / No Tradeを比較
+3. 値動き・spread・slippage・手数料の損益分解と、turnover・平均/最大保有額・変更頻度を確認
+4. 任意制約の有無を比較し、1区間への最適化を避ける
+5. 従来supervisorは採取したC-run traceを `uv run jevpip experiment --trace ...` でA/B/C/D比較
+6. historical fundamentalsは観測時点のrevisionを再現できる設計を先に整える
 
 主に見る指標:
 
@@ -406,7 +420,7 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 - avoided loss
 - missed profit
 
-目的は「Jevが未来を当てたか」だけではなく、**事故回避・regime selectionに価値があるか**を測ること。
+目的は予測精度だけでなく、コストを含む保有判断・取引頻度・risk controlに価値があるかを測ること。
 
 ## 新しいチャットへ引き継ぐ場合
 
@@ -414,9 +428,9 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 1. README.md
 2. docs/CURRENT_STATE.md
-3. DESIGN.md の Section 26, 29
-4. GitHub Issue #4
+3. docs/JEV_AUTOPILOT.md と DESIGN.md の Section 38
+4. GitHub Issue #17（従来supervisorについては #4）
 
 次の作業テーマ:
 
-> 実際のC-run traceを採取してA/B/C/D experimentを走らせ、blocked-entry counterfactual metricsの妥当性を確認する。
+> Jevおまかせprototypeの会計・時刻・数量制約をreviewし、別期間のraw tickで従来モードと比較する。

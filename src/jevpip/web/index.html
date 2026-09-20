@@ -20,6 +20,7 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 .indicator-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:800}.indicator-toggle input{accent-color:var(--blue)}
 .chart-wrap{position:relative;min-height:0;overflow:hidden;background:#fff}.chart-wrap canvas{display:block;width:100%;height:100%}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;pointer-events:none;background:rgba(255,255,255,.86);z-index:2}
 .side{overflow:auto;background:#fff}.side-section{padding:16px 15px;border-bottom:1px solid var(--line)}.side-section h2{font-size:14px;margin:0 0 11px}.side-section p{font-size:11px;color:var(--muted);line-height:1.55;margin:5px 0 11px}
+.table-scroll{overflow:auto;max-height:300px}.data-table{border-collapse:collapse;font-size:10px;white-space:nowrap;width:100%}.data-table td,.data-table th{padding:6px;border-bottom:1px solid var(--line);text-align:right}
 .field{margin-bottom:11px}.label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin-bottom:5px}.field input,.field select{width:100%;height:38px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:0 9px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toggle{display:flex;align-items:flex-start;gap:8px;font-size:12px;font-weight:800}.toggle input{margin-top:3px}.toggle small{display:block;font-size:10px;color:var(--muted);font-weight:500;margin-top:3px}
 .trade-summary{font-size:11px;line-height:1.65;background:var(--panel2);border:1px solid var(--line);padding:10px;border-radius:7px}.buy{color:var(--green);font-weight:900}.sell{color:var(--red);font-weight:900}
@@ -66,27 +67,39 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
   <aside class="side">
     <section class="side-section">
       <h2>自動売買</h2>
-      <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper">デモ自動売買</option></select></div>
+      <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper" selected>デモ自動売買</option></select></div>
       <div id="paper-basic" style="display:none">
-        <label class="toggle" style="margin-bottom:8px"><input id="paper-strategy-enabled" type="checkbox" checked><span>コード戦略<small>Momentum / RSI / MA の売買候補を使います。OFF + Jev ONならJev単独で方向を決めます。</small></span></label>
+        <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevおまかせ<small>コスト込みで保有方向と目標数量を判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
+        <div id="autopilot-controls" style="margin-top:12px">
+          <div class="field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
+          <label class="toggle"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
+          <details><summary>Jevを縛る・詳細設定</summary><div class="details-body">
+            <div class="pair"><div class="field"><label class="label">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
+            <div id="auto-limits"></div>
+            <p>チェックした制約だけを適用。新規・増額は仮想資金の1倍以内。市場が閉じている時や古い価格では約定しません。</p>
+          </div></details>
+        </div>
+        <div id="legacy-strategies"><label class="toggle" style="margin-bottom:8px"><input id="paper-strategy-enabled" type="checkbox" checked><span>コード戦略<small>Momentum / RSI / MA の売買候補を使います。OFF + Jev ONならJev単独で方向を決めます。</small></span></label>
         <div class="field"><label class="label">コード戦略</label><select id="paper-strategy"><option value="momentum">モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option></select></div>
         <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>ON時だけ、市場状態・stale data・spread・公式経済イベントを監視して新規entryを止めます。</small></span></label>
         <div class="notice" id="event-context" style="margin-bottom:8px">公式イベント: 未取得</div>
         <button class="btn ghost" id="context-refresh" type="button" style="margin-bottom:10px">公式イベント更新</button>
-        <div class="pair">
+        </div><div class="pair">
           <div class="field"><label class="label" id="paper-size-label">注文数量</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
           <div class="field"><label class="label">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
-          <div class="field"><label class="label" id="p-tp-label">Take Profit</label><input id="p-tp" type="number" value="1" step="any"></div>
-          <div class="field"><label class="label" id="p-sl-label">Stop Loss</label><input id="p-sl" type="number" value="1" step="any"></div>
-          <div class="field"><label class="label" id="p-spread-label">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
+          <div class="field legacy-exit"><label class="label" id="p-tp-label">Take Profit</label><input id="p-tp" type="number" value="1" step="any"></div>
+          <div class="field legacy-exit"><label class="label" id="p-sl-label">Stop Loss</label><input id="p-sl" type="number" value="1" step="any"></div>
+          <div class="field legacy-exit"><label class="label" id="p-spread-label">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
         </div>
+        <div id="auto-live-diagnostics" class="notice" style="display:none"></div><details><summary>約定履歴と損益内訳</summary><div id="auto-live-executions" class="table-scroll"></div></details>
         <div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div>
       </div>
     </section>
 
     <section class="side-section">
       <h2>Jev</h2>
-      <label class="toggle"><input id="with-jev" type="checkbox"><span>Jev判断<small>ON + コード戦略ONなら方向一致ゲート。ON + コード戦略OFFならJev単独でpaper entry方向を決めます。安全監督とは独立です。</small></span></label>
+      <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev判断<small>おまかせでは保有方向・数量を判断。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使えます。</small></span></label>
+      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="1" min=".25" step=".25"></div>
       <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
     </section>
 
@@ -109,7 +122,6 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
             <div class="field"><label class="label">方向確率</label><input id="s-dir" type="number" step=".01"></div><div class="field"><label class="label">方向差</label><input id="s-margin" type="number" step=".01"></div>
             <div class="field"><label class="label">ノイズ上限</label><input id="s-noise" type="number" step=".01"></div><div class="field"><label class="label">反転上限</label><input id="s-rev" type="number" step=".01"></div>
             <div class="field"><label class="label">trend最低</label><input id="s-trend" type="number" step=".1"></div><div class="field"><label class="label">spread上限</label><input id="s-spread" type="number" step=".1"></div>
-            <div class="field"><label class="label">Jev間隔 秒</label><input id="jev-every" type="number" value="1" min=".25" step=".25"></div>
           </div>
           <div id="paper-advanced">
             <div class="detail-grid">
@@ -220,6 +232,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
         <div class="notice" id="sbt-mode-note" style="margin-top:8px"></div>
         <div class="muted" id="sbt-exits" style="font-size:10px;margin-top:6px"></div>
+        <details style="margin-top:8px"><summary>約定履歴</summary><div id="sbt-executions" class="table-scroll"></div></details>
       </div>
     </div>
   </section>
@@ -279,6 +292,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="result"><span>平均latency</span><strong id="jbt-latency">-</strong></div>
         </div>
         <div class="notice" id="jbt-result-note" style="margin-top:8px"></div>
+        <div id="jbt-diagnostics"></div><div id="jbt-executions" class="table-scroll"></div>
         <div class="muted" id="jbt-output" style="font-size:9px;margin-top:5px"></div>
       </div>
     </div>
@@ -405,33 +419,54 @@ function featureNames(){const p=features(),a=[];if(p.quote)a.push("価格");if(p
 function renderFeatures(){const h=featureNames().map(x=>`<span class="pill">${esc(x)}</span>`).join("");$("feature-summary").innerHTML=h;$("bt-summary").innerHTML=h}
 function applySignal(name){const p=state.config.signal_policies[name];if(!p)return;$("s-dir").value=p.min_direction_probability;$("s-margin").value=p.min_direction_margin;$("s-noise").value=p.max_noise_probability;$("s-rev").value=p.max_reversal_probability;$("s-trend").value=p.min_trend_strength;const i=instrumentSpec();$("s-spread").value=i?.market_kind==="crypto_spot"?i.default_max_spread:p.max_spread_pips}
 function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
-function paperConfig(){if($("mode").value!=="paper")return null;return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:$("paper-strategy-enabled").checked,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
+function paperConfig(){if($("mode").value!=="paper")return null;return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:!$("autopilot").checked&&$("paper-strategy-enabled").checked,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
-function jevReplayPaperConfig(){return{initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:false,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
+function jevReplayPaperConfig(){return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:false,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
-function modeChanged(){$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper($("mode").value==="paper"&&active?state.lastStatus.paper:null)}}
+function modeChanged(){if($("mode").value==="paper"&&$("autopilot").checked)$("with-jev").checked=true;$("paper-basic").style.display=$("mode").value==="paper"?"block":"none";$("paper-advanced").style.display=$("mode").value==="paper"?"block":"none";updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper($("mode").value==="paper"&&active?state.lastStatus.paper:null)}}
 function strategyChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
-function strategyEnabledChanged(){$("paper-strategy").disabled=Boolean(state.lastStatus?.running)||!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
+function strategyEnabledChanged(){$("paper-strategy").disabled=Boolean(state.lastStatus?.running)||$("autopilot").checked||!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
 function syncSessionControls(s,activeInstrument){
   const locked=Boolean(s.running&&activeInstrument);
   if(locked){
     $("with-jev").checked=Boolean(s.with_jev);
     if(s.paper){
+      const cfg=s.paper.config||{};
+      $("autopilot").checked=Boolean(s.paper.autopilot_enabled);
+      $("auto-horizon").value=cfg.autopilot_horizon_seconds||600;
+      $("auto-fundamentals").checked=Boolean(cfg.autopilot_fundamentals);
+      $("auto-ttl").value=cfg.autopilot_ttl_seconds||5;
+      $("auto-confirmations").value=cfg.autopilot_confirmations||2;
+      for(const [key] of autoLimits){
+        const value=cfg["autopilot_"+key];
+        $("auto-"+key+"-on").checked=value!=null;
+        if(value!=null)$("auto-"+key).value=value;
+      }
+      autopilotChanged();
       $("paper-strategy-enabled").checked=Boolean(s.paper.strategy_enabled);
       $("paper-supervisor").checked=Boolean(s.paper.config?.deterministic_supervisor_enabled);
-      if(s.paper.strategy&&s.paper.strategy!=="jev")$("paper-strategy").value=s.paper.strategy;
+      const strategy=cfg.strategy||s.paper.strategy;
+      if(strategy&&strategy!=="jev")$("paper-strategy").value=strategy;
     }
   }
-  $("paper-strategy-enabled").disabled=locked;
-  $("paper-supervisor").disabled=locked;
+  $("paper-strategy-enabled").disabled=locked||$("autopilot").checked;
+  $("paper-supervisor").disabled=locked||$("autopilot").checked;
   $("with-jev").disabled=locked;
-  $("paper-strategy").disabled=locked||!$("paper-strategy-enabled").checked;
+  $("paper-strategy").disabled=locked||$("autopilot").checked||!$("paper-strategy-enabled").checked;
+  $("autopilot").disabled=locked;
+  if(locked&&s.paper)$("autopilot").checked=Boolean(s.paper.autopilot_enabled);
+  document.querySelectorAll("#autopilot-controls input, #autopilot-controls select").forEach(el=>el.disabled=locked);
+  $("with-jev").disabled=locked||($("mode").value==="paper"&&$("autopilot").checked);
   $("session-lock-note").style.display=locked?"block":"none";
   if(locked)updateTradeSummary();
 }
 function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
   const i=instrumentSpec();if(!i)return;
+  if($("autopilot").checked){
+    box.textContent="Jevおまかせ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
+    return;
+  }
   const unit=i.move_unit_label;
   const size=Number($("paper-size").value||0).toLocaleString("ja-JP");
   const barSeconds=Number($("p-bar-seconds").value||0);
@@ -465,7 +500,7 @@ function applyInstrumentDefaults(){
   $("p-tp").value=i.default_take_profit;
   $("p-sl").value=i.default_stop_loss;
   $("p-slip").value=i.default_slippage_units||0;
-  $("paper-size-label").textContent="注文数量（"+i.quantity_label+"）";
+  $("paper-size-label").textContent="基準数量（"+i.quantity_label+"）";
   $("p-trigger-label").textContent="エントリー判定幅（"+i.move_unit_label+"）";
   $("p-spread-label").textContent="最大スプレッド（"+i.move_unit_label+"）";
   $("p-tp-label").textContent="利確幅 / Take Profit（"+i.move_unit_label+"）";
@@ -509,7 +544,7 @@ async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
-function renderPaper(p){if(!p){$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+function renderPaper(p){if(!p){$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
 $("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;
 $("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;
 $("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);
@@ -525,10 +560,13 @@ $("paper-strategy-state").innerHTML="戦略判断: <strong>"+esc(sd.signal||"WAI
 const cost=p.cost_model||{},unit=instrumentSpec()?.move_unit_label||"";
 let costText=(cost.fee_label||"")+" / spreadは実BID/ASK"+(cost.slippage_units?(" / slippage "+cost.slippage_units+" "+unit):"")+(cost.short_is_synthetic?" / SHORTは仮想ショート":"");
 const breakEven=Number(cost.estimated_fee_break_even_units),tp=Number(p.config?.take_profit_units);
-if(Number.isFinite(breakEven)&&breakEven>0&&Number.isFinite(tp)&&tp<breakEven){
+if(!p.autopilot_enabled&&Number.isFinite(breakEven)&&breakEven>0&&Number.isFinite(tp)&&tp<breakEven){
   costText+=" / ⚠ TP "+tp+unit+" < 手数料損益分岐概算 "+breakEven.toFixed(breakEven>=100?0:2)+unit;
 }
 $("paper-cost-note").textContent=costText;
+$("auto-live-diagnostics").textContent=diagnosticsText(p);
+$("auto-live-diagnostics").style.display=p?"block":"none";
+renderExecutions("auto-live-executions",p.trades||[]);
 $("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(p.position.entry_price)} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${p.position.current_units} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
 function signalGateSummary(d){
@@ -562,7 +600,7 @@ function renderDecision(d,sup){
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
   if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
-  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=pct(pr.UP||0);$("down").textContent=pct(pr.DOWN||0);$("flat").textContent=pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=signalGateSummary(d)
+  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=d.target_decision?"—":pct(pr.UP||0);$("down").textContent=d.target_decision?"—":pct(pr.DOWN||0);$("flat").textContent=d.target_decision?"—":pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=d.target_error|| (d.target_decision?("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence)):signalGateSummary(d))
 }
 
 function chartPrice(p){
@@ -791,7 +829,7 @@ async function refresh(){
       $("quote-big").innerHTML="-<small>"+esc(spec?.display_symbol||"USD/JPY")+"</small>";
     }
     const d=activeInstrument?s.latest_decision:null;
-    $("signal").textContent=d?.direction_signal||d?.research_signal||"-";
+    $("signal").textContent=d?.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d?.direction_signal||d?.research_signal||"-";
     $("signal-sub").textContent=activeInstrument&&s.with_jev?"Jev ON":"Jev OFF";
     renderPaper($("mode").value==="paper"&&activeInstrument?s.paper:null);
     renderEventContext(activeInstrument?s.external_context:null);
@@ -859,7 +897,7 @@ async function previewJevReplay(silent=false){
     state.jevReplayPreview=r;
     const t=r.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
     const range=new Date(r.selected_start).toISOString().slice(11,19)+"〜"+new Date(r.selected_end).toISOString().slice(11,19)+" UTC";
-    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>対象 ${esc(range)} / raw tick ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均）":""}<br>現在の公開価格: input $${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
+    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>対象 ${esc(range)} / raw tick ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒 / tick間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input $${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
     $("jbt-run").disabled=!r.within_call_limit||!state.config?.typesafe_api_key_configured;
     return r;
   }catch(e){
@@ -901,6 +939,8 @@ async function runJevReplay(){
     $("jbt-latency").textContent=s.average_latency_ms==null?"-":Number(s.average_latency_ms).toFixed(0)+" ms";
     $("jbt-result-note").textContent="usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
+    $("jbt-diagnostics").textContent=diagnosticsText(s);
+    renderExecutions("jbt-executions",s.trades||[]);
     toast("Jev historical replayが完了しました。");
   }catch(e){toast(e.message,true)}
   finally{b.disabled=false;b.textContent="警告を確認してJev BT開始"}
@@ -991,6 +1031,7 @@ async function runStrategyBacktest(){
     $("sbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("sbt-win").textContent=pct(s.win_rate);$("sbt-trades").textContent=s.closed_trades;$("sbt-fees").textContent=yen(s.fees_paid);$("sbt-avg").textContent=s.average_trade_pnl==null?"-":yen(s.average_trade_pnl);
     $("sbt-exits").textContent=Object.entries(s.exit_reasons||{}).map(([reason,x])=>reason+" "+x.count+"回 "+yen(x.net_pnl)).join(" / ")||"決済なし";
+    renderExecutions("sbt-executions",r.trades||[]);
     $("sbt-mode-note").textContent=r.replay_mode==="crypto_close_only"
       ?"BTCはhistorical spreadを持たないため bid=ask=close の近似。fee / slippageは反映します。SHORTは仮想ショートです。"
       :"FX historical BID/ASK closeで売買。1分足close単位の近似で、足内の値動き順序は再現しません。";
@@ -1002,7 +1043,49 @@ async function runStrategyBacktest(){
 function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
 async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();strategyEnabledChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles;$("profile").innerHTML=Object.entries(ps).map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":Object.keys(ps)[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);modeChanged();autopilotChanged();strategyEnabledChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates()]);refresh()}catch(e){toast("初期化失敗: "+e.message,true)}}
+
+
+const autoLimits=[
+  ["max_quantity","最大保有数量",1], ["max_notional","最大保有額（円）",50000],
+  ["max_drawdown","最大ドローダウン（円）",5000], ["max_drawdown_pct","最大ドローダウン（比率 0〜1）",0.05],
+  ["max_change","1回の最大数量変更",1], ["entry_loss","新規停止損失（円）",3000],
+  ["max_spread","最大spread（銘柄の値幅単位）",3], ["min_confidence","最低confidence（0〜1）",0.6],
+  ["cooldown_seconds","増額・反転の待機（秒）",5], ["max_hold_seconds","強制最大保有（秒）",600],
+  ["take_profit_units","手数料後TP（銘柄の値幅単位）",10], ["stop_loss_units","手数料後SL（銘柄の値幅単位）",10]
+];
+$("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
+function autopilotConfig(){
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:Number($("auto-confirmations").value)};
+  for(const [key] of autoLimits)config["autopilot_"+key]=$("auto-"+key+"-on").checked?Number($("auto-"+key).value):null;
+  return config;
+}
+function autopilotChanged(){
+  const enabled=$("autopilot").checked;
+  $("autopilot-controls").style.display=enabled?"block":"none";
+  $("legacy-strategies").style.display=enabled?"none":"block";
+  document.querySelectorAll(".legacy-exit").forEach(el=>el.style.display=enabled?"none":"block");
+  if(enabled&&$("mode").value==="paper")$("with-jev").checked=true;
+  $("with-jev").disabled=enabled&&$("mode").value==="paper";
+  for(const id of ["paper-strategy-enabled","paper-strategy","paper-supervisor","p-tp","p-sl","p-hold","p-cool","p-spread"]){
+    $(id).disabled=enabled;
+  }
+  updateTradeSummary();
+}
+function diagnosticsText(s){
+  const b=s?.pnl_breakdown;
+  if(!b)return s?.fees_paid!=null?"手数料合計 "+yen(s.fees_paid):"";
+  return "決済損益: 値動き "+yen(b.market_pnl)+" − spread "+yen(b.spread_cost)+" − 滑り "+yen(b.slippage_cost)+" − 手数料 "+yen(b.fees)+" = "+yen(b.net_realized_pnl)+
+    " / 売買総額 "+yen(s.turnover_notional)+" / 平均保有額 "+yen(s.average_exposure)+" / 最大保有額 "+yen(s.max_exposure)+
+    " / 目標変更 "+Number(s.target_changes||0)+"回（"+Number(s.target_changes_per_minute||0).toFixed(2)+"回/分） / 最大tick間隔 "+Number(s.max_tick_gap_seconds||0).toFixed(1)+"秒"+
+    (s.target_status?" / "+s.target_status:"")+"。部分決済も1決済として集計。決済行の手数料・滑り・spreadは入口分を含む往復費用。";
+}
+function renderExecutions(id,rows){
+  const el=$(id);if(!el)return;
+  el.innerHTML=rows.length?'<table class="data-table"><thead><tr><th>時刻</th><th>操作</th><th>方向</th><th>数量</th><th>価格</th><th>値動き</th><th>spread</th><th>滑り</th><th>手数料</th><th>純損益</th><th>理由</th></tr></thead><tbody>'+rows.map(t=>'<tr>'+[t.timestamp,t.action,t.side,t.size,t.price,t.market_pnl==null?"—":yen(t.market_pnl),t.spread_cost==null?"—":yen(t.spread_cost),yen(t.slippage_cost),yen(t.fees),t.pnl==null?"—":yen(t.pnl),t.reason].map(x=>'<td>'+esc(x)+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<p class="muted">約定なし</p>';
+}
+$("autopilot").addEventListener("change",autopilotChanged);
+$("auto-horizon").addEventListener("change",updateTradeSummary);
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value;requestAnimationFrame(()=>drawChart(activeChartPoints(),active?state.lastStatus?.paper?.trades||[]:[]))}
 function initTerminalResizer(){const handle=$("terminal-resizer");if(!handle)return;try{const saved=Number(localStorage.getItem("jevpip-terminal-height"));if(saved>0)setTerminalHeight(saved)}catch{}let dragging=false,startY=0,startHeight=0;handle.addEventListener("pointerdown",e=>{if(window.innerWidth<=900)return;dragging=true;startY=e.clientY;startHeight=document.querySelector(".terminal").getBoundingClientRect().height;handle.setPointerCapture(e.pointerId);e.preventDefault()});handle.addEventListener("pointermove",e=>{if(!dragging)return;setTerminalHeight(startHeight+(startY-e.clientY))});const stop=()=>{dragging=false};handle.addEventListener("pointerup",stop);handle.addEventListener("pointercancel",stop);handle.addEventListener("dblclick",()=>setTerminalHeight(300))}

@@ -34,6 +34,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "Stop Loss" in response.text
         assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
+        assert "公式イベントを見る" in response.text
+        assert 'id="sbt-executions"' in response.text
+        assert "約定履歴" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月相" in response.text
         assert "過去日付を自由に選べます" in response.text
@@ -1034,7 +1037,7 @@ def test_homepage_describes_jev_as_direction_gate():
         response = client.get("/")
     assert response.status_code == 200
     assert "Jev方向一致時だけentry候補を通します" in response.text
-    assert "ON + コード戦略OFFならJev単独" in response.text
+    assert "おまかせOFFでは従来の方向判定" in response.text
 
 
 

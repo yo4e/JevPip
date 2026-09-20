@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from .questions import position_question_specs, question_specs, supervisor_question_specs
+from .autopilot import question_specs as autopilot_questions
 
 
 class JevClient:
@@ -24,9 +25,12 @@ class JevClient:
         supervisor_strategies: tuple[str, ...] = (),
         instrument_label: str = "the instrument",
     ) -> dict[str, Any]:
-        from typesafe_sdk import TypeSafeClient
+        from typesafe_sdk import RetryPolicy, TypeSafeClient
 
-        questions = question_specs(horizon, instrument_label)
+        if "autopilot" in state:
+            questions = autopilot_questions(state)
+        else:
+            questions = question_specs(horizon, instrument_label)
         paper_context = state.get("paper_context")
         if (
             isinstance(paper_context, dict)
@@ -36,7 +40,8 @@ class JevClient:
             questions.update(position_question_specs())
         if supervisor_strategies:
             questions.update(supervisor_question_specs(supervisor_strategies))
-        with TypeSafeClient(api_key=self.api_key) as client:
+        options = {"timeout": 10.0, "retry": RetryPolicy(max_retries=0)} if "autopilot" in state else {}
+        with TypeSafeClient(api_key=self.api_key, **options) as client:
             response = client.system_one(state=state, questions=questions, model=self.model)
         if hasattr(response, "model_dump"):
             return response.model_dump(mode="json")

@@ -7,6 +7,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 - historical / live chart
 - raw tick収集
 - code-based paper trading
+- Jevおまかせ（コスト・口座状態を見た目標ポジション判断）
 - strategy backtest
 - raw tick replay comparison
 - optionalなJev研究レイヤー
@@ -16,6 +17,8 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 > **現時点では実売買しません。** まずpaper tradingで戦略・Jev・安全監督・cost modelを検証しています。安全機構と注文同期を整えたうえで、GMO Private APIによる実売買対応を予定しています。現在のPrivate API利用は口座・建玉のGET参照だけで、注文POSTはまだ実装していません。
 
 Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
+
+UIの基本paper modeは **Jevおまかせ** です。標準1秒ごとに判断し、同じ目標数量なら保有を維持します。見通す時間は判断間隔と独立し、従来の固定TP/SL・8秒決済は適用しません。任意制約、手数料込みの損益内訳、約定履歴をlive paperとJev BTで共用します。おまかせOFFで従来モードに戻せます。仕様・制限・検証手順は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) を参照してください。
 
 
 ## ライセンス・免責・サポート
@@ -346,9 +349,9 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 
 runtime結果は `data/jev_replays/<instrument>/` へ保存し、Gitでは無視します。performance実測値をpublic repoへcommitしない方針は他のJev実験と同じです。
 
-## Jevの現在地
+## 従来のJev方向判定・supervisor（おまかせOFF）
 
-Jevは現在、research componentです。
+従来モードは比較用のresearch componentとして引き続き利用できます。以下はおまかせOFFの仕様です。
 
 標準Feature preset:
 
@@ -523,6 +526,7 @@ unit testは外部APIへ依存しないものを基本とし、live connectivity
 ## Documents
 
 - [CURRENT_STATE.md](./docs/CURRENT_STATE.md) : 現在できること、未実装、次の一手
+- [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) : Jevおまかせの契約・会計・制約・replay
 - [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
 - [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
 - [EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md](./docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md) : Jev supervisor向け公式event source / provenance / look-ahead設計
@@ -538,4 +542,4 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-A/B/C/D experiment harnessまで実装済みです。次の大きなテーマは、実際に採取したC-run traceで比較を行い、counterfactual指標の解釈と妥当性を検証することです。
+Jevおまかせのpaper prototypeと、従来モードのA/B/C/D experiment harnessを実装済みです。次は期間を分けたraw tick replayで、手数料と売買頻度を含めて比較する段階です。収益性は未検証です。
