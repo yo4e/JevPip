@@ -57,6 +57,12 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ## Historical Jev BT
 
+### raw tickを貯める
+
+Jev BTの元データは、JevPip自身がGMO Public WebSocketから観測中に保存したraw tick。**収集時にJev APIを呼ぶ必要はない。** 対象銘柄を選んで観測を開始し、Jev判断をOFFにしておけば、API tokenを使わず `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl` へtickを蓄積できる。
+
+保存されるのはJevPipが実際に観測していた銘柄・時間帯だけ。Jev BTで1時間 / 6時間 / 1日を選んでも、保存raw tickが短ければ利用可能な末尾で打ち切られる。長いreplayを行う前に、Jevなしの観測セッションで必要な時間ぶんのraw tickを貯める。
+
 右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
 
 受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。window前のraw tickは過去チャートの準備だけに使用する。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
