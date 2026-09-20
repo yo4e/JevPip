@@ -141,7 +141,9 @@ class PaperBroker:
         self._sum_losses_abs = Decimal("0")
         self._sum_closed_net = Decimal("0")
         self._exit_reason_stats: dict[str, dict[str, Decimal | int]] = {}
+        self._latest_code_candidate = StrategyDecision("WAIT", "not_started", {})
         self._latest_strategy_decision = StrategyDecision("WAIT", "not_started", {})
+        self._last_decision_trace: dict[str, Any] | None = None
         self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
     @property
@@ -219,12 +221,36 @@ class PaperBroker:
             self._jev_close_confirmation_count = 0
             self._last_jev_position_confirmation_key = confirmation_key
 
+    @property
+    def last_decision_trace(self) -> dict[str, Any] | None:
+        return self._last_decision_trace
+
+    def _position_management_trace(self, now: datetime) -> dict[str, Any]:
+        action_age = self._jev_position_action_age(now)
+        return {
+            "action": self._latest_jev_position_action,
+            "detail": dict(self._latest_jev_position_detail),
+            "target_opened_at": (
+                None
+                if self._latest_jev_position_target_opened_at is None
+                else self._latest_jev_position_target_opened_at.isoformat()
+            ),
+            "close_confirmations": self._jev_close_confirmation_count,
+            "required_close_confirmations": max(
+                1, int(self.config.jev_position_close_confirmations)
+            ),
+            "action_age_seconds": (
+                None if action_age is None else round(action_age, 3)
+            ),
+        }
+
     def on_tick(
         self,
         event: dict[str, Any],
         *,
         allow_entry: bool = True,
         strategy_override: StrategyName | None = None,
+        entry_gate_reason: str | None = None,
     ) -> list[dict[str, Any]]:
         if strategy_override not in {
             None,
@@ -271,6 +297,12 @@ class PaperBroker:
         else:
             self._supervisor = SupervisorDecision("NORMAL", "disabled", True)
 
+        position_before = self.position
+        position_before_opened_at = (
+            None if position_before is None else position_before.opened_at
+        )
+        position_management = self._position_management_trace(received_at)
+
         generated: list[dict[str, Any]] = []
         closed_this_tick = False
         if self.position is not None:
@@ -285,34 +317,141 @@ class PaperBroker:
                 generated.append({"kind": "paper_trade", **asdict(trade)})
                 closed_this_tick = True
 
-        if (
-            allow_entry
-            and not closed_this_tick
-            and self.position is None
-            and self._can_enter(at, spread_units)
-        ):
-            decision = self._strategy_decision(
+        code_candidate = StrategyDecision("WAIT", "position_open", {})
+        entry_candidate = code_candidate
+        blocked_entry_reason: str | None = None
+
+        if self.position is None and not closed_this_tick:
+            raw_candidate = self._strategy_decision(
                 at,
                 mid,
                 strategy_override=strategy_override,
                 decision_at=received_at,
             )
+            if self.config.jev_direct_enabled:
+                code_candidate = StrategyDecision("WAIT", "strategy_disabled", {})
+                entry_candidate = raw_candidate
+            else:
+                code_candidate = raw_candidate
+                entry_candidate = raw_candidate
+                if (
+                    self.config.strategy_enabled
+                    and self.config.jev_direction_gate_enabled
+                    and self.config.strategy != "jev"
+                ):
+                    entry_candidate = self._apply_jev_direction_gate(
+                        raw_candidate,
+                        at,
+                        decision_at=received_at,
+                    )
+
+            self._latest_code_candidate = code_candidate
+            self._latest_strategy_decision = entry_candidate
+
             if (
-                self.config.strategy_enabled
-                and self.config.jev_direction_gate_enabled
-                and self.config.strategy != "jev"
+                code_candidate.signal in {"LONG", "SHORT"}
+                and entry_candidate.signal == "WAIT"
             ):
-                decision = self._apply_jev_direction_gate(
-                    decision,
-                    at,
-                    decision_at=received_at,
-                )
-            self._latest_strategy_decision = decision
-            if decision.signal in {"LONG", "SHORT"}:
-                trade = self._open(decision.signal, at, bid, ask, decision.reason)
-                generated.append({"kind": "paper_trade", **asdict(trade)})
+                blocked_entry_reason = entry_candidate.reason
+
+            if entry_candidate.signal in {"LONG", "SHORT"}:
+                if not allow_entry:
+                    blocked_entry_reason = entry_gate_reason or "external_supervisor"
+                else:
+                    local_block = self._entry_block_reason(at, spread_units)
+                    if local_block is not None:
+                        blocked_entry_reason = local_block
+                    else:
+                        trade = self._open(
+                            entry_candidate.signal,
+                            at,
+                            bid,
+                            ask,
+                            entry_candidate.reason,
+                        )
+                        generated.append({"kind": "paper_trade", **asdict(trade)})
+        elif closed_this_tick:
+            code_candidate = StrategyDecision("WAIT", "closed_this_tick", {})
+            entry_candidate = code_candidate
+            self._latest_code_candidate = code_candidate
+            self._latest_strategy_decision = entry_candidate
+        else:
+            self._latest_code_candidate = code_candidate
+            self._latest_strategy_decision = entry_candidate
 
         self._update_drawdown()
+
+        jev_age = self._jev_signal_age(received_at)
+        if position_before_opened_at is not None:
+            holding_seconds = max(
+                0.0, (at - position_before_opened_at).total_seconds()
+            )
+        elif self.position is not None:
+            holding_seconds = max(0.0, (at - self.position.opened_at).total_seconds())
+        else:
+            holding_seconds = None
+
+        trade = generated[0] if generated else None
+        final_action = "NOOP" if trade is None else str(trade["action"])
+        position_after_opened_at = (
+            None if self.position is None else self.position.opened_at.isoformat()
+        )
+        self._last_decision_trace = {
+            "market": {
+                "market_timestamp": at.isoformat(),
+                "received_at": received_at.isoformat(),
+                "bid": str(bid),
+                "ask": str(ask),
+                "spread_units": float(spread_units),
+                "status": market_status,
+            },
+            "configured_strategy": self.config.strategy,
+            "strategy_override": strategy_override,
+            "code_candidate": asdict(code_candidate),
+            "entry_candidate": asdict(entry_candidate),
+            "jev_direction": {
+                "signal": self._latest_jev_signal,
+                "basis_at": (
+                    None
+                    if self._latest_jev_basis_at is None
+                    else self._latest_jev_basis_at.isoformat()
+                ),
+                "requested_at": (
+                    None
+                    if self._latest_jev_requested_at is None
+                    else self._latest_jev_requested_at.isoformat()
+                ),
+                "available_at": (
+                    None
+                    if self._latest_jev_available_at is None
+                    else self._latest_jev_available_at.isoformat()
+                ),
+                "age_seconds": None if jev_age is None else round(jev_age, 3),
+            },
+            "deterministic_supervisor": {
+                **asdict(self._supervisor),
+                "market_age_seconds": round(market_age_seconds, 3),
+            },
+            "blocked_entry_reason": blocked_entry_reason,
+            "position_management": position_management,
+            "final_action": final_action,
+            "holding_seconds": (
+                None if holding_seconds is None else round(holding_seconds, 3)
+            ),
+            "turnover_size": round(
+                sum(float(item.get("size") or 0.0) for item in generated),
+                8,
+            ),
+            "trade_link": {
+                "position_before_opened_at": (
+                    None
+                    if position_before_opened_at is None
+                    else position_before_opened_at.isoformat()
+                ),
+                "position_after_opened_at": position_after_opened_at,
+                "trade": trade,
+            },
+        }
         return generated
 
     def finalize(
@@ -369,17 +508,27 @@ class PaperBroker:
         while self._prices and (now - self._prices[0][0]).total_seconds() > keep_seconds:
             self._prices.popleft()
 
-    def _can_enter(self, at: datetime, spread_units: Decimal) -> bool:
+    def _entry_block_reason(
+        self,
+        at: datetime,
+        spread_units: Decimal,
+    ) -> str | None:
         if not self._supervisor.allow_entry:
-            return False
+            return f"deterministic:{self._supervisor.reason}"
         if (
             self.config.deterministic_supervisor_enabled
             and spread_units > Decimal(str(self.config.max_spread_units))
         ):
-            return False
-        if self._last_exit_at is None:
-            return True
-        return (at - self._last_exit_at).total_seconds() >= self.config.cooldown_seconds
+            return "deterministic:spread_limit"
+        if (
+            self._last_exit_at is not None
+            and (at - self._last_exit_at).total_seconds() < self.config.cooldown_seconds
+        ):
+            return "cooldown"
+        return None
+
+    def _can_enter(self, at: datetime, spread_units: Decimal) -> bool:
+        return self._entry_block_reason(at, spread_units) is None
 
     def _apply_jev_direction_gate(
         self,
@@ -823,7 +972,9 @@ class PaperBroker:
             },
             "strategy_bar_seconds": self.config.strategy_bar_seconds,
             "strategy_bars": len(self._bar_prices),
+            "code_candidate": asdict(self._latest_code_candidate),
             "strategy_decision": asdict(self._latest_strategy_decision),
+            "last_decision_trace": self._last_decision_trace,
             "supervisor": {
                 **asdict(self._supervisor),
                 "last_tick_age_seconds": (
