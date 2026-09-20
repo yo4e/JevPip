@@ -71,6 +71,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div id="paper-basic" style="display:none">
         <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevおまかせ<small>コスト込みで保有方向と目標数量を判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
         <div id="autopilot-controls" style="margin-top:12px">
+          <div class="field"><label class="label">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
           <div class="field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
           <label class="toggle"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
           <details><summary>Jevを縛る・詳細設定</summary><div class="details-body">
@@ -99,7 +100,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
     <section class="side-section">
       <h2>Jev</h2>
       <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev判断<small>おまかせでは保有方向・数量を判断。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使えます。</small></span></label>
-      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="1" min=".25" step=".25"></div>
+      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒</div></div>
       <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
     </section>
 
@@ -273,7 +274,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       </div>
       <div class="mode-grid">
         <div class="field"><label class="label">検証時間</label><select id="jbt-duration"><option value="30">30秒</option><option value="60" selected>1分</option><option value="300">5分</option><option value="900">15分</option><option value="3600">1時間</option><option value="21600">6時間</option><option value="86400">1日</option></select></div>
-        <div class="field"><label class="label">Jev判断間隔</label><select id="jbt-cadence"><option value="1" selected>1秒</option><option value="2">2秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option><option value="60">60秒</option></select></div>
+        <div class="field"><label class="label">Jev判断間隔</label><select id="jbt-cadence"><option value="1">1秒</option><option value="2">2秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option><option value="60">60秒</option><option value="300" selected>5分</option></select></div>
       </div>
       <div class="notice" id="jbt-estimate">「消費見積り」を押すと、raw tickから最大Jev call数を計算します。直近usage実績があればtoken目安も表示します。</div>
       <div class="actions" style="margin-top:8px"><button class="btn" id="jbt-preview">消費見積り</button><button class="btn primary" id="jbt-run" disabled>警告を確認してJev BT開始</button></div>
@@ -433,6 +434,8 @@ function syncSessionControls(s,activeInstrument){
     if(s.paper){
       const cfg=s.paper.config||{};
       $("autopilot").checked=Boolean(s.paper.autopilot_enabled);
+      $("auto-style").value=cfg.autopilot_style||"daytrade";
+      autopilotStyleChanged(false);
       $("auto-horizon").value=cfg.autopilot_horizon_seconds||600;
       $("auto-fundamentals").checked=Boolean(cfg.autopilot_fundamentals);
       $("auto-ttl").value=cfg.autopilot_ttl_seconds||5;
@@ -464,7 +467,8 @@ function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
   const i=instrumentSpec();if(!i)return;
   if($("autopilot").checked){
-    box.textContent="Jevおまかせ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
+    const style=$("auto-style").value==="scalp"?"スキャルピング":"デイトレ";
+    box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
     return;
   }
   const unit=i.move_unit_label;
@@ -1056,9 +1060,23 @@ const autoLimits=[
 ];
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:Number($("auto-confirmations").value)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:Number($("auto-confirmations").value)};
   for(const [key] of autoLimits)config["autopilot_"+key]=$("auto-"+key+"-on").checked?Number($("auto-"+key).value):null;
   return config;
+}
+function autopilotStyleChanged(applyDefaults=true){
+  const scalp=$("auto-style").value==="scalp";
+  $("auto-style-note").textContent=scalp
+    ?"直近tick中心。標準は30秒先を見て1秒ごとに再判断。"
+    :"1分足中心。標準は10分先を見て5分ごとに再判断。";
+  if(applyDefaults){
+    $("auto-horizon").value=scalp?"30":"600";
+    $("jev-every").value=scalp?"1":"300";
+    $("jbt-cadence").value=scalp?"1":"300";
+    state.jevReplayPreview=null;
+    $("jbt-run").disabled=true;
+  }
+  updateTradeSummary();
 }
 function autopilotChanged(){
   const enabled=$("autopilot").checked;
@@ -1085,7 +1103,9 @@ function renderExecutions(id,rows){
   el.innerHTML=rows.length?'<table class="data-table"><thead><tr><th>時刻</th><th>操作</th><th>方向</th><th>数量</th><th>価格</th><th>値動き</th><th>spread</th><th>滑り</th><th>手数料</th><th>純損益</th><th>理由</th></tr></thead><tbody>'+rows.map(t=>'<tr>'+[t.timestamp,t.action,t.side,t.size,t.price,t.market_pnl==null?"—":yen(t.market_pnl),t.spread_cost==null?"—":yen(t.spread_cost),yen(t.slippage_cost),yen(t.fees),t.pnl==null?"—":yen(t.pnl),t.reason].map(x=>'<td>'+esc(x)+'</td>').join("")+'</tr>').join("")+'</tbody></table>':'<p class="muted">約定なし</p>';
 }
 $("autopilot").addEventListener("change",autopilotChanged);
+$("auto-style").addEventListener("change",()=>autopilotStyleChanged(true));
 $("auto-horizon").addEventListener("change",updateTradeSummary);
+$("jev-every").addEventListener("input",updateTradeSummary);
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value;requestAnimationFrame(()=>drawChart(activeChartPoints(),active?state.lastStatus?.paper?.trades||[]:[]))}
 function initTerminalResizer(){const handle=$("terminal-resizer");if(!handle)return;try{const saved=Number(localStorage.getItem("jevpip-terminal-height"));if(saved>0)setTerminalHeight(saved)}catch{}let dragging=false,startY=0,startHeight=0;handle.addEventListener("pointerdown",e=>{if(window.innerWidth<=900)return;dragging=true;startY=e.clientY;startHeight=document.querySelector(".terminal").getBoundingClientRect().height;handle.setPointerCapture(e.pointerId);e.preventDefault()});handle.addEventListener("pointermove",e=>{if(!dragging)return;setTerminalHeight(startHeight+(startY-e.clientY))});const stop=()=>{dragging=false};handle.addEventListener("pointerup",stop);handle.addEventListener("pointercancel",stop);handle.addEventListener("dblclick",()=>setTerminalHeight(300))}

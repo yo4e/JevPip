@@ -55,6 +55,7 @@ class PaperConfig:
     strategy_bar_seconds: int = 0
     instrument_id: str = "USD_JPY"
     autopilot_enabled: bool = False
+    autopilot_style: str = "daytrade"
     autopilot_fundamentals: bool = False
     autopilot_horizon_seconds: int = 600
     autopilot_ttl_seconds: float = 5.0

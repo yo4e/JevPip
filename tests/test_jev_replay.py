@@ -127,9 +127,19 @@ def test_plan_uses_raw_ticks_and_configurable_cadence(tmp_path: Path):
         cadence_seconds=2,
     )
 
+    five_minutes = plan_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=4,
+        cadence_seconds=300,
+    )
+
     assert one_second.selected_ticks == 9
     assert one_second.planned_max_calls == 5
     assert two_seconds.planned_max_calls == 3
+    assert five_minutes.planned_max_calls == 1
 
 
 def test_preview_estimates_tokens_from_recent_reported_usage(tmp_path: Path):

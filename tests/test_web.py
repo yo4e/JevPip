@@ -35,6 +35,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
         assert "公式イベントを見る" in response.text
+        assert "スキャルピング" in response.text
+        assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
         assert 'id="sbt-executions"' in response.text
         assert "約定履歴" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
@@ -1113,7 +1115,8 @@ def test_homepage_has_separate_token_warned_jev_backtest_ui():
     assert response.status_code == 200
     assert 'data-tab="jevbt"' in response.text
     assert 'id="jbt-cadence"' in response.text
-    assert '<option value="1" selected>1秒</option>' in response.text
+    assert '<option value="1">1秒</option>' in response.text
+    assert '<option value="300" selected>5分</option>' in response.text
     assert '<option value="86400">1日</option>' in response.text
     assert "TypeSafeの課金対象input tokenを消費します" in response.text
     assert "output tokenは無料" in response.text
