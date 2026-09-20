@@ -7,7 +7,6 @@ __pycache__/
 .mypy_cache/
 .DS_Store
 
-data/**/*.jsonl
-data/**/*.parquet
-data/**/*.json
+# Runtime market / Jev / paper artifacts stay local.
+data/**
 !data/.gitkeep

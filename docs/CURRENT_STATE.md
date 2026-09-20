@@ -23,10 +23,11 @@ UIの基本paper modeはJevおまかせです。Jev OFFのコード戦略、従�
 
 UIは機能を削らず、Jevおまかせ中心へ整理しています。
 
-- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jev API / Jevおまかせ / 基準数量 / 仮想残高」を中心にする
+- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jevおまかせ / Jev API / 基準数量 / 仮想残高」を中心にする。paper時のJev API設定はJevおまかせ直下に置き、観測のみでは取引モード直下へ戻す
 - 実行中は `raw tick収集中 / Jev API ON|OFF / 銘柄` を常時表示し、Jev OFFでもデータ収集されることを明示する
-- paper口座、建玉、最新Jev判断、約定履歴、損益内訳は下部の「現在」へ集約する
-- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる
+- 下部の「現在」は「デモ口座・建玉 / 最新Jev判断 / 約定履歴・損益内訳」を中心にする
+- 外国為替FX 実口座の参照表示は常時監視の主画面から外し、⚙設定内へ置く
+- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる。従来モードのJev supervisor状態もここでのみ表示する
 - Strategy BT / Jev BT / 戦略比較 / 統計リプレイには、使用データ・Jev API利用有無・token消費・目的を明示する
 - 既存element IDとAPI contractは維持し、情報階層の変更を中心とする
 
@@ -410,29 +411,30 @@ Non-JPY FX pairs with historical cross-rate JPY accounting.
 
 ## 次の大きなテーマ
 
-Jevおまかせがコストを認識して売買頻度・保有数量を調整できるかを、期間を分けて検証する。従来のsupervisorの価値も比較対象として残す。
+**Fifty+を含むJevおまかせのpaper検証を、十分な試行数と別期間で行う。**
+
+Fifty+は常に1ポジションを持ち、決済ごとにJevへUP / DOWNだけを聞くため、従来のおまかせより「方向判定そのもの」を観察しやすい。短期の含み益・勝率だけで判断せず、ランダム方向や従来モードと同条件で比較する。
 
 次の順序を推奨:
 
-1. 十分な頻度のraw tickを蓄積し、短いおまかせreplayでcall/token/latency・約定を確認
-2. 条件を固定し、別日・別区間でおまかせ / 従来Jev / code-only / No Tradeを比較
-3. 値動き・spread・slippage・手数料の損益分解と、turnover・平均/最大保有額・変更頻度を確認
-4. 任意制約の有無を比較し、1区間への最適化を避ける
+1. Fifty+を複数銘柄・複数時間帯でpaper運転し、ラウンド数とraw tickを蓄積
+2. 勝負幅を固定した区間を残し、UP / DOWN勝率、net PnL、fee / spread / slippage、1ラウンド所要時間を確認
+3. 別日・別区間でも同じ傾向が再現するか確認
+4. random control / code-only / 従来Jevとbaseline比較し、50%超過が偶然や相場偏りでないかを見る
 5. 従来supervisorは採取したC-run traceを `uv run jevpip experiment --trace ...` でA/B/C/D比較
 6. historical fundamentalsは観測時点のrevisionを再現できる設計を先に整える
 
 主に見る指標:
 
-- net PnL
-- Profit Factor
-- max DD
-- average loss
-- fee / trade count
-- Jevが止めたtradeのcounterfactual result
-- avoided loss
-- missed profit
+- Fifty+ round count / win rate
+- net PnL / Profit Factor / max DD
+- fee / spread / slippage
+- 平均ラウンド時間
+- 銘柄・時間帯ごとの偏り
+- random / code-only / 従来Jevとの差
+- Jev call / token効率
 
-目的は予測精度だけでなく、コストを含む保有判断・取引頻度・risk controlに価値があるかを測ること。
+目的は、一時的な含み益ではなく、**Fifty+の方向二択に再現性のある50%超過があるか**、またコスト込みで研究価値が残るかを確認すること。
 
 ## 新しいチャットへ引き継ぐ場合
 
@@ -445,4 +447,4 @@ Jevおまかせがコストを認識して売買頻度・保有数量を調整�
 
 次の作業テーマ:
 
-> Jevおまかせprototypeの会計・時刻・数量制約をreviewし、別期間のraw tickで従来モードと比較する。
+> Fifty+を含むJevおまかせを複数区間でpaper検証し、random / code-only / 従来Jevと同条件で比較する。

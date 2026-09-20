@@ -14,7 +14,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 を1つのローカルUIへまとめています。
 
-> **現時点では実売買しません。** まずpaper tradingで戦略・Jev・安全監督・cost modelを検証しています。安全機構と注文同期を整えたうえで、GMO Private APIによる実売買対応を予定しています。現在のPrivate API利用は口座・建玉のGET参照だけで、注文POSTはまだ実装していません。
+> **現時点では実売買しません。** 現行スコープはpaper tradingとread-onlyな実口座参照です。GMO Private APIは口座・建玉のGET参照だけを使い、注文POST経路は実装していません。将来live tradingを検討する場合も、別途安全設計と明示的な実装判断を先に行います。
 
 Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
 
@@ -64,7 +64,7 @@ uv run jevpip ui
 
 ## ブラウザUI
 
-UIは日本語です。中央にチャート、右にpaper strategy設定、下に口座・戦略検証・ログを置いた1画面の市場研究UIです。
+UIは日本語です。中央にチャート、右にJevおまかせ中心のセッション設定、下に現在状態・検証・ログを置いた1画面の市場研究UIです。
 
 主な機能:
 
@@ -77,7 +77,7 @@ UIは日本語です。中央にチャート、右にpaper strategy設定、下�
 - 仮想資金・建玉・PnL表示
 - paper tradeのOPEN / CLOSE marker
 - Jev ON / OFF
-- read-onlyなGMO FX実口座表示
+- read-onlyなGMO FX実口座表示（右上の ⚙ 設定内）
 - 下部ターミナルの高さをドラッグで変更
 - 右サイド下部の控えめなKo-fi支援リンク
 
@@ -112,42 +112,24 @@ PaperBrokerでは比較研究のためLONG / SHORT両方向を扱いますが、
 
 ## Paper trading
 
-選べるstrategy:
+通常のpaper利用は **Jevおまかせ** が中心です。
 
-- **Momentum**
-- **RSI mean reversion**
-- **MA trend**
-- **Jev signal**（研究対照）
+- **デイトレ**: 1分足中心、標準5分ごとに10分先を再評価
+- **スキャルピング**: 直近tick中心、標準1秒ごとに30秒先を再評価
+- **Fifty+**: 常に1ポジション。決済時だけJevが次の `UP / DOWN` を二択で判断
 
-RSI / MAのlive paper入力は、
+Fifty+では数量やTP/SLをJevへ任せず、コード側が対称のネット損益境界、spread、fee、slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
-- tick
-- 5秒bar
-- 15秒bar
-- 1分bar
-- 5分bar
+**JevおまかせOFF**では比較・研究用の従来モードへ戻り、Momentum / RSI mean reversion / MA trend、Jev direction gate、deterministic / Jev supervisorを組み合わせられます。従来モードの細部は [CURRENT_STATE.md](./docs/CURRENT_STATE.md) と [DESIGN.md](./DESIGN.md) に残しています。
 
-から選べます。bar modeは確定barのcloseだけで判断します。
-
-PaperBrokerは次を反映します。
+PaperBroker / AutopilotBrokerは主に次を反映します。
 
 - BID / ASK
 - configured slippage
 - instrumentごとのreference fee
-- TP / SL
-- max holding
-- cooldown
+- code-owned risk / exit rules
 - single position
-
-表示する主な指標:
-
-- net / gross PnL
-- fee / slippage cost
-- Profit Factor
-- max drawdown
-- win rate
-- average trade / win / loss
-- exit reason別集計
+- net / gross PnL、fee / slippage cost、Profit Factor、max drawdown、win rate
 
 > Paper tradingは将来利益を示すものではありません。板の深さ、部分約定、動的slippage、資金・証拠金制約などは完全にはモデル化していません。
 
@@ -335,7 +317,9 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 - Jev応答待ち中は次のcallを開始しない
 - Jev direct paper entry / bounded HOLD-CLOSE / code-owned TP・SL・max holdを使う
 
-実行前に**最大Jev call数**をraw tickから計算します。TypeSafeが過去のcallで `usage.input_tokens` / `usage.output_tokens` を返していれば、直近最大100件の平均からtoken消費目安も表示します。usage実績がない場合は数字を捏造せず「推定不能」と表示します。\n\n2026-09-20時点のTypeSafe公開価格では、**input tokenのみ課金対象で $0.042 / 1M tokens、output tokenは無料**です。そのためJev BTでは、事前見積り・実行結果ともに `input（課金対象）` / `output（無料）` / `reported total` を分け、input usageから概算API costも表示します。JevPipの表示はAPI responseのusageと公開価格からの計算であり、TypeSafe console側の請求・Usage表示そのものを確認した値ではありません。
+実行前に**最大Jev call数**をraw tickから計算します。TypeSafeが過去のcallで `usage.input_tokens` / `usage.output_tokens` を返していれば、直近最大100件の平均からtoken消費目安も表示します。usage実績がない場合は数字を捏造せず「推定不能」と表示します。
+
+2026-09-20時点のTypeSafe公開価格では、**input tokenのみ課金対象で $0.042 / 1M tokens、output tokenは無料**です。そのためJev BTでは、事前見積り・実行結果ともに `input（課金対象）` / `output（無料）` / `reported total` を分け、input usageから概算API costも表示します。JevPipの表示はAPI responseのusageと公開価格からの計算であり、TypeSafe console側の請求・Usage表示そのものを確認した値ではありません。
 
 実行ボタンでは、
 
@@ -349,76 +333,11 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 
 runtime結果は `data/jev_replays/<instrument>/` へ保存し、Gitでは無視します。performance実測値をpublic repoへcommitしない方針は他のJev実験と同じです。
 
-## 従来のJev方向判定・supervisor（おまかせOFF）
+## 従来モードについて
 
-従来モードは比較用のresearch componentとして引き続き利用できます。以下はおまかせOFFの仕様です。
+Jevおまかせ以前の code strategy / Jev direction gate / Jev supervisor / A/B/C/D experiment は、**比較・研究用として維持**しています。通常利用では右側の「研究・従来設定」に畳んであります。
 
-標準Feature preset:
-
-- `minimal`
-- `technical`
-- `moon_only`
-- `price_and_moon`
-- `random_control`
-- `kitchen_sink`
-
-初期Jev questions:
-
-- direction
-- market_is_noisy
-- reversal_risk
-- trend_strength
-- position_action（Jev directでpaper position保有中のみ、HOLD / CLOSE）
-
-Jev answerとcode側のstrategy / safety ruleは分離しつつ、paper modeで **Jev判断を追加** をONにした場合はJevをdirection gateとして新規entryへ反映します。
-
-- code strategyがLONG候補 + Jev direction LONG → entry候補を通す
-- code strategyがSHORT候補 + Jev direction SHORT → entry候補を通す
-- Jev direction WAIT / 反対方向 / stale / warmup → 新規entryしない
-- noise / reversal / trend は research filter と supervisor 用に残し、direction gateそのものは止めない
-- 既存positionのTP / SL / max hold決済はJev WAITで止めない
-
-Jev direct signal strategyは引き続きresearch controlとして別系統です。Jev directでpositionを持っている間は、方向予測とは別のboundedな `HOLD / CLOSE` 判断を使います。
-
-- 反対方向のdirection予測だけではpositionを閉じない
-- `CLOSE` はcode-owned thresholdを満たした強い回答だけ採用
-- 標準では別々のJev decisionで2回連続 `CLOSE` を確認
-- `HOLD` が入るとCLOSE confirmationをreset
-- 標準2秒のminimum holdを越えるまでJev CLOSEを適用しない
-- position actionにも鮮度制限を掛け、古い回答は無視
-- 判断は、そのJev callが参照した同じpositionの `opened_at` と一致するときだけ有効
-- TP / SL / `max_hold_seconds` は引き続きcode-ownedで先に評価する
-
-`max_hold_seconds` はJev directでもposition horizonとして働き、Jevが延長することはできません。
-
-Jevには選択Featureに加え、look-ahead-safeなofficial event contextと、最小限のpaper state（configured strategy、直近strategy判断、position side / age）を渡します。API key、secret、口座credentialsは渡しません。
-
-Jev supervisorも併用できます。
-
-paper modeの意思決定レイヤーは独立にON/OFFできます。
-
-- コード戦略 ON / Jev OFF: code-only
-- コード戦略 ON / Jev ON: code strategy + Jev direction一致gate
-- コード戦略 OFF / Jev ON: Jev direction単独
-- コード戦略 OFF / Jev OFF: 新規entryなし
-- 安全監督は上記と独立してON/OFF
-
-安全監督OFFではmarket status / stale / spread / official eventのentry vetoを適用しません。既存positionのTP / SL / max hold等の決済ロジックは維持します。
-
-Jev supervisor用には固定schemaを実装済みです。
-
-- `NORMAL`
-- `CAUTION`
-- `PAUSE_ENTRY`
-- `PAUSE_ALL`
-- allowlist済みstrategy
-- confidence
-- TTL
-- reason
-
-Jevは数量、TP / SL、レバレッジ、任意commandを指定できません。
-
-external contextはBLS / BOJ / Fedのofficial scheduled eventへ接続済みです。Jev supervisorへ渡すcontextはdecision時点で既知のrevisionだけに限定し、future observationや後日訂正を過去へ逆流させません。
+古い `strategy="jev"` 設定も互換入口として内部では受け付けますが、新しいUIでは独立strategyとして表示しません。詳細な契約・閾値・position managementは [CURRENT_STATE.md](./docs/CURRENT_STATE.md) と [DESIGN.md](./DESIGN.md) を参照してください。
 
 ## Jevを使う場合
 
@@ -497,7 +416,7 @@ uv run jevpip observe --profile minimal --with-jev
 
 ## Data
 
-runtime dataは `data/` 以下へ保存し、Gitでは無視します。
+runtime dataは `data/` 以下へ保存し、**`data/.gitkeep` 以外はGitで追跡しません**。
 
 ```text
 data/
@@ -509,8 +428,12 @@ data/
 │   └── <instrument>/
 ├── context/
 │   └── <source>/
-└── backtests/
+├── backtests/
+└── jev_replays/
+    └── <instrument>/
 ```
+
+raw tick、paper約定、Jev応答、replay結果などはruntime artifactです。公開repoへサンプル実測データを残さず、必要な比較はローカルデータで行います。
 
 TypeSafeのperformance / benchmarkに関する実測値は、契約上の公開範囲を確認したうえで扱い、Jevのaccuracy / Brier score / PnL等は公開repoへcommitしない方針です。
 
@@ -527,6 +450,7 @@ unit testは外部APIへ依存しないものを基本とし、live connectivity
 
 - [CURRENT_STATE.md](./docs/CURRENT_STATE.md) : 現在できること、未実装、次の一手
 - [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) : Jevおまかせの契約・会計・制約・replay
+- [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) : Fifty+の仮説・1:1境界・検証観点
 - [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
 - [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
 - [EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md](./docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md) : Jev supervisor向け公式event source / provenance / look-ahead設計
@@ -542,4 +466,4 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-Jevおまかせのpaper prototypeと、従来モードのA/B/C/D experiment harnessを実装済みです。次は期間を分けたraw tick replayで、手数料と売買頻度を含めて比較する段階です。収益性は未検証です。
+Jevおまかせのpaper prototype、Fifty+、従来モードのA/B/C/D experiment harnessまで実装済みです。次はFifty+を含むpaper結果を十分な試行数・別期間・baselineと比較し、勝率だけでなくnet PnL、コスト、ラウンド数、時間帯・銘柄偏りを確認する段階です。収益性は未検証です。

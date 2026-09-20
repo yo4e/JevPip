@@ -18,6 +18,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "現在のセッション" in response.text
         assert "raw tick収集中" in response.text
         assert "Jev APIを使う" in response.text
+        assert 'id="jev-access-paper-slot"' in response.text
+        assert 'id="jev-access-observe-slot"' in response.text
         assert 'id="session-run-state"' in response.text
         assert 'id="session-data-state"' in response.text
         assert 'id="session-paper-state"' in response.text
@@ -52,8 +54,11 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "常に1ポジション" in response.text
         assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
         assert 'id="sbt-executions"' in response.text
-        assert "約定履歴" in response.text
+        assert "約定履歴・損益内訳" in response.text
+        assert response.text.count('id="auto-live-executions"') == 1
         assert "外国為替FX 実口座（参照専用）" in response.text
+        assert response.text.count('id="account-refresh"') == 1
+        assert "従来モード Jev監督" in response.text
         assert "月相" in response.text
         assert "過去日付を自由に選べます" in response.text
         assert "terminal-resizer" in response.text
