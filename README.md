@@ -70,6 +70,7 @@ UIは日本語です。中央にチャート、右にJevおまかせ中心のセ
 
 - 対円FX 12ペア / BTC/JPY の切替
 - GMO Public APIのlive ticker
+- 停止中もPublic RESTで価格 / spreadを5秒程度ごとにプレビュー（保存・売買判断には不使用）
 - historical KLine
 - 1分 / 5分 / 15分 / 1時間チャート
 - MA20 / MA200
