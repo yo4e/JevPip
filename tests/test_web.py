@@ -56,6 +56,10 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
+        assert "ドローダウン・レバレッジ" in response.text
+        assert "資金・損失上限" not in response.text
+        assert response.text.index("ドローダウン・レバレッジ") < response.text.index("動作・コストの詳細")
+        assert '$("paper-risk-settings").style.display=enabled?"block":"none";' in response.text
         assert 'id="paper-max-spread"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
         assert "GMO Public RESTの停止中プレビュー" in response.text
