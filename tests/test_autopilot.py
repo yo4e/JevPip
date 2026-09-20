@@ -30,7 +30,8 @@ def tick(second, bid=99, ask=101, **extra):
 
 def broker(**extra):
     cfg = PaperConfig(autopilot_enabled=True, size=10, price_unit=1,
-                      fee_rate=0.001, slippage_units=0.5, autopilot_confirmations=1)
+                      paper_leverage=1, fee_rate=0.001, slippage_units=0.5,
+                      autopilot_confirmations=1)
     return AutopilotBroker(replace(cfg, **extra))
 
 
@@ -93,10 +94,52 @@ def test_scalp_question_prioritizes_tick_tape():
 
 
 def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
+    defaults = PaperDemoInput()
+    assert defaults.paper_leverage == 25
+    assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
+    with pytest.raises(ValueError):
+        PaperDemoInput(paper_leverage=25.1)
+
+
+def test_fx_fifty_plus_uses_margin_capacity_and_crypto_stays_one_x():
+    leveraged = broker(
+        initial_balance=100000,
+        size=1000,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    leveraged.on_tick(tick(0, bid=157, ask=159))
+    policy = leveraged.decision_state(START)["autopilot"]
+    assert set(policy["targets"]) == {"UP", "DOWN"}
+    assert policy["paper_leverage"] == 25
+
+    unleveraged = broker(
+        initial_balance=100000,
+        size=1000,
+        paper_leverage=1,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    unleveraged.on_tick(tick(0, bid=157, ask=159))
+    assert unleveraged.decision_state(START)["autopilot"]["targets"] == {}
+
+    crypto = AutopilotBroker(PaperConfig(
+        autopilot_enabled=True,
+        instrument_id="BTC",
+        size=0.001,
+        paper_leverage=25,
+    ))
+    assert crypto.config.paper_leverage == 1
+    assert crypto.paper_leverage == Decimal("1.0")
 
 
 def test_fifty_plus_is_mandatory_up_down_and_event_driven():
@@ -384,6 +427,9 @@ def test_net_tp_and_dd_exit_are_cost_aware_and_reject_old_target():
     rows = b.on_tick(tick(2.2, 90, 92))
     assert rows[0]["reason"] == "drawdown_or_equity_stop"
     assert b.snapshot()["risk_halted"]
+    halted_state = b.decision_state(START + timedelta(seconds=3))
+    assert halted_state["autopilot"]["risk_halted"] is True
+    assert _should_request_jev(halted_state) is False
     assert act(b, 4, "LONG_BASE") == []
 
 
