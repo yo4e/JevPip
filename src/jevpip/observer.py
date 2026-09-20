@@ -35,6 +35,17 @@ async def _notify(callback: UpdateCallback | None, event: dict[str, Any]) -> Non
         await result
 
 
+def _should_request_jev(state: dict[str, Any]) -> bool:
+    policy = state.get("autopilot")
+    if not isinstance(policy, dict):
+        return True
+    if policy.get("style") != "fifty":
+        return True
+    # Fifty+ calls Jev only while flat. Once a direction is returned the
+    # broker owns the position until the symmetric TP/SL closes it.
+    return policy.get("position") is None and bool(policy.get("targets"))
+
+
 async def observe(
     profile: dict[str, Any],
     data_dir: Path,
@@ -213,6 +224,8 @@ async def observe(
                     jev_state.update(context_state)
 
                 autopilot_mode = "autopilot" in jev_state
+                if not _should_request_jev(jev_state):
+                    continue
                 last_jev_started_at = now
 
                 jev_task = asyncio.create_task(
