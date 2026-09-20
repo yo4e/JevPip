@@ -93,6 +93,16 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
             <div class="field"><label class="label" for="paper-balance">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
           </div>
           <div id="autopilot-controls">
+            <details class="session-details" id="paper-risk-settings">
+              <summary>資金・損失上限</summary>
+              <div class="details-body">
+                <div class="pair">
+                  <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
+                  <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
+                </div>
+                <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
+              </div>
+            </details>
 
             <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small></div>
             <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
@@ -462,15 +472,15 @@ function featureNames(){const p=features(),a=[];if(p.quote)a.push("価格");if(p
 function renderFeatures(){const h=featureNames().map(x=>`<span class="pill">${esc(x)}</span>`).join("");$("feature-summary").innerHTML=h;$("bt-summary").innerHTML=h}
 function applySignal(name,p=state.config.signal_policies[name]){if(!p)return;$("s-dir").value=p.min_direction_probability;$("s-margin").value=p.min_direction_margin;$("s-noise").value=p.max_noise_probability;$("s-rev").value=p.max_reversal_probability;$("s-trend").value=p.min_trend_strength;const i=instrumentSpec();$("s-spread").value=arguments.length<2&&i?.market_kind==="crypto_spot"?i.default_max_spread:p.max_spread_pips}
 function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
-function paperConfig(){if($("mode").value!=="paper")return null;const fifty=$("autopilot").checked&&$("auto-style").value==="fifty";return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:!$("autopilot").checked&&$("paper-strategy-enabled").checked,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
+function paperConfig(){if($("mode").value!=="paper")return null;const fifty=$("autopilot").checked&&$("auto-style").value==="fifty";return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),paper_leverage:Number($("paper-leverage").value||1),strategy:$("paper-strategy").value,strategy_enabled:!$("autopilot").checked&&$("paper-strategy-enabled").checked,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
-function jevReplayPaperConfig(){const fifty=$("autopilot").checked&&$("auto-style").value==="fifty";return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),strategy:$("paper-strategy").value,strategy_enabled:false,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
+function jevReplayPaperConfig(){const fifty=$("autopilot").checked&&$("auto-style").value==="fifty";return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),paper_leverage:Number($("paper-leverage").value||1),strategy:$("paper-strategy").value,strategy_enabled:false,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
 function modeChanged(){const paper=$("mode").value==="paper";if(paper&&$("autopilot").checked)$("with-jev").checked=true;const access=$("jev-access"),slot=$(paper?"jev-access-paper-slot":"jev-access-observe-slot");if(access&&slot&&access.parentElement!==slot)slot.appendChild(access);$("paper-basic").style.display=paper?"block":"none";$("paper-advanced").style.display=paper?"block":"none";updateTradeSummary();autopilotChanged();updateJevAccess();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper(active?state.lastStatus.paper:null)}}
 function strategyChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
 function strategyEnabledChanged(){$("paper-strategy").disabled=Boolean(state.lastStatus?.running)||$("autopilot").checked||!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
 const paperFields={
-  "paper-size":"size","paper-balance":"initial_balance","p-window":"momentum_window_seconds",
+  "paper-size":"size","paper-balance":"initial_balance","paper-leverage":"paper_leverage","p-window":"momentum_window_seconds",
   "p-trigger":"momentum_trigger_units","p-spread":"max_spread_units","p-tp":"take_profit_units",
   "p-sl":"stop_loss_units","p-hold":"max_hold_seconds","p-cool":"cooldown_seconds",
   "p-slip":"slippage_units","p-rsi-period":"rsi_period","p-rsi-low":"rsi_oversold",
@@ -493,6 +503,7 @@ function restoreSession(s){
     $("auto-style").value=cfg.autopilot_style||"daytrade";
     autopilotStyleChanged(false);
     for(const [id,key] of Object.entries(paperFields))if(cfg[key]!=null)$(id).value=cfg[key];
+    if(cfg.autopilot_max_drawdown_pct!=null)$("paper-max-dd-pct").value=Number(cfg.autopilot_max_drawdown_pct)*100;
     $("auto-fundamentals").checked=Boolean(cfg.autopilot_fundamentals);
     for(const [key] of autoLimits){
       const value=cfg["autopilot_"+key];
@@ -531,6 +542,7 @@ function syncSessionControls(s,activeInstrument){
   $("start").disabled=locked;
   $("stop").disabled=!s.running||Boolean(state.pendingSession);
   $("instrument").disabled=locked;
+  $("paper-leverage").disabled=locked||instrumentSpec()?.market_kind==="crypto_spot";
   $("start").textContent=state.pendingSession==="start"?"開始中…":"開始";
   $("stop").textContent=state.pendingSession==="stop"?"停止中…":"停止";
   updateJevAccess();
@@ -550,11 +562,11 @@ function updateTradeSummary(){
     const mode=$("auto-style").value;
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
-      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 常に1ポジション。決済した時だけJevがUP / DOWNを二択で判断します。";
+      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止。決済した時だけJevがUP / DOWNを二択で判断します。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
-    box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
+    box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
     return;
   }
   const unit=i.move_unit_label;
@@ -585,6 +597,12 @@ function instrumentSpec(){return state.config?.instruments?.[$("instrument").val
 function applyInstrumentDefaults(){
   const i=instrumentSpec();if(!i)return;
   $("paper-size").value=i.default_paper_size;
+  $("paper-leverage").value=i.market_kind==="crypto_spot"?1:25;
+  $("paper-leverage").disabled=i.market_kind==="crypto_spot";
+  $("paper-max-dd-pct").value=20;
+  $("paper-risk-note").textContent=i.market_kind==="crypto_spot"
+    ?"BTC現物paperは1x固定。最大DD到達時は建玉を決済し、新規判断を停止します。"
+    :"FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。";
   $("p-trigger").value=i.default_momentum_trigger;
   $("p-spread").value=i.default_max_spread;
   $("p-tp").value=i.default_take_profit;
@@ -1135,7 +1153,7 @@ async function init(){try{state.config=await api("/api/config");$("instrument").
 
 const autoLimits=[
   ["max_quantity","最大保有数量",1], ["max_notional","最大保有額（円）",50000],
-  ["max_drawdown","最大ドローダウン（円）",5000], ["max_drawdown_pct","最大ドローダウン（比率 0〜1）",0.05],
+  ["max_drawdown","最大ドローダウン（円）",5000],
   ["max_change","1回の最大数量変更",1], ["entry_loss","新規停止損失（円）",3000],
   ["max_spread","最大spread（銘柄の値幅単位）",3], ["min_confidence","最低confidence（0〜1）",0.6],
   ["cooldown_seconds","増額・反転の待機（秒）",5], ["max_hold_seconds","強制最大保有（秒）",600],
@@ -1144,7 +1162,7 @@ const autoLimits=[
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
   const fifty=$("auto-style").value==="fifty";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1217,6 +1235,8 @@ $("auto-style").addEventListener("change",()=>autopilotStyleChanged(true));
 $("auto-horizon").addEventListener("change",updateTradeSummary);
 $("fifty-target-units").addEventListener("input",updateTradeSummary);
 $("fifty-target-jpy").addEventListener("input",updateTradeSummary);
+$("paper-leverage").addEventListener("input",updateTradeSummary);
+$("paper-max-dd-pct").addEventListener("input",updateTradeSummary);
 $("jev-every").addEventListener("input",updateTradeSummary);
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");$("terminal-resizer").setAttribute("aria-valuenow",Math.round(height));$("terminal-resizer").setAttribute("aria-valuemin",min);$("terminal-resizer").setAttribute("aria-valuemax",max);try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value;requestAnimationFrame(()=>drawChart(activeChartPoints(),active?state.lastStatus?.paper?.trades||[]:[]))}
