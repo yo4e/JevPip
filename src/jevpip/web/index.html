@@ -19,7 +19,7 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 .chart-toolbar{display:flex;align-items:center;gap:10px;padding:5px 14px;border-bottom:1px solid var(--line);font-size:12px;min-height:40px;position:relative;z-index:3;background:#fff}.chart-title{font-weight:900}.muted{color:var(--muted)}
 .indicator-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:800}.indicator-toggle input{accent-color:var(--blue)}
 .chart-wrap{position:relative;min-height:0;overflow:hidden;background:#fff}.chart-wrap canvas{display:block;width:100%;height:100%}.chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:12px;pointer-events:none;background:rgba(255,255,255,.86);z-index:2}
-.side{overflow:auto;background:#fff}.side-section{padding:16px 15px;border-bottom:1px solid var(--line)}.side-section h2{font-size:14px;margin:0 0 11px}.side-section p{font-size:11px;color:var(--muted);line-height:1.55;margin:5px 0 11px}
+.side{overflow:auto;background:#fff}.side-section{padding:16px 15px;border-bottom:1px solid var(--line)}.side-section h2{font-size:14px;margin:0 0 11px}.side-section p{font-size:11px;color:var(--muted);line-height:1.55;margin:5px 0 11px}.section-kicker{font-size:9px;letter-spacing:.12em;color:var(--blue);font-weight:900;margin-bottom:5px}.section-intro{margin-top:-4px!important}.session-overview{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0 13px}.session-stat{padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--panel2);min-width:0}.session-stat span{display:block;font-size:9px;color:var(--muted);font-weight:800}.session-stat strong{display:block;font-size:11px;margin-top:3px;white-space:normal;overflow-wrap:anywhere}.jev-access{padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-bottom:10px}.primary-block{margin-top:12px;padding:11px;border:1px solid #c7d2fe;border-radius:9px;background:#f8faff}.primary-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}.primary-block-head strong{font-size:13px}.primary-block-head span{font-size:9px;color:#4338ca;font-weight:900}.research-callout{font-size:10px;line-height:1.5;color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:8px;border-radius:6px;margin-bottom:10px}.research-details{margin-top:0;padding-top:0;border-top:0}.research-details>summary{font-size:12px}.bt-guide{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:12px}.bt-guide div{padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}.bt-guide span{display:block;font-size:9px;color:var(--muted);font-weight:800}.bt-guide strong{display:block;font-size:10px;margin-top:3px}.tab-group-label{font-size:8px;letter-spacing:.1em;color:#9ca3af;font-weight:900;padding:0 4px;white-space:nowrap}.tabs{overflow-x:auto;white-space:nowrap}
 .table-scroll{overflow:auto;max-height:300px}.data-table{border-collapse:collapse;font-size:10px;white-space:nowrap;width:100%}.data-table td,.data-table th{padding:6px;border-bottom:1px solid var(--line);text-align:right}
 .field{margin-bottom:11px}.label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin-bottom:5px}.field input,.field select{width:100%;height:38px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:0 9px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toggle{display:flex;align-items:flex-start;gap:8px;font-size:12px;font-weight:800}.toggle input{margin-top:3px}.toggle small{display:block;font-size:10px;color:var(--muted);font-weight:500;margin-top:3px}
@@ -65,50 +65,66 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
   </section>
 
   <aside class="side">
-    <section class="side-section">
-      <h2>自動売買</h2>
+    <section class="side-section primary-session">
+      <div class="section-kicker">PRIMARY WORKFLOW</div>
+      <h2>現在のセッション</h2>
+      <p class="section-intro">銘柄とモードを選び、上部の「開始」で観測します。観測中はJevを使わなくてもraw tickを保存します。</p>
+      <div class="session-overview" aria-label="現在のセッション状態">
+        <div class="session-stat"><span>実行</span><strong id="session-run-state">停止中</strong></div>
+        <div class="session-stat"><span>データ</span><strong id="session-data-state">raw tick停止</strong></div>
+        <div class="session-stat"><span>デモ口座</span><strong id="session-paper-state">デモOFF</strong></div>
+        <div class="session-stat"><span>最新Jev</span><strong id="session-target-state">-</strong></div>
+      </div>
       <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper" selected>デモ自動売買</option></select></div>
+      <div class="jev-access">
+        <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small>観測では判断を記録します。おまかせ時は自動的にON。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使います。</small></span></label>
+        <div class="field" style="margin:10px 0 0"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒 / Fifty+は決済時だけ</div></div>
+      </div>
+      <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
+
       <div id="paper-basic" style="display:none">
-        <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevおまかせ<small>コスト込みで保有方向と目標数量を判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
-        <div id="autopilot-controls" style="margin-top:12px">
-          <div class="field"><label class="label">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
-          <div id="fifty-controls" class="notice" style="display:none;margin-bottom:10px"><strong>Fifty+ 🎲</strong><br>常に1ポジション。決済時だけJevが次のUP / DOWNを二択で判断します。<div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同幅。spread・手数料・slippage込みのネット損益で判定します。</small></div>
-          <div class="field" id="auto-horizon-field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
-          <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
-          <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
-            <div class="pair"><div class="field"><label class="label">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
-            <div id="auto-limits"></div>
-            <p>チェックした制約だけを適用。新規・増額は仮想資金の1倍以内。市場が閉じている時や古い価格では約定しません。</p>
-          </div></details>
+        <div class="primary-block">
+          <div class="primary-block-head"><strong>Jevおまかせ</strong><span>基本paper mode</span></div>
+          <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevに保有方向と目標数量を任せる<small>コスト込みで判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
+          <div class="pair" style="margin-top:12px">
+            <div class="field"><label class="label" id="paper-size-label">基準数量</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
+            <div class="field"><label class="label">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
+          </div>
+          <div id="autopilot-controls">
+            <div class="field"><label class="label">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
+            <div id="fifty-controls" class="notice" style="display:none;margin-bottom:10px"><strong>Fifty+ 🎲</strong><br>常に1ポジション。決済時だけJevが次のUP / DOWNを二択で判断します。<div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同幅。spread・手数料・slippage込みのネット損益で判定します。</small></div>
+            <div class="field" id="auto-horizon-field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
+            <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
+            <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
+              <div class="pair"><div class="field"><label class="label">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
+              <div id="auto-limits"></div>
+              <p>チェックした制約だけを適用。新規・増額は仮想資金の1倍以内。市場が閉じている時や古い価格では約定しません。</p>
+            </div></details>
+          </div>
+
+          <div id="legacy-strategies">
+            <div class="research-callout"><strong>従来モード</strong><br>JevおまかせをOFFにした時だけ使う比較・研究用のコード戦略です。</div>
+            <label class="toggle" style="margin-bottom:8px"><input id="paper-strategy-enabled" type="checkbox" checked><span>コード戦略<small>Momentum / RSI / MA の売買候補を使います。OFF + Jev ONならJev単独で方向を決めます。</small></span></label>
+            <div class="field"><label class="label">コード戦略</label><select id="paper-strategy"><option value="momentum">モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option></select></div>
+            <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>ON時だけ、市場状態・stale data・spread・公式経済イベントを監視して新規entryを止めます。</small></span></label>
+            <div class="notice" id="event-context" style="margin-bottom:8px">公式イベント: 未取得</div>
+            <button class="btn ghost" id="context-refresh" type="button" style="margin-bottom:10px">公式イベント更新</button>
+            <div class="pair">
+              <div class="field legacy-exit"><label class="label" id="p-tp-label">Take Profit</label><input id="p-tp" type="number" value="1" step="any"></div>
+              <div class="field legacy-exit"><label class="label" id="p-sl-label">Stop Loss</label><input id="p-sl" type="number" value="1" step="any"></div>
+              <div class="field legacy-exit"><label class="label" id="p-spread-label">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
+            </div>
+          </div>
+          <div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div>
         </div>
-        <div id="legacy-strategies"><label class="toggle" style="margin-bottom:8px"><input id="paper-strategy-enabled" type="checkbox" checked><span>コード戦略<small>Momentum / RSI / MA の売買候補を使います。OFF + Jev ONならJev単独で方向を決めます。</small></span></label>
-        <div class="field"><label class="label">コード戦略</label><select id="paper-strategy"><option value="momentum">モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option></select></div>
-        <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>ON時だけ、市場状態・stale data・spread・公式経済イベントを監視して新規entryを止めます。</small></span></label>
-        <div class="notice" id="event-context" style="margin-bottom:8px">公式イベント: 未取得</div>
-        <button class="btn ghost" id="context-refresh" type="button" style="margin-bottom:10px">公式イベント更新</button>
-        </div><div class="pair">
-          <div class="field"><label class="label" id="paper-size-label">注文数量</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
-          <div class="field"><label class="label">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
-          <div class="field legacy-exit"><label class="label" id="p-tp-label">Take Profit</label><input id="p-tp" type="number" value="1" step="any"></div>
-          <div class="field legacy-exit"><label class="label" id="p-sl-label">Stop Loss</label><input id="p-sl" type="number" value="1" step="any"></div>
-          <div class="field legacy-exit"><label class="label" id="p-spread-label">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
-        </div>
-        <div id="auto-live-diagnostics" class="notice" style="display:none"></div><details><summary>約定履歴と損益内訳</summary><div id="auto-live-executions" class="table-scroll"></div></details>
-        <div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div>
       </div>
     </section>
 
     <section class="side-section">
-      <h2>Jev</h2>
-      <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev判断<small>おまかせでは保有方向・数量を判断。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使えます。</small></span></label>
-      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒 / Fifty+は決済時だけ</div></div>
-      <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
-    </section>
-
-    <section class="side-section">
-      <details>
-        <summary>詳細設定</summary>
+      <details class="research-details">
+        <summary>研究・従来設定</summary>
         <div class="details-body">
+          <div class="research-callout"><strong>Advanced / Research</strong><br>Feature、Signal Policy、従来コード戦略の細部を調整します。Jevおまかせだけを使う場合は触らなくてかまいません。</div>
           <div class="field"><label class="label">Featureプリセット</label><select id="profile"></select></div><div class="pillrow" id="feature-summary"></div>
           <div class="feature-grid" style="margin-top:8px">
             <label class="toggle"><input id="f-quote" type="checkbox"><span>価格</span></label><label class="toggle"><input id="f-moon" type="checkbox"><span>月相 🌙</span></label>
@@ -145,7 +161,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
       </details>
     </section>
-      <section class="side-section">
+    <section class="side-section">
       <a class="support-link" href="https://ko-fi.com/yo4e" target="_blank" rel="noopener noreferrer" title="JevPipを応援">☕ コーヒーを奢る</a>
     </section>
 </aside>
@@ -153,14 +169,16 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
 <div class="terminal-resizer" id="terminal-resizer" title="ドラッグして下部パネルの高さを変更。ダブルクリックで標準サイズへ戻します。"></div>
 <section class="terminal">
-  <nav class="tabs">
-    <button class="tabbtn active" data-tab="dashboard">口座・建玉</button><button class="tabbtn" data-tab="strategybt">戦略BT</button><button class="tabbtn" data-tab="jevbt">Jev BT</button><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">統計リプレイ</button><button class="tabbtn" data-tab="logs">ログ</button>
+  <nav class="tabs" aria-label="JevPip terminal">
+    <span class="tab-group-label">NOW</span><button class="tabbtn active" data-tab="dashboard">現在</button>
+    <span class="tab-group-label">BACKTEST</span><button class="tabbtn" data-tab="strategybt">戦略BT</button><button class="tabbtn" data-tab="jevbt">Jev BT</button>
+    <span class="tab-group-label">RESEARCH</span><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">統計リプレイ</button><button class="tabbtn" data-tab="logs">ログ</button>
   </nav>
 
   <section class="tab active" id="tab-dashboard">
     <div class="terminal-grid">
       <div class="terminal-cell">
-        <h3>デモ口座</h3>
+        <h3>デモ口座・建玉</h3>
         <div id="paper-empty" class="empty">デモ自動売買を選ぶと動きます。</div>
         <div id="paper-body" style="display:none">
           <div class="money" id="paper-money">¥0</div><div class="pnl" id="paper-total-pnl">±¥0</div>
@@ -176,9 +194,24 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           </div>
           <div class="position" id="paper-strategy-state">戦略判断: - / 監督: -</div>
           <div class="notice" id="paper-cost-note"></div>
-          <div class="position" id="paper-position">建玉なし</div><button class="btn" id="paper-reset" disabled style="margin-top:6px">デモ口座リセット</button>
+          <div class="position" id="paper-position">建玉なし</div>
+          <div id="auto-live-diagnostics" class="notice" style="display:none"></div>
+          <details><summary>約定履歴と損益内訳</summary><div id="auto-live-executions" class="table-scroll"></div></details>
+          <button class="btn" id="paper-reset" disabled style="margin-top:8px">デモ口座リセット</button>
         </div>
         <div style="display:none"><span id="paper-equity">-</span><span id="paper-pnl">-</span></div>
+      </div>
+
+      <div class="terminal-cell">
+        <h3>最新Jev判断</h3>
+        <div id="decision-empty" class="empty">まだ判断はありません。</div>
+        <div id="decision" style="display:none">
+          <div class="money" id="decision-signal">WAIT</div>
+          <div class="decision-grid"><div class="stat"><span>UP</span><strong id="up">-</strong></div><div class="stat"><span>DOWN</span><strong id="down">-</strong></div><div class="stat"><span>FLAT</span><strong id="flat">-</strong></div><div class="stat"><span>latency</span><strong id="latency">-</strong></div></div>
+          <div class="muted" id="signal-detail" style="font-size:10px;margin-top:7px"></div>
+        </div>
+        <div class="muted" id="jev-token-summary" style="font-size:10px;margin-top:7px">Jev tokens: -</div>
+        <div class="notice" id="jev-supervisor" style="margin-top:8px">Jev監督: OFF</div>
       </div>
 
       <div class="terminal-cell">
@@ -191,23 +224,12 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
         <button class="btn" id="account-refresh" style="margin-top:6px">更新</button>
       </div>
-
-      <div class="terminal-cell">
-        <h3>Jev判断</h3>
-        <div id="decision-empty" class="empty">まだ判断はありません。</div>
-        <div id="decision" style="display:none">
-          <div class="money" id="decision-signal">WAIT</div>
-          <div class="decision-grid"><div class="stat"><span>UP</span><strong id="up">-</strong></div><div class="stat"><span>DOWN</span><strong id="down">-</strong></div><div class="stat"><span>FLAT</span><strong id="flat">-</strong></div><div class="stat"><span>latency</span><strong id="latency">-</strong></div></div>
-          <div class="muted" id="signal-detail" style="font-size:10px;margin-top:7px"></div>
-        </div>
-        <div class="muted" id="jev-token-summary" style="font-size:10px;margin-top:7px">Jev tokens: -</div>
-        <div class="notice" id="jev-supervisor" style="margin-top:8px">Jev監督: OFF</div>
-      </div>
     </div>
   </section>
 
   <section class="tab" id="tab-strategybt">
     <div class="back-wrap">
+      <div class="bt-guide"><div><span>DATA</span><strong>historical 1分足</strong></div><div><span>JEV API</span><strong>使わない</strong></div><div><span>TOKEN</span><strong>消費なし</strong></div><div><span>PURPOSE</span><strong>コード戦略とcost model</strong></div></div>
       <div class="mode-grid">
         <div class="field"><label class="label">日付</label><input id="sbt-date" type="date"></div>
         <div class="field"><label class="label">最大本数</label><input id="sbt-limit" type="number" placeholder="空欄=全件"></div>
@@ -241,6 +263,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
   <section class="tab" id="tab-backtest">
     <div class="back-wrap">
+      <div class="bt-guide"><div><span>DATA</span><strong>historical 1分足</strong></div><div><span>JEV API</span><strong>使わない</strong></div><div><span>TRADE</span><strong>売買しない</strong></div><div><span>PURPOSE</span><strong>データ特性・edge確認</strong></div></div>
       <div class="mode-grid">
         <div class="field"><label class="label">日付</label><input id="bt-date" type="date"></div>
         <div class="field"><label class="label">最大本数</label><input id="bt-limit" type="number" placeholder="空欄=全件"></div>
@@ -268,6 +291,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
   <section class="tab" id="tab-jevbt">
     <div class="back-wrap">
+      <div class="bt-guide"><div><span>DATA</span><strong>保存済みraw tick</strong></div><div><span>JEV API</span><strong>実際に使う</strong></div><div><span>TOKEN</span><strong>消費あり</strong></div><div><span>PURPOSE</span><strong>現在のJevをhistorical replay</strong></div></div>
       <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は保存済みraw tickだけを使います。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
       <div class="mode-grid">
         <div class="field"><label class="label">保存済みraw tick日</label><select id="jbt-date"><option value="">保存データを確認中…</option></select></div>
@@ -302,6 +326,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
   <section class="tab" id="tab-compare">
     <div class="back-wrap">
+      <div class="bt-guide"><div><span>DATA</span><strong>保存済みraw tick</strong></div><div><span>JEV API</span><strong>使わない</strong></div><div><span>TOKEN</span><strong>消費なし</strong></div><div><span>PURPOSE</span><strong>baseline・戦略比較</strong></div></div>
       <div class="mode-grid">
         <div class="field"><label class="label">保存済みraw tick日</label><select id="cmp-date"><option value="">保存データを確認中…</option></select></div>
         <div class="field"><label class="label">RSI/MA入力</label><select id="cmp-bar"><option value="0">tick</option><option value="5">5秒bar</option><option value="15">15秒bar</option><option value="60">1分bar</option><option value="300">5分bar</option></select></div>
@@ -558,8 +583,9 @@ async function stop(){try{await api("/api/observer/stop",{method:"POST",body:"{}
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
-function renderPaper(p){if(!p){$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+function renderPaper(p){if(!p){$("session-paper-state").textContent="デモOFF";$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
 $("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=false;
+$("session-paper-state").textContent=p.position?(p.position.side+" "+Number(p.position.size).toLocaleString()):("建玉なし / "+yen(p.equity));
 $("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;
 $("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);
 $("paper-equity").textContent=yen(p.equity);$("paper-pnl").textContent="損益 "+(total>=0?"+":"")+yen(total);
@@ -613,10 +639,12 @@ function renderDecision(d,sup){
     }else{supBox.textContent="Jev監督: 待機中"}
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
-  if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
+  if(!d?.jev){$("session-target-state").textContent="-";$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
   $("decision-empty").style.display="none";$("decision").style.display="block";
   const a=d.jev.answers||{},fifty=d.state?.autopilot?.style==="fifty",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
-  $("decision-signal").textContent=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
+  const decisionText=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
+  $("decision-signal").textContent=decisionText;
+  $("session-target-state").textContent=decisionText;
   $("up").textContent=fifty?pct(pr.UP||0):(d.target_decision?"—":pct(pr.UP||0));
   $("down").textContent=fifty?pct(pr.DOWN||0):(d.target_decision?"—":pct(pr.DOWN||0));
   $("flat").textContent=fifty?"—":(d.target_decision?"—":pct(pr.FLAT||0));
@@ -830,12 +858,14 @@ async function refresh(){
     const selectedInstrument=$("instrument").value;
     const activeInstrument=s.instrument_id===selectedInstrument;
     $("status").textContent=s.running?"観測中":(s.status==="error"?"エラー":"停止中");
+    $("session-run-state").textContent=s.running?"観測中":(s.status==="error"?"エラー":"停止中");
     $("status-sub").textContent=activeInstrument?(s.profile_name||"未開始"):"未開始";
     $("start").disabled=s.running;
     $("stop").disabled=!s.running;
     $("instrument").disabled=s.running;
     syncSessionControls(s,activeInstrument);
     const spec=state.config?.instruments?.[selectedInstrument]||instrumentSpec();
+    $("session-data-state").textContent=s.running&&activeInstrument?("● raw tick収集中 / "+(s.with_jev?"Jev API ON":"Jev API OFF")+" / "+(spec?.display_symbol||selectedInstrument)):"raw tick停止";
     const m=activeInstrument?s.latest_market:null;
     if(m){
       const mid=(Number(m.bid)+Number(m.ask))/2;

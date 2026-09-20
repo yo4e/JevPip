@@ -19,6 +19,18 @@ JevPipはローカルで動くmarket research terminalです。
 
 UIの基本paper modeはJevおまかせです。Jev OFFのコード戦略、従来の方向判定・supervisorも比較用に残しています。
 
+## UI情報設計（Issue #21）
+
+UIは機能を削らず、Jevおまかせ中心へ整理しています。
+
+- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jev API / Jevおまかせ / 基準数量 / 仮想残高」を中心にする
+- 実行中は `raw tick収集中 / Jev API ON|OFF / 銘柄` を常時表示し、Jev OFFでもデータ収集されることを明示する
+- paper口座、建玉、最新Jev判断、約定履歴、損益内訳は下部の「現在」へ集約する
+- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる
+- Strategy BT / Jev BT / 戦略比較 / 統計リプレイには、使用データ・Jev API利用有無・token消費・目的を明示する
+- 既存element IDとAPI contractは維持し、情報階層の変更を中心とする
+
+
 ## Jevおまかせ（Issue #17）
 
 実装済みのpaper prototype:
