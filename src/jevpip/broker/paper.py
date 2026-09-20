@@ -12,7 +12,9 @@ from jevpip.broker.strategies import (
     StrategyName,
     ma_trend_signal,
     momentum_signal,
+    moon_phase_signal,
     rsi_mean_reversion_signal,
+    zodiac_polarity_signal,
 )
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_supervisor
 
@@ -660,6 +662,12 @@ class PaperBroker:
                 decision.reason,
                 {**decision.metrics, "semantics": semantics},
             )
+
+        if strategy == "moon_phase":
+            return moon_phase_signal(at=at)
+
+        if strategy == "zodiac_polarity":
+            return zodiac_polarity_signal(at=at)
 
         if strategy == "ma_trend":
             decision = ma_trend_signal(
