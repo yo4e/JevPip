@@ -181,8 +181,14 @@ def test_preview_estimates_tokens_from_recent_reported_usage(tmp_path: Path):
     assert estimate["average_input_tokens"] == 110.0
     assert estimate["average_output_tokens"] == 15.0
     assert estimate["estimated_total_tokens"] == 625
+    assert estimate["estimated_billable_input_tokens"] == 550
+    assert estimate["estimated_output_tokens"] == 75
+    assert estimate["estimated_cost_usd"] == pytest.approx(0.0000231)
+    assert estimate["input_price_usd_per_million_tokens"] == 0.042
+    assert estimate["output_price_usd_per_million_tokens"] == 0.0
     assert preview["within_call_limit"] is True
-    assert "トークンを消費" in preview["warning"]
+    assert "input tokenが課金対象" in preview["warning"]
+    assert "output tokenは無料" in preview["warning"]
 
 
 def test_preview_leaves_token_estimate_unknown_without_usage(tmp_path: Path):
@@ -242,7 +248,14 @@ def test_replay_calls_current_jev_on_raw_tick_history_and_reports_usage(tmp_path
     assert 1 <= summary["calls"] <= summary["planned_max_calls"]
     assert summary["calls"] == client.calls
     assert summary["reported_usage_calls"] == summary["calls"]
+    assert summary["input_tokens"] == summary["calls"] * 100
+    assert summary["output_tokens"] == summary["calls"] * 10
     assert summary["total_tokens"] == summary["calls"] * 110
+    assert summary["billable_input_tokens"] == summary["calls"] * 100
+    assert summary["estimated_cost_usd"] == pytest.approx(
+        summary["billable_input_tokens"] * 0.042 / 1_000_000
+    )
+    assert summary["output_price_usd_per_million_tokens"] == 0.0
     assert result["cadence_seconds"] == 1
     assert result["selected_ticks"] == 9
     assert "current Jev model" in result["limitations"][0]

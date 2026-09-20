@@ -2291,7 +2291,17 @@ estimated tokens = planned max calls × recent average tokens/call
 
 reported usageがなければtoken値を推測しない。
 
-UIはrun前に「TypeSafeのトークンを消費する」確認を必須にし、API requestにもexplicit acknowledgementを要求する。
+2026-09-20時点のTypeSafe公開価格はinput $0.042 / 1M tokens、output $0。したがって、billing表示は `input_tokens` を課金対象、`output_tokens` を無料として明確に分離する。reported totalはAPI responseの観測値として残すが、課金量とは呼ばない。
+
+概算cost:
+
+```text
+estimated cost USD = reported input tokens × 0.042 / 1,000,000
+```
+
+この値は公開価格による計算で、TypeSafe consoleの請求記録そのものではない。
+
+UIはrun前に「TypeSafeの課金対象input tokenを消費する」確認を必須にし、API requestにもexplicit acknowledgementを要求する。
 
 1run hard cap:
 
