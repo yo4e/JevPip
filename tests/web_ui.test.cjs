@@ -19,6 +19,7 @@ function runtime(){
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
+  vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -112,4 +113,16 @@ test('current fill list is newest first for either backend ordering and escapes 
     assert.ok(markup.indexOf(recent.timestamp)<markup.indexOf(old.timestamp));
     assert.ok(markup.includes('&lt;script&gt;bad&lt;/script&gt;'));
   }
+});
+
+
+test('stopped preview quote shows spread and warns above configured ceiling',()=>{
+  const {context:c,$}=runtime();
+  $('mode').value='paper';$('autopilot').checked=true;$('paper-max-spread').value='1.5';
+  c.renderTopQuote({bid:157.000,ask:157.099,spread_units:9.9,move_unit_label:'pips',display_symbol:'USD/JPY'},true);
+  assert.ok($('spread').textContent.includes('spread 9.9 pips · preview'));
+  assert.equal($('spread').className,'top-spread warn');
+  assert.ok($('spread').title.includes('保存・売買判断には使いません'));
+  c.renderTopQuote({bid:157.000,ask:157.010,spread_units:1.0,move_unit_label:'pips',display_symbol:'USD/JPY'},true);
+  assert.equal($('spread').className,'top-spread');
 });
