@@ -433,8 +433,12 @@ class AutopilotBroker(PaperBroker):
             change = abs(signed-signed_current)
             # Transition estimate only: previously paid entry costs are sunk.
             transition = change*((ask-bid)/2+self.slippage_price+(ask+bid)/2*self.fee_rate)
-            targets[key] = {"side": side, "quantity": str(quantity), "notional_jpy": float(quantity*(ask+bid)/2),
-                            "estimated_transition_cost_jpy": float(transition)}
+            targets[key] = {"side": side, "quantity": str(quantity)}
+            if self.config.autopilot_style != "fifty":
+                targets[key].update(
+                    notional_jpy=float(quantity*(ask+bid)/2),
+                    estimated_transition_cost_jpy=float(transition),
+                )
         history = [(at, price) for at, price in self._prices if at <= as_of]
         bars: dict[int, dict[str, Any]] = {}
         for at, price in history:
@@ -471,6 +475,11 @@ class AutopilotBroker(PaperBroker):
         if self.config.autopilot_style in {"scalp", "fifty"}:
             autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
         if self.config.autopilot_style == "fifty":
+            autopilot_state["quote"] = {"mid": str((bid+ask)/2)}
+            autopilot_state["recent_ticks"] = [
+                {"at": row["at"], "mid": row["mid"], "delta_units": row["delta_units"]}
+                for row in list(self._tick_tape)[-40:]
+            ]
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
