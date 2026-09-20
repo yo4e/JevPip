@@ -252,6 +252,14 @@ def test_variable_fee_breakeven_diagnostic_does_not_change_cost_model_identity()
 
 def test_missing_jev_timing_preserves_warmup_block():
     rows = _rows()
+    for index in (0, 1):
+        rows[index]["jev_direction"] = {
+            "signal": "WAIT",
+            "basis_at": None,
+            "requested_at": None,
+            "available_at": None,
+            "age_seconds": None,
+        }
     rows[1]["gates"]["event"] = {
         "state": "NORMAL",
         "reason": "event_ok",
@@ -265,14 +273,6 @@ def test_missing_jev_timing_preserves_warmup_block():
         "confidence": None,
         "ttl_seconds": None,
     }
-    rows[1]["jev_direction"] = {
-        "signal": "WAIT",
-        "basis_at": None,
-        "requested_at": None,
-        "available_at": None,
-        "age_seconds": None,
-    }
-
     result = run_abcd_experiment(rows)
     trades = result["variants"]["C"]["counterfactual"]["trades"]
     assert any(item["blocked_reason"] == "jev_gate_warmup" for item in trades)
