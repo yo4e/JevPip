@@ -39,6 +39,8 @@ def _should_request_jev(state: dict[str, Any]) -> bool:
     policy = state.get("autopilot")
     if not isinstance(policy, dict):
         return True
+    if policy.get("risk_halted"):
+        return False
     if policy.get("style") != "fifty":
         return True
     # Fifty+ calls Jev only while flat. Once a direction is returned the

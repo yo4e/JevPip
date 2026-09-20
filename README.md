@@ -128,6 +128,8 @@ PaperBroker / AutopilotBrokerは主に次を反映します。
 - configured slippage
 - instrumentごとのreference fee
 - code-owned risk / exit rules
+- FX paperの最大25xレバレッジによる必要証拠金近似（BTCは1x固定）
+- Jevおまかせの最大DD 20%初期停止
 - single position
 - net / gross PnL、fee / slippage cost、Profit Factor、max drawdown、win rate
 
