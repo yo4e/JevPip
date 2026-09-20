@@ -116,6 +116,21 @@ class ObserverStartRequest(BaseModel):
     paper_demo: PaperDemoInput | None = None
 
 
+class JevReplayPreviewRequest(BaseModel):
+    instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}:\d{2}$")
+    duration_seconds: int = Field(default=60, ge=1, le=86400)
+    cadence_seconds: Literal[1, 2, 5, 10, 30, 60] = 1
+
+
+class JevReplayRunRequest(JevReplayPreviewRequest):
+    profile: FeatureSelection
+    signal_policy: SignalPolicyInput
+    paper_demo: PaperDemoInput
+    acknowledged_token_use: bool = False
+
+
 class RawCompareRequest(BaseModel):
     instrument_id: str = Field(min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -361,6 +376,59 @@ async def compare_raw(request: RawCompareRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"raw tick比較に失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.post("/api/jev-replay/preview")
+async def preview_jev_replay_api(
+    request: JevReplayPreviewRequest,
+) -> dict[str, Any]:
+    try:
+        get_instrument(request.instrument_id)
+        return await controller.preview_jev_replay(
+            instrument_id=request.instrument_id,
+            date=request.date,
+            start_time=request.start_time,
+            duration_seconds=request.duration_seconds,
+            cadence_seconds=request.cadence_seconds,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Jev replay見積りに失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.post("/api/jev-replay/run")
+async def run_jev_replay_api(
+    request: JevReplayRunRequest,
+) -> dict[str, Any]:
+    if not request.acknowledged_token_use:
+        raise HTTPException(
+            status_code=400,
+            detail="Jev APIのトークン消費への確認が必要です。",
+        )
+    try:
+        get_instrument(request.instrument_id)
+        return await controller.run_jev_replay(
+            instrument_id=request.instrument_id,
+            date=request.date,
+            start_time=request.start_time,
+            duration_seconds=request.duration_seconds,
+            cadence_seconds=request.cadence_seconds,
+            profile=request.profile.model_dump(),
+            signal_policy=SignalPolicy(**request.signal_policy.model_dump()),
+            paper_config=request.paper_demo.model_dump(),
+            acknowledged_token_use=request.acknowledged_token_use,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Jev historical replayに失敗しました: {type(exc).__name__}: {exc}",
         ) from exc
 
 
