@@ -332,7 +332,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 - Jev応答待ち中は次のcallを開始しない
 - Jev direct paper entry / bounded HOLD-CLOSE / code-owned TP・SL・max holdを使う
 
-実行前に**最大Jev call数**をraw tickから計算します。TypeSafeが過去のcallで `usage.input_tokens` / `usage.output_tokens` を返していれば、直近最大100件の平均からtoken消費目安も表示します。usage実績がない場合は数字を捏造せず「推定不能」と表示します。
+実行前に**最大Jev call数**をraw tickから計算します。TypeSafeが過去のcallで `usage.input_tokens` / `usage.output_tokens` を返していれば、直近最大100件の平均からtoken消費目安も表示します。usage実績がない場合は数字を捏造せず「推定不能」と表示します。\n\n2026-09-20時点のTypeSafe公開価格では、**input tokenのみ課金対象で $0.042 / 1M tokens、output tokenは無料**です。そのためJev BTでは、事前見積り・実行結果ともに `input（課金対象）` / `output（無料）` / `reported total` を分け、input usageから概算API costも表示します。JevPipの表示はAPI responseのusageと公開価格からの計算であり、TypeSafe console側の請求・Usage表示そのものを確認した値ではありません。
 
 実行ボタンでは、
 
