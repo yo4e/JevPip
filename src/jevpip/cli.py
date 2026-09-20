@@ -9,6 +9,7 @@ import webbrowser
 
 from jevpip.backtest.kline import replay_kline
 from jevpip.broker.comparison import compare_raw_file
+from jevpip.experiment import run_abcd_experiment_file
 from jevpip.instruments import INSTRUMENTS, get_instrument
 from jevpip.config import (
     Settings,
@@ -69,6 +70,14 @@ def _parser() -> argparse.ArgumentParser:
     cmp.add_argument("--no-supervisor", action="store_true")
     cmp.add_argument("--bar-seconds", type=int, choices=[0, 5, 15, 60, 300], default=0, help="RSI/MA入力: 0=tick, または確定bar秒数")
     cmp.add_argument("--json", action="store_true", help="JSONで出力")
+
+    exp = sub.add_parser(
+        "experiment",
+        help="decision traceを再生してA/B/C/D paper experimentを実行",
+    )
+    exp.add_argument("--trace", required=True, type=Path, help="decision trace JSONL")
+    exp.add_argument("--run-id", help="1ファイルに複数runがある場合のrun_id")
+    exp.add_argument("--json", action="store_true", help="JSONで出力")
     return parser
 
 
@@ -184,6 +193,47 @@ def main(argv: list[str] | None = None) -> int:
                 f"{win:>7} {row['fees_paid']:>9.1f}"
             )
         print("注意: 同じraw tickと同じpaper cost modelでの比較です。将来利益を示すものではありません。")
+        return 0
+
+    if args.command == "experiment":
+        result = run_abcd_experiment_file(args.trace, run_id=args.run_id)
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        source = result["source"]
+        print(
+            f"trace={args.trace} run_id={source['run_id']} "
+            f"instrument={source['instrument_id']} ticks={source['ticks']}"
+        )
+        print(
+            "variant  net_pnl       PF     maxDD   trades    win%      fees "
+            " pause_s   turnover"
+        )
+        for name in ("A", "B", "C", "D"):
+            row = result["variants"][name]
+            pf = "-" if row["profit_factor"] is None else f'{row["profit_factor"]:.2f}'
+            win = "-" if row["win_rate"] is None else f'{row["win_rate"] * 100:.1f}'
+            print(
+                f"{name:>3} {row['net_pnl']:>10.1f} {pf:>8} "
+                f"{row['max_drawdown']:>9.1f} {row['closed_trades']:>8} "
+                f"{win:>7} {row['fees_paid']:>9.1f} "
+                f"{row['pause_duration_seconds']:>8.1f} "
+                f"{row['turnover_size']:>10.4f}"
+            )
+        for name in ("B", "C"):
+            cf = result["variants"][name]["counterfactual"]
+            print(
+                f"{name} blocked={cf['blocked_candidate_episodes']} "
+                f"evaluated={cf['evaluated_non_overlapping']} "
+                f"avoided_loss={cf['avoided_loss']:.1f} "
+                f"missed_profit={cf['missed_profit']:.1f} "
+                f"false_pause={cf['false_pause_count']}"
+            )
+        print(
+            "注意: sourceはJev+code+safetyを有効にしたC-runです。"
+            "Jevへ再問い合わせせず、同じtrace/cost modelで再生します。"
+        )
         return 0
     return 2
 

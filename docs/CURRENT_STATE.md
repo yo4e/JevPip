@@ -201,11 +201,22 @@ Jev schemaには含めない:
 - final action / holding time / turnover / paper trade linkage
 - supervisorで止めたtickでもcode candidateを保持
 
+実装済み:
+
+- A/B/C/D experiment harness
+- full C-run traceをJev再問い合わせなしでA/B/C/Dへ再生
+- 同一market path / `paper-v1` cost model
+- B/C blocked candidate episode抽出
+- non-overlapping 1-position counterfactual
+- avoided loss / missed profit / false pause count
+- pause duration / turnover / strategy switch count
+- Dはrecorded Jev direction + code-owned exitsで比較
+
 未実装:
 
 - BOJ policy decision本体（固定公開時刻がないため未接続）
 - official post-release context
-- A/B/C/D experiment harness / counterfactual metrics
+- 実採取traceでのexperiment validation / metric interpretation
 
 ## 3つの検証機能
 
@@ -329,10 +340,15 @@ Technical strategy engine + Jev supervisor.
 - paper entry gate / UI integration
 - decision trace schema v1 / runtime JSONL persistence
 
+実装済み:
+
+- A/B/C/D experiment harness
+- blocked-entry counterfactual metrics
+
 未実装:
 
 - BOJ policy decision本体の安全な時刻表現
-- A/B/C/D experiment harness / counterfactual metrics
+- 実採取C-run traceでのexperiment validation
 
 ### Issue #5
 
@@ -346,14 +362,12 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. decision trace schema v1を入力としてA/B/C/D experiment harnessを実装
-2. A: technical only
-3. B: technical + deterministic supervisor
-4. C: technical + deterministic + Jev supervisor
-5. D: Jev direct signal control
-6. blocked candidate entryのcounterfactualを同一market path / cost modelで計算
-7. avoided loss / missed profitをtraceとtradeへlink
-8. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
+1. Jev + code strategy + safety supervisorをONにしたC-run traceを実際に採取
+2. `uv run jevpip experiment --trace ...` でA/B/C/Dを再生
+3. B/Cのavoided loss / missed profit / false pauseを確認
+4. candidate episode / overlap skip / pause durationの定義が実データで妥当か検証
+5. 必要ならexperiment resultの保存・UI表示を追加
+6. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
 
 主に見る指標:
 
@@ -379,4 +393,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> decision trace schema v1を土台にA/B/C/D experiment harnessとblocked-entry counterfactual metricsを実装する。
+> 実際のC-run traceを採取してA/B/C/D experimentを走らせ、blocked-entry counterfactual metricsの妥当性を確認する。
