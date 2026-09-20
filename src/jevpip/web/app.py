@@ -301,6 +301,7 @@ async def get_chart_history(
     instrument_id: str = "USD_JPY",
     interval: Literal["1min", "5min", "15min", "1hour"] = "1min",
     date: str = "",
+    warmup: bool = False,
 ) -> dict[str, Any]:
     if not date:
         date = datetime.now().strftime("%Y%m%d")
@@ -314,6 +315,7 @@ async def get_chart_history(
             instrument_id=instrument_id,
             interval=interval,
             date=date,
+            warmup=warmup,
         )
     except Exception as exc:
         raise HTTPException(

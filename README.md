@@ -442,7 +442,10 @@ TypeSafeのperformance / benchmarkに関する実測値は、契約上の公開�
 ```bash
 uv sync --extra dev
 uv run pytest
+node --test tests/web_ui.test.cjs
 ```
+
+UIのJavaScript回帰テストはNode.js 18以降の組み込みtest runnerを使います（追加パッケージ不要）。
 
 unit testは外部APIへ依存しないものを基本とし、live connectivityはintegration checkとして分離します。
 
