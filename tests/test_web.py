@@ -1115,7 +1115,8 @@ def test_homepage_has_separate_token_warned_jev_backtest_ui():
     assert response.status_code == 200
     assert 'data-tab="jevbt"' in response.text
     assert 'id="jbt-cadence"' in response.text
-    assert '<option value="1" selected>1秒</option>' in response.text
+    assert '<option value="1">1秒</option>' in response.text
+    assert '<option value="300" selected>5分</option>' in response.text
     assert '<option value="86400">1日</option>' in response.text
     assert "TypeSafeの課金対象input tokenを消費します" in response.text
     assert "output tokenは無料" in response.text
