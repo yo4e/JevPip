@@ -72,6 +72,7 @@ UIは日本語です。中央にチャート、右にpaper strategy設定、下�
 - MA20 / MA200
 - live MIDをhistorical chart末尾へ接続
 - 仮想資金・建玉・PnL表示
+- live paper / 戦略BT / Jev BT の約定履歴表示（時刻・OPEN/CLOSE・side・価格・数量・損益・手数料・理由）
 - paper tradeのOPEN / CLOSE marker
 - Jev ON / OFF
 - read-onlyなGMO FX実口座表示
