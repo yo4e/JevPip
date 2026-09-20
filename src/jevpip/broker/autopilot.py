@@ -71,6 +71,7 @@ class AutopilotBroker(PaperBroker):
         self._candidate: tuple[str, Decimal] | None = None
         self._confirmations = 0
         self._last_change_at: datetime | None = None
+        self._fifty_last_close_at: datetime | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
         self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
@@ -199,6 +200,8 @@ class AutopilotBroker(PaperBroker):
             self._entry_spread_cost -= allocated_spread
         else:
             self._entry_mid = self._entry_spread_cost = ZERO
+            if self.config.autopilot_style == "fifty":
+                self._fifty_last_close_at = at
         row = asdict(trade)
         row.update(action="REDUCE" if remaining else "CLOSE", market_pnl=float(market_pnl),
                    spread_cost=float(spread_cost), execution_fee=float(exit_fee),
@@ -499,7 +502,13 @@ class AutopilotBroker(PaperBroker):
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
 
-    def _fifty_entry_gate(self, bid: Decimal, ask: Decimal) -> dict[str, Any]:
+    def _fifty_entry_gate(
+        self,
+        bid: Decimal,
+        ask: Decimal,
+        *,
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
         quantity = (
             Decimal(str(self.config.size)) / self.quantity_step
         ).to_integral_value(rounding=ROUND_DOWN) * self.quantity_step
@@ -511,6 +520,16 @@ class AutopilotBroker(PaperBroker):
         else:
             target_units = Decimal(str(self.config.autopilot_fifty_target_units))
             target_jpy = target_units * quantity * self.price_unit
+        now = as_of or self._last_received_at
+        reentry_wait = Decimal(str(self.config.autopilot_fifty_reentry_seconds))
+        reentry_remaining = ZERO
+        if self._fifty_last_close_at is not None and now is not None and reentry_wait > 0:
+            elapsed = Decimal(
+                str(max(0.0, (now - self._fifty_last_close_at).total_seconds()))
+            )
+            reentry_remaining = max(ZERO, reentry_wait - elapsed)
+        reentry_blocked = reentry_remaining > 0
+
         spread_units = (ask - bid) / self.price_unit
         max_spread = (
             None
@@ -519,15 +538,29 @@ class AutopilotBroker(PaperBroker):
         )
         spread_blocked = max_spread is not None and spread_units > max_spread
         cost_blocked = target_jpy <= estimated_round_trip_jpy
-        ready = quantity > 0 and not spread_blocked and not cost_blocked
+        ready = (
+            quantity > 0
+            and not reentry_blocked
+            and not spread_blocked
+            and not cost_blocked
+        )
         reason = None
-        if spread_blocked:
+        if reentry_blocked:
+            reason = "post_close_wait"
+        elif spread_blocked:
             reason = "spread_above_limit"
         elif cost_blocked:
             reason = "round_trip_cost_at_or_above_target"
         return {
             "ready": ready,
             "reason": reason,
+            "reentry_wait_seconds": float(reentry_wait),
+            "reentry_remaining_seconds": float(reentry_remaining),
+            "last_closed_at": (
+                None
+                if self._fifty_last_close_at is None
+                else self._fifty_last_close_at.isoformat()
+            ),
             "spread_units": float(spread_units),
             "max_spread_units": None if max_spread is None else float(max_spread),
             "estimated_round_trip_cost_jpy": float(estimated_round_trip_jpy),
@@ -575,7 +608,7 @@ class AutopilotBroker(PaperBroker):
         fifty_entry_gate: dict[str, Any] | None = None
         if self.config.autopilot_style == "fifty":
             quantity = (Decimal(str(self.config.size))/self.quantity_step).to_integral_value(rounding=ROUND_DOWN)*self.quantity_step
-            fifty_entry_gate = self._fifty_entry_gate(bid, ask)
+            fifty_entry_gate = self._fifty_entry_gate(bid, ask, as_of=as_of)
             choices = []
             if not self._halted and fifty_entry_gate["ready"]:
                 if quantity > 0 and not self._capacity_block("LONG", quantity, bid, ask, optional_limits=False):
@@ -695,7 +728,11 @@ class AutopilotBroker(PaperBroker):
             and self._last_bid is not None
             and self._last_ask is not None
         ):
-            fifty_entry_gate = self._fifty_entry_gate(self._last_bid, self._last_ask)
+            fifty_entry_gate = self._fifty_entry_gate(
+                self._last_bid,
+                self._last_ask,
+                as_of=self._last_received_at,
+            )
         result.update(
             strategy="jev_autopilot", strategy_enabled=False, autopilot_enabled=True,
             fifty_entry_gate=fifty_entry_gate,
