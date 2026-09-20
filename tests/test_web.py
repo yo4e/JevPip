@@ -34,6 +34,13 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "Stop Loss" in response.text
         assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
+        assert "約定履歴" in response.text
+        assert 'id="paper-executions"' in response.text
+        assert 'id="sbt-executions"' in response.text
+        assert 'id="jbt-executions"' in response.text
+        assert "function renderExecutionHistory" in response.text
+        assert "時刻" in response.text
+        assert "約定" in response.text
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert "月相" in response.text
         assert "過去日付を自由に選べます" in response.text
