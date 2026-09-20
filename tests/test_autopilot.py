@@ -39,7 +39,7 @@ def answer(state, choice="LONG_BASE"):
                 "probabilities": {k: 1.0 if k == key else 0.0 for k in choices}}
     return {"model": "test-only", "usage": {"input_tokens": 100, "output_tokens": 10},
             "answers": {"target_position": select(choice, state["autopilot"]["targets"]),
-                        "target_reason": select("TREND", REASONS)}}
+                        "decision_factor": select("TREND", REASONS)}}
 
 
 def event_for(b, second, choice="LONG_BASE", **updates):
@@ -244,7 +244,7 @@ def test_state_costs_history_and_typed_questions():
     assert p["costs"]["estimated_round_trip_cost_per_unit"] == "3.220"
     assert all(bar["end_unix"] <= (START+timedelta(seconds=120)).timestamp() for bar in p["closed_1m_bars"])
     assert len(p["closed_1m_bars"]) == 2
-    assert set(question_specs(state)) == {"target_position", "target_reason"}
+    assert set(question_specs(state)) == {"target_position", "decision_factor"}
     assert "secret" not in json.dumps(state).lower()
     event = event_for(b, 120)
     event["jev"]["answers"]["target_position"]["confidence"] = float("nan")
@@ -336,7 +336,7 @@ def test_client_uses_only_target_questions_without_network(monkeypatch):
             return Response()
     monkeypatch.setattr("typesafe_sdk.TypeSafeClient", FakeSDK)
     result = JevClient("test-key-not-a-credential").decide(state)
-    assert set(captured["questions"]) == {"target_position", "target_reason"}
+    assert set(captured["questions"]) == {"target_position", "decision_factor"}
     assert captured["options"]["timeout"] == 10
     assert captured["options"]["retry"].max_retries == 0
     assert result["model"] == "test-only"
