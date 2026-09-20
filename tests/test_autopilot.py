@@ -209,6 +209,55 @@ def test_fifty_plus_waits_when_round_trip_cost_already_exceeds_target():
     assert set(ready_state["autopilot"]["targets"]) == {"UP", "DOWN"}
     assert _should_request_jev(ready_state) is True
 
+
+def test_fifty_plus_waits_when_spread_exceeds_configured_limit():
+    b = broker(
+        initial_balance=100000,
+        size=1000,
+        price_unit=0.01,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=20,
+        autopilot_max_spread=1.5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=157.000, ask=157.020))
+    state = b.decision_state(START)
+    gate = state["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "spread_above_limit"
+    assert gate["spread_units"] == pytest.approx(2.0)
+    assert gate["max_spread_units"] == pytest.approx(1.5)
+    assert state["autopilot"]["targets"] == {}
+    assert _should_request_jev(state) is False
+
+    b.on_tick(tick(1, bid=157.000, ask=157.010))
+    ready = b.decision_state(START + timedelta(seconds=1))
+    assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
+
+
+def test_fifty_plus_rechecks_spread_before_execution():
+    b = broker(
+        size=10,
+        price_unit=1,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=10,
+        autopilot_max_spread=1,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=100, ask=101))
+    event = event_for(b, 0, "UP")
+    b.on_decision(event)
+    rows = b.on_tick(tick(0.2, bid=100, ask=102))
+    assert rows == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "max_spread"
+
 def test_fifty_plus_can_open_on_latest_fresh_quote_without_waiting_for_next_tick():
     b = broker(
         autopilot_style="fifty",
