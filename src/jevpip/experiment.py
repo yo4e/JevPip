@@ -80,6 +80,14 @@ def _market_at(row: dict[str, Any]) -> datetime:
 
 def _validate_source_run(rows: list[dict[str, Any]]) -> None:
     first = rows[0]
+    for row in rows:
+        if row.get("kind") != "paper_decision_trace":
+            raise ValueError("Experiment input must contain paper_decision_trace rows.")
+        if row.get("schema_version") != TRACE_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported decision trace schema: {row.get('schema_version')!r}"
+            )
+
     run_config = first.get("run_config")
     if not isinstance(run_config, dict):
         raise ValueError("Trace run_config is required.")
@@ -107,13 +115,16 @@ def _validate_source_run(rows: list[dict[str, Any]]) -> None:
     expected_run = first["run_id"]
     expected_instrument = first.get("instrument_id")
     expected_run_config = json.dumps(run_config, sort_keys=True, default=str)
+    first_cost_model = first.get("cost_model")
+    if not isinstance(first_cost_model, dict):
+        raise ValueError("Trace cost_model is required.")
     expected_cost_model = json.dumps(
-        first.get("cost_model"), sort_keys=True, default=str
+        first_cost_model, sort_keys=True, default=str
     )
-    if first.get("cost_model", {}).get("version") != COST_MODEL_VERSION:
+    if first_cost_model.get("version") != COST_MODEL_VERSION:
         raise ValueError(
             f"Unsupported cost model version: "
-            f"{first.get('cost_model', {}).get('version')!r}"
+            f"{first_cost_model.get('version')!r}"
         )
 
     for row in rows:
@@ -495,6 +506,7 @@ def run_abcd_experiment(
     trace_rows = list(rows)
     if not trace_rows:
         raise ValueError("At least one decision trace row is required.")
+    trace_rows.sort(key=_market_at)
     _validate_source_run(trace_rows)
 
     base = _paper_config(trace_rows)
@@ -626,6 +638,7 @@ def run_abcd_experiment(
         for variant, broker in brokers.items()
     }
 
+    variants["D"]["strategy"] = "jev_direct"
     for variant in {"B", "C"}:
         variants[variant]["counterfactual"] = _counterfactual_summary(
             trace_rows,
