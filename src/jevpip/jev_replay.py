@@ -17,6 +17,7 @@ from jevpip.jev.autopilot import attach_target
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
 from jevpip.market.models import MarketTick
+from jevpip.observer import _should_request_jev
 from jevpip.signals import (
     SignalPolicy,
     classify_direction_signal,
@@ -596,6 +597,8 @@ def run_jev_historical_replay(
         state = build_features(tick, buffer, profile)
         state.update(broker.decision_state(tick.market_timestamp) if isinstance(broker, AutopilotBroker)
                      else _paper_context(broker, config, as_of=tick.market_timestamp))
+        if not _should_request_jev(state):
+            continue
 
         requested_at = clock
         started = time.perf_counter()
