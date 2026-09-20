@@ -73,7 +73,7 @@ class PaperDemoInput(BaseModel):
     autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
     autopilot_max_notional: float | None = Field(default=None, gt=0, le=1000000000)
     autopilot_max_drawdown: float | None = Field(default=None, gt=0, le=1000000000)
-    autopilot_max_drawdown_pct: float | None = Field(default=None, gt=0, le=1)
+    autopilot_max_drawdown_pct: float | None = Field(default=0.20, gt=0, le=1)
     autopilot_max_change: float | None = Field(default=None, gt=0, le=100000000)
     autopilot_entry_loss: float | None = Field(default=None, gt=0, le=1000000000)
     autopilot_max_spread: float | None = Field(default=None, ge=0, le=100000000)
@@ -84,6 +84,7 @@ class PaperDemoInput(BaseModel):
     autopilot_stop_loss_units: float | None = Field(default=None, gt=0, le=100000000)
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(default=1000, gt=0, le=100000000)
+    paper_leverage: float = Field(default=25.0, ge=1, le=25)
     strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"] = "momentum"
     strategy_enabled: bool = True
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
