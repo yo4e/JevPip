@@ -1100,3 +1100,124 @@ def test_jev_supervisor_is_not_active_before_response_is_available():
     assert controller._active_jev_supervisor(
         requested_at + timedelta(seconds=21)
     ) is None
+
+
+def test_homepage_has_separate_token_warned_jev_backtest_ui():
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert 'data-tab="jevbt"' in response.text
+    assert 'id="jbt-cadence"' in response.text
+    assert '<option value="1" selected>1秒</option>' in response.text
+    assert '<option value="86400">1日</option>' in response.text
+    assert "TypeSafeのトークンを消費します" in response.text
+    assert "最大Jev call数" in response.text
+    assert "token消費目安" in response.text
+
+
+def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
+    from jevpip.web.app import controller
+
+    called = {}
+
+    async def fake_preview(**kwargs):
+        called.update(kwargs)
+        return {
+            "planned_max_calls": 60,
+            "within_call_limit": True,
+            "token_estimate": {
+                "estimated_total_tokens": 12345,
+                "reported_calls": 10,
+            },
+        }
+
+    monkeypatch.setattr(controller, "preview_jev_replay", fake_preview)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/jev-replay/preview",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "2026-09-20",
+                "start_time": "00:00:00",
+                "duration_seconds": 60,
+                "cadence_seconds": 1,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["planned_max_calls"] == 60
+    assert called["cadence_seconds"] == 1
+    assert called["duration_seconds"] == 60
+
+
+def test_jev_replay_run_api_requires_explicit_token_acknowledgement(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def must_not_run(**kwargs):
+        raise AssertionError("controller should not run without acknowledgement")
+
+    monkeypatch.setattr(controller, "run_jev_replay", must_not_run)
+    payload = {
+        "instrument_id": "USD_JPY",
+        "date": "2026-09-20",
+        "start_time": "00:00:00",
+        "duration_seconds": 60,
+        "cadence_seconds": 1,
+        "profile": {"quote": True},
+        "signal_policy": {},
+        "paper_demo": {},
+        "acknowledged_token_use": False,
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/jev-replay/run", json=payload)
+
+    assert response.status_code == 400
+    assert "トークン消費" in response.json()["detail"]
+
+
+def test_jev_replay_run_api_passes_confirmed_configuration(monkeypatch):
+    from jevpip.web.app import controller
+
+    called = {}
+
+    async def fake_run(**kwargs):
+        called.update(kwargs)
+        return {
+            "kind": "jev_historical_replay_summary",
+            "summary": {"calls": 3, "total_tokens": 330},
+        }
+
+    monkeypatch.setattr(controller, "run_jev_replay", fake_run)
+    payload = {
+        "instrument_id": "USD_JPY",
+        "date": "2026-09-20",
+        "start_time": "01:02:03",
+        "duration_seconds": 300,
+        "cadence_seconds": 2,
+        "profile": {"quote": True, "returns_seconds": [5]},
+        "signal_policy": {
+            "min_direction_probability": 0.65,
+            "min_direction_margin": 0.2,
+            "max_noise_probability": 0.4,
+            "max_reversal_probability": 0.35,
+            "min_trend_strength": 1.0,
+            "max_spread_pips": 2.0,
+        },
+        "paper_demo": {
+            "initial_balance": 100000,
+            "size": 1000,
+            "take_profit_units": 1.0,
+            "stop_loss_units": 1.0,
+        },
+        "acknowledged_token_use": True,
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/jev-replay/run", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["calls"] == 3
+    assert called["acknowledged_token_use"] is True
+    assert called["cadence_seconds"] == 2
+    assert called["signal_policy"].min_direction_probability == 0.65
+    assert called["paper_config"]["size"] == 1000
+
