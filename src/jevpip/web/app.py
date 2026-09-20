@@ -68,6 +68,7 @@ class PaperDemoInput(BaseModel):
     autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
     autopilot_fifty_target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
+    autopilot_fifty_reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
     autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
     autopilot_confirmations: int = Field(default=2, ge=1, le=5)
     autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
