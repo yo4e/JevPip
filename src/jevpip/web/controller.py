@@ -375,7 +375,10 @@ class UIController:
                     age_seconds = None
             position_state = {
                 "side": position.get("side"),
+                "opened_at": position.get("opened_at"),
                 "age_seconds": age_seconds,
+                "position_horizon_seconds": self._paper_config.max_hold_seconds,
+                "minimum_hold_seconds": self._paper_config.jev_position_min_hold_seconds,
             }
 
         strategy_decision = snapshot.get("strategy_decision")
