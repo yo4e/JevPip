@@ -105,6 +105,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
             </details>
 
             <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small></div>
+            <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
             <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
             <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
             <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
@@ -662,8 +663,24 @@ async function stop(){
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
-function renderPaper(p){$("paper-session-state").textContent=p&&!state.lastStatus?.running?" · 停止済み":"";if(!p){$("paper-empty").textContent=$("mode").value==="paper"?"上部の「開始」でデモ取引を始めます。":"観測のみ。デモ取引は行いません。";$("session-paper-state").textContent="未開始";$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+function renderPaper(p){
+const costWarning=$("fifty-cost-warning");
+$("paper-session-state").textContent=p&&!state.lastStatus?.running?" · 停止済み":"";
+if(!p){
+  if(costWarning)costWarning.style.display="none";
+  $("paper-empty").textContent=$("mode").value==="paper"?"上部の「開始」でデモ取引を始めます。":"観測のみ。デモ取引は行いません。";$("session-paper-state").textContent="未開始";$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
 $("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=Boolean(state.pendingSession);
+const costGate=p.fifty_entry_gate;
+const costBlocked=Boolean(p.autopilot_enabled&&p.config?.autopilot_style==="fifty"&&costGate&&!costGate.ready);
+if(costWarning){
+  costWarning.style.display=costBlocked?"block":"none";
+  if(costBlocked){
+    const crypto=instrumentSpec()?.market_kind==="crypto_spot";
+    const cost=crypto?yen(costGate.estimated_round_trip_cost_jpy):Number(costGate.estimated_round_trip_cost_units||0).toFixed(2)+" pips";
+    const target=crypto?yen(costGate.target_jpy):Number(costGate.target_units||0).toFixed(2)+" pips";
+    costWarning.textContent="⚠ スプレッド等の取引コストが高いため取引しません。往復コスト "+cost+" ≥ 勝負幅 "+target+"。狭くなれば自動再開します。";
+  }
+}
 $("session-paper-state").textContent=p.position?(p.position.side+" "+Number(p.position.size).toLocaleString()):("建玉なし / "+yen(p.equity));
 $("paper-money").textContent=yen(p.equity);const total=p.equity-p.initial_balance;
 $("paper-total-pnl").textContent=(total>=0?"+":"")+yen(total);pnlClass($("paper-total-pnl"),total);
