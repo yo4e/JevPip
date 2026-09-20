@@ -445,10 +445,75 @@ def test_replay_rejects_noncausal_raw_history_before_call(tmp_path):
     path.parent.mkdir(parents=True)
     path.write_text("\n".join(json.dumps(t) for t in [
         tick(0, received_at=tick(2)["received_at"]), tick(1)])+"\n")
-    with pytest.raises(ValueError, match="causal, ordered"):
+    with pytest.raises(ValueError, match="causal arrival order"):
         run_jev_historical_replay(tmp_path, instrument_id="USD_JPY", date="2026-09-20",
             start_time=None, duration_seconds=10, cadence_seconds=1, profile={}, signal_policy=SignalPolicy(),
             paper_config=broker().config, jev_client=None, acknowledged_token_use=True)
+
+
+def test_replay_allows_small_exchange_clock_lead(tmp_path, monkeypatch):
+    path = tmp_path/"raw_ticks"/"USD_JPY"/"2026-09-20.jsonl"
+    path.parent.mkdir(parents=True)
+    rows = []
+    for i in range(4):
+        rows.append(tick(
+            i,
+            received_at=(START + timedelta(seconds=i-0.5)).isoformat(),
+        ))
+    path.write_text("\n".join(json.dumps(row) for row in rows)+"\n")
+    times = iter(i/100 for i in range(100))
+    monkeypatch.setattr("jevpip.jev_replay.time.perf_counter", lambda: next(times))
+
+    class Fake:
+        calls = 0
+        def decide(self, state, *args, **kwargs):
+            self.calls += 1
+            return answer(state, "KEEP")
+
+    fake = Fake()
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time=None,
+        duration_seconds=3,
+        cadence_seconds=1,
+        profile={},
+        signal_policy=SignalPolicy(),
+        paper_config=broker().config,
+        jev_client=fake,
+        acknowledged_token_use=True,
+    )
+    assert result["summary"]["calls"] == fake.calls
+    assert fake.calls > 0
+
+
+def test_replay_rejects_excessive_exchange_clock_lead_before_call(tmp_path):
+    path = tmp_path/"raw_ticks"/"USD_JPY"/"2026-09-20.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(tick(
+        10,
+        received_at=START.isoformat(),
+    ))+"\n")
+
+    class MustNotCall:
+        def decide(self, *args, **kwargs):
+            pytest.fail("must not call Jev")
+
+    with pytest.raises(ValueError, match="clock skew exceeds"):
+        run_jev_historical_replay(
+            tmp_path,
+            instrument_id="USD_JPY",
+            date="2026-09-20",
+            start_time=None,
+            duration_seconds=1,
+            cadence_seconds=1,
+            profile={},
+            signal_policy=SignalPolicy(),
+            paper_config=broker().config,
+            jev_client=MustNotCall(),
+            acknowledged_token_use=True,
+        )
 
 
 def test_live_controller_persists_both_reversal_legs(tmp_path):
