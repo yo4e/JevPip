@@ -239,3 +239,41 @@ def test_run_experiment_file(tmp_path: Path):
     assert result["source"]["run_id"] == "run-c"
     assert result["variants"]["A"]["ticks"] == len(rows)
     assert result["limitations"]
+
+
+def test_variable_fee_breakeven_diagnostic_does_not_change_cost_model_identity():
+    rows = _rows()
+    rows[0]["cost_model"]["estimated_fee_break_even_units"] = 0.5
+    rows[1]["cost_model"]["estimated_fee_break_even_units"] = 0.7
+
+    result = run_abcd_experiment(rows)
+    assert result["source"]["cost_model_version"] == COST_MODEL_VERSION
+
+
+def test_missing_jev_timing_preserves_warmup_block():
+    rows = _rows()
+    rows[1]["gates"]["event"] = {
+        "state": "NORMAL",
+        "reason": "event_ok",
+        "allow_entry": True,
+    }
+    rows[1]["gates"]["combined_supervisor"] = {
+        "state": "NORMAL",
+        "reason": "code:event_ok",
+        "allow_entry": True,
+        "strategy": None,
+        "confidence": None,
+        "ttl_seconds": None,
+    }
+    rows[1]["jev_direction"] = {
+        "signal": "WAIT",
+        "basis_at": None,
+        "requested_at": None,
+        "available_at": None,
+        "age_seconds": None,
+    }
+
+    result = run_abcd_experiment(rows)
+    trades = result["variants"]["C"]["counterfactual"]["trades"]
+    assert any(item["blocked_reason"] == "jev_gate_warmup" for item in trades)
+
