@@ -178,6 +178,37 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert _should_request_jev(b.decision_state(START + timedelta(seconds=2))) is True
 
 
+
+def test_fifty_plus_waits_when_round_trip_cost_already_exceeds_target():
+    b = broker(
+        initial_balance=100000,
+        size=1000,
+        price_unit=0.01,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=10,
+        fee_rate=0.00002,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0, bid=157.000, ask=157.099))
+    state = b.decision_state(START)
+    gate = state["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "round_trip_cost_at_or_above_target"
+    assert gate["estimated_round_trip_cost_units"] == pytest.approx(10.528198)
+    assert gate["estimated_round_trip_cost_jpy"] == pytest.approx(105.28198)
+    assert state["autopilot"]["targets"] == {}
+    assert _should_request_jev(state) is False
+    snapshot = b.snapshot()
+    assert snapshot["fifty_entry_gate"]["ready"] is False
+
+    b.on_tick(tick(1, bid=157.000, ask=157.002))
+    ready_state = b.decision_state(START + timedelta(seconds=1))
+    assert ready_state["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready_state["autopilot"]["targets"]) == {"UP", "DOWN"}
+    assert _should_request_jev(ready_state) is True
+
 def test_fifty_plus_can_open_on_latest_fresh_quote_without_waiting_for_next_tick():
     b = broker(
         autopilot_style="fifty",
