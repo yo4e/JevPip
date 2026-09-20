@@ -21,6 +21,7 @@ from jevpip.signals import (
 from jevpip.storage.jsonl import append_jsonl
 
 MAX_JEV_REPLAY_CALLS = 10_000
+JEV_INPUT_USD_PER_MILLION_TOKENS = 0.042
 ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60)
 
 
@@ -208,6 +209,15 @@ def _usage_tokens(value: object) -> tuple[int | None, int | None]:
     return valid(raw_input), valid(raw_output)
 
 
+def _input_cost_usd(input_tokens: int | None) -> float | None:
+    if input_tokens is None:
+        return None
+    return round(
+        input_tokens * JEV_INPUT_USD_PER_MILLION_TOKENS / 1_000_000,
+        10,
+    )
+
+
 def recent_token_average(
     data_dir: Path,
     *,
@@ -315,6 +325,10 @@ def preview_jev_replay(
             "estimated_input_tokens": estimated_input,
             "estimated_output_tokens": estimated_output,
             "estimated_total_tokens": estimated_total,
+            "estimated_billable_input_tokens": estimated_input,
+            "estimated_cost_usd": _input_cost_usd(estimated_input),
+            "input_price_usd_per_million_tokens": JEV_INPUT_USD_PER_MILLION_TOKENS,
+            "output_price_usd_per_million_tokens": 0.0,
             "basis": (
                 "recent_reported_usage"
                 if average["reported_calls"]
@@ -322,8 +336,9 @@ def preview_jev_replay(
             ),
         },
         "warning": (
-            "Jev APIを実際に呼び出し、TypeSafeのトークンを消費します。"
-            "見積りは最大call数と直近usage平均からの概算で、料金を保証しません。"
+            "Jev APIを実際に呼び出します。現在の公開価格ではinput tokenが課金対象で、"
+            "output tokenは無料です。見積りは最大call数と直近usage平均からの概算で、"
+            "実際の請求額を保証しません。"
         ),
     }
 
@@ -412,6 +427,10 @@ def _summary(
         "input_tokens": sum(item[0] for item in usages),
         "output_tokens": sum(item[1] for item in usages),
         "total_tokens": sum(left + right for left, right in usages),
+        "billable_input_tokens": sum(item[0] for item in usages),
+        "estimated_cost_usd": _input_cost_usd(sum(item[0] for item in usages)),
+        "input_price_usd_per_million_tokens": JEV_INPUT_USD_PER_MILLION_TOKENS,
+        "output_price_usd_per_million_tokens": 0.0,
         "average_latency_ms": (
             None if not latencies else round(fmean(latencies), 2)
         ),
