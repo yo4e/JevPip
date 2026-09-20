@@ -2217,3 +2217,102 @@ uv run jevpip experiment \
 
 TypeSafe/Jev performance実測値はpublic repoへcommitしない。
 
+---
+
+## 37. Jev Historical Raw-Tick Replay（2026-09-20）
+
+Jev directのスキャルピング挙動を検証するhistorical replayは、1分足backtestと分離する。
+
+### 37.1 Source / cadence
+
+sourceは保存済みraw tickのみ。
+
+```text
+data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl
+```
+
+historical 1min KLineをJev replayへ流用しない。liveでJevが秒単位に判断する系と同じ時間解像度を必要とするため。
+
+Jev call cadenceは次から選ぶ。
+
+- 1s
+- 2s
+- 5s
+- 10s
+- 30s
+- 60s
+
+期間は30秒〜1日をUI presetとして提供する。
+
+raw tickがcadence境界に存在しない場合は、次に到着したtickをbasisとして使う。
+
+### 37.2 Causal replay
+
+各Jev callでは、そのbasis tick時点までにbufferへ入ったmarket stateだけを使う。
+
+API callの実latencyを計測し、
+
+```text
+historical available_at = basis_market_timestamp + actual API latency
+```
+
+としてhistorical timelineへ写像する。
+
+decisionは `available_at` より前のmarket tickへ適用しない。
+
+live Observerと同様、1つのJev requestがpending中に次のrequestを並列発火しない。次callはresponse available後、設定cadenceを満たした最初のraw tickから可能になる。
+
+### 37.3 Paper semantics
+
+初版はJev direct research controlとして実行する。
+
+- Jev direction LONG / SHORT / WAIT
+- bounded position_action HOLD / CLOSE
+- code-owned TP / SL
+- code-owned max hold
+- configured spread / fee / slippage
+- single position
+
+code strategyとのA/B/C/D比較はDecision Trace experiment側に残し、Jev historical replayとは混ぜない。
+
+### 37.4 Token guard
+
+previewはJev APIを呼ばない。
+
+選択windowのraw tickから最大Jev call数を事前計算する。
+
+過去のruntime decision / replay logにTypeSafe `usage.input_tokens` / `usage.output_tokens` があれば、直近最大100 reported callsの平均を使って、
+
+```text
+estimated tokens = planned max calls × recent average tokens/call
+```
+
+を表示する。
+
+reported usageがなければtoken値を推測しない。
+
+UIはrun前に「TypeSafeのトークンを消費する」確認を必須にし、API requestにもexplicit acknowledgementを要求する。
+
+1run hard cap:
+
+```text
+10,000 Jev calls
+```
+
+これによりraw tickが十分ある場合、
+
+- 1h × 1s ≈ max 3,600 calls: allowed
+- 1d × 1s ≈ max 86,400 calls: rejected
+
+となる。
+
+### 37.5 Historical-model limitation
+
+この機能はcurrent Jev modelにhistorical market stateを渡すreplayであり、historical model snapshotの再現ではない。
+
+そのため「当時のモデルがどう判断したか」ではなく、「現在のJevが、future market dataを渡されずその過去market stateだけを見た場合どう判断するか」を調べる研究機能として扱う。
+
+初版ではofficial event contextをhistorical replayへ注入しない。event contextを追加する場合は、その時点で既知だったrevisionだけを復元できる場合に限る。
+
+runtime結果は `data/jev_replays/` 配下に置き、Jev performance実測値はpublic repoへcommitしない。
+
