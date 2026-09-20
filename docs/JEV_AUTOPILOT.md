@@ -6,7 +6,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 
 1. デモ自動売買で「Jevおまかせ」をON（UI初期値）。TypeSafe APIキーを設定する。
 2. 銘柄、基準数量、仮想残高、見通す時間を選ぶ。判断間隔はJev欄の「Jev判断間隔（秒）」、初期値1秒。
-3. ファンダを見る場合はチェックする。現在は観測済みの公式イベント予定を渡す。
+3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
 判断間隔と見通す時間は別。見通す時間は30秒・2分・10分・30分から選び、初期値10分。最適化済みの推奨値でも強制決済時刻でもない。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
@@ -18,7 +18,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 JevはTypeSafeの独立した2つのChoice質問に答える。
 
 - `target_position`: KEEP / FLAT / LONGまたはSHORTのSMALL・BASE・LARGE。数量は基準の0.5・1・2倍を数量刻みに切り捨てる。新規・増額で資金上限、最大数量、最大保有額を超える候補は渡さない。
-- `target_reason`: NO_EDGE / COST_TOO_HIGH / TREND / REVERSAL / REDUCE_RISK / KEEP_THESIS。固定分類であり、target選択に対する自由文の説明・思考過程ではない。
+- `decision_factor`: NO_EDGE / COST_TOO_HIGH / TREND / REVERSAL / REDUCE_RISK / KEEP_THESIS。target_positionとは独立したChoiceで、売買判断の因果的な「理由」を保証するものではない。現在stateで目立つ判断要因の分類として記録する。
 
 KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 1000→LONG 500は500減額、LONG 1000→SHORT 1000は全決済と新規SHORTを同一decision IDへ紐付ける。BTCは0.0001 BTC、FXは1通貨刻み。任意数量・任意コマンドをモデルから受け取る構造ではない。
 
