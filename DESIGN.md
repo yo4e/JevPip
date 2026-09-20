@@ -2120,3 +2120,100 @@ A/B/C/D比較では同一cost model versionを使う。
 
 その後blocked candidateを同一market pathで仮想追跡し、avoided loss / missed profitを計算する。
 
+---
+
+## 36. A/B/C/D Experiment Harness（2026-09-20）
+
+Decision Trace v1をsource of truthとして、同じmarket path / cost model上で4 variantをreplayする。
+
+sourceは **Jev ON + code strategy ON + safety supervisor ON** のC-runとする。
+
+理由:
+
+- code candidateがある
+- deterministic / event supervisor stateがある
+- Jev directionがある
+- Jev supervisor stateがある
+- 1回のJev観測結果を全variantで共有できる
+- replay時にJevへ再問い合わせせず、API timing差や回答差を持ち込まない
+
+### 36.1 Variants
+
+- A: technical only
+- B: technical + deterministic supervisor
+- C: technical + deterministic + Jev supervisor
+- D: Jev direct direction control
+
+Aはdeterministic supervisor / external event / Jev gateを外す。
+
+BはPaperBrokerのdeterministic supervisorとrecorded official-event gateを使う。
+
+CはBに加え、recorded Jev direction gateとrecorded combined Jev supervisor planを使う。allowlist済みstrategy overrideもrecorded planから再現する。
+
+Dはrecorded Jev directionをentry signalとして使い、deterministic / external / Jev supervisor gateは使わない。exitはTP / SL / max hold等のcode-owned pathを使う。
+
+### 36.2 D position-action limitation
+
+C-runでは、counterfactualなD positionは実際には存在しない。
+
+したがって、そのpositionを対象にした `HOLD / CLOSE` questionは因果的に取得できない。後から別position向けposition_actionを流用してはいけない。
+
+そのためexperiment Dではrecorded directionだけを再利用し、position_actionはreplayしない。
+
+これは意図的な研究境界であり、Dのbounded position managementを検証したい場合はD-runを別途観測する。
+
+### 36.3 Counterfactual blocked candidate
+
+B / Cでcode candidateがLONG / SHORTなのにsupervisorまたはJev direction gateで止められた場合、blocked candidate episodeを記録する。
+
+同一side + 同一block reasonが連続するtickは1 episodeとする。
+
+各episodeの開始tickから、同じpaper config / spread / fee / slippage / TP / SL / max holdで1-positionだけ仮想実行する。
+
+結果:
+
+- net counterfactual PnL < 0: avoided loss
+- net counterfactual PnL > 0: missed profit
+- profitable blocked candidate count: false pause count
+
+仮想positionがまだopenの間に次のblocked episodeが来た場合はoverlapとしてskipする。single-position paper brokerとの整合を優先し、同時に複数仮想tradeを積まない。
+
+### 36.4 Metrics
+
+variantごとに:
+
+- net PnL
+- Profit Factor
+- max drawdown
+- trade count / win rate
+- fee / slippage
+- average trade / win / loss
+- turnover
+- pause duration
+- strategy switch count
+
+B / C追加:
+
+- blocked candidate episodes
+- evaluated non-overlapping candidates
+- overlap skipped
+- avoided loss
+- missed profit
+- false pause count
+- block reason別counterfactual aggregate
+
+pause durationはtrace上でentry gateが閉じているtickから次tickまでのmarket-time差を合算する。長いfeed gapを含む可能性があるため、実データ検証で妥当性を確認する。
+
+### 36.5 CLI
+
+```bash
+uv run jevpip experiment \
+  --trace data/decision_traces/USD_JPY/YYYY-MM-DD.jsonl
+```
+
+複数runを含むfileでは `--run-id` を必須とする。
+
+`--json` でmachine-readable outputを出す。
+
+TypeSafe/Jev performance実測値はpublic repoへcommitしない。
+
