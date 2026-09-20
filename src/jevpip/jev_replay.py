@@ -652,9 +652,10 @@ def run_jev_historical_replay(
     if last_tick is None:
         raise ValueError("selected window contains no raw ticks")
 
+    final_clock = last_tick.received_at if config.autopilot_enabled else last_tick.market_timestamp
     if (
         pending_decision is not None
-        and pending_decision[0] <= last_tick.market_timestamp
+        and pending_decision[0] <= final_clock
     ):
         broker.on_decision(pending_decision[1])
 
