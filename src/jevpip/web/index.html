@@ -77,7 +77,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       </div>
       <div class="field"><label class="label">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper" selected>デモ自動売買</option></select></div>
       <div class="jev-access">
-        <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small>観測では判断を記録します。Jevおまかせ時は自動的にONになります。</small></span></label>
+        <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small>観測では判断を記録します。おまかせ時は自動的にON。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使います。</small></span></label>
         <div class="field" style="margin:10px 0 0"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒 / Fifty+は決済時だけ</div></div>
       </div>
       <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
