@@ -82,11 +82,12 @@ test('starting and running lock every start-time input, even before instrument r
 
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{
   const {context:c,$,state}=runtime();
-  const snapshot={running:true,status:'running',started_at:'2026-09-20T00:00:00Z',instrument_id:'BTC',profile_name:'custom / UI',with_jev:true,signal_policy_name:'policy / UI',session_config:{profile:{quote:true},signal_policy:{min_direction_probability:.75},jev_every_seconds:2},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',size:.002,initial_balance:200000,autopilot_fifty_target_jpy:700,autopilot_fifty_target_units:7,cooldown_seconds:0,slippage_units:0,autopilot_max_spread:0,deterministic_supervisor_enabled:false}}};
+  const snapshot={running:true,status:'running',started_at:'2026-09-20T00:00:00Z',instrument_id:'BTC',profile_name:'custom / UI',with_jev:true,signal_policy_name:'policy / UI',session_config:{profile:{quote:true},signal_policy:{min_direction_probability:.75},jev_every_seconds:2},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',size:.002,initial_balance:200000,autopilot_fifty_target_jpy:700,autopilot_fifty_target_units:7,autopilot_fifty_reentry_seconds:90,cooldown_seconds:0,slippage_units:0,autopilot_max_spread:0,deterministic_supervisor_enabled:false}}};
   assert.equal(c.restoreSession(snapshot),true);
   assert.equal($('instrument').value,'BTC');assert.equal($('mode').value,'paper');
   assert.equal($('paper-size').value,.002);assert.equal($('paper-balance').value,200000);
   assert.equal($('auto-style').value,'fifty');assert.equal($('fifty-target-jpy').value,700);
+  assert.equal($('fifty-reentry-seconds').value,90);
   assert.equal($('p-cool').value,0);assert.equal($('paper-max-spread').value,0);
   assert.equal($('jev-every').value,2);
   assert.equal(state.restoredSignal.min_direction_probability,.75);
