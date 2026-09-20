@@ -216,9 +216,9 @@ Jev schemaには含めない:
 
 - BOJ policy decision本体（固定公開時刻がないため未接続）
 - official post-release context
-- 実採取traceでのexperiment validation / metric interpretation
+- 実採取traceでのexperiment validation / metric interpretation\n- Jev historical replayへのlook-ahead-safe official event context
 
-## 3つの検証機能
+## 検証機能
 
 ### Strategy BT
 
@@ -281,6 +281,31 @@ strategy PnL backtestではない。
 - live trading
 
 `LIVE_TRADING=true` は起動時に拒否。
+
+## Jev historical replay
+
+実装済み:
+
+- 保存済みraw tick専用のJev historical replay
+- current Jev modelを過去時点までのstateで再実行
+- 30秒〜1日の検証window
+- 1 / 2 / 5 / 10 / 30 / 60秒 cadence
+- API実latencyをhistorical market timeへ反映
+- pending decision中の重複call抑止
+- Jev direct paper entry + bounded HOLD/CLOSE
+- preview時の最大call数計算
+- recent reported usageからtoken消費目安
+- usage実績なしでは推定不能
+- UI + APIの二重token-use acknowledgement
+- 1run 10,000 calls hard cap
+- runtime output: `data/jev_replays/<instrument>/`
+
+制約:
+
+- historical 1min KLineはJev replayに使わない
+- current modelによるreplayで、historical model再現ではない
+- 初版はofficial event contextを注入しない
+- 1日 × 1秒のような10,000 calls超過設定は拒否
 
 ## Known limitations
 
@@ -362,12 +387,13 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. Jev + code strategy + safety supervisorをONにしたC-run traceを実際に採取
-2. `uv run jevpip experiment --trace ...` でA/B/C/Dを再生
-3. B/Cのavoided loss / missed profit / false pauseを確認
-4. candidate episode / overlap skip / pause durationの定義が実データで妥当か検証
-5. 必要ならexperiment resultの保存・UI表示を追加
-6. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
+1. 保存済みraw tickで短いJev historical replay（30秒〜5分）を実行し、call/token/latency/売買結果を確認
+2. Jev + code strategy + safety supervisorをONにしたC-run traceを実際に採取
+3. `uv run jevpip experiment --trace ...` でA/B/C/Dを再生
+4. B/Cのavoided loss / missed profit / false pauseを確認
+5. candidate episode / overlap skip / pause durationの定義が実データで妥当か検証
+6. 必要ならexperiment resultの保存・UI表示を追加
+7. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
 
 主に見る指標:
 

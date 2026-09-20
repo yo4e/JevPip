@@ -189,7 +189,7 @@ paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision trace�
 
 supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
-## 4つの検証機能
+## 5つの検証機能
 
 ### 1. 戦略BT
 
@@ -318,6 +318,33 @@ B / Cについては、supervisorやJev direction gateに止められたcode can
 Dはsource C-runで記録済みのJev directionだけを再利用します。source runではcounterfactualなD position向け `position_action` を因果的に取得できないため、DのexitはTP / SL / max hold等のcode-owned exitだけで比較します。
 
 `--json` でmachine-readableな結果を出せます。Jev performanceの実測結果はpublic repoへcommitしません。
+
+
+### 5. Jev historical replay
+
+通常の1分足バックテストとは分離して、**保存済みraw tickに現在のJevを再実行する研究リプレイ**をUIの「Jev BT」タブから実行できます。
+
+- sourceは `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl`
+- historical 1min KLineは使わない
+- 検証時間: 30秒 / 1分 / 5分 / 15分 / 1時間 / 6時間 / 1日
+- Jev判断間隔: 1 / 2 / 5 / 10 / 30 / 60秒
+- API実latencyをhistorical market timeへ反映
+- Jev応答待ち中は次のcallを開始しない
+- Jev direct paper entry / bounded HOLD-CLOSE / code-owned TP・SL・max holdを使う
+
+実行前に**最大Jev call数**をraw tickから計算します。TypeSafeが過去のcallで `usage.input_tokens` / `usage.output_tokens` を返していれば、直近最大100件の平均からtoken消費目安も表示します。usage実績がない場合は数字を捏造せず「推定不能」と表示します。
+
+実行ボタンでは、
+
+> ⚠ Jev APIを使用します。TypeSafeのトークンを消費します。
+
+という確認を必須にしています。API側でもacknowledgementがないrunは拒否します。
+
+1runのハード上限は **10,000 Jev calls** です。たとえばraw tickが十分ある場合、1時間 × 1秒は最大約3,600 callsで実行範囲ですが、1日 × 1秒は約86,400 callsになるため拒否されます。期間を短くするか判断間隔を広げます。
+
+> これは**現在のJevモデル**へ過去時点までのmarket stateを渡すhistorical replayです。当時存在したモデルを再現するものではありません。また初版ではofficial event contextをhistorical replayへ注入しません。
+
+runtime結果は `data/jev_replays/<instrument>/` へ保存し、Gitでは無視します。performance実測値をpublic repoへcommitしない方針は他のJev実験と同じです。
 
 ## Jevの現在地
 
