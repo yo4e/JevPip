@@ -64,6 +64,40 @@ def test_factory_preserves_legacy():
     assert isinstance(make_paper_broker(PaperConfig(autopilot_enabled=True)), AutopilotBroker)
 
 
+def test_scalp_state_exposes_recent_tick_tape_but_daytrade_does_not():
+    scalp = broker(autopilot_style="scalp", autopilot_horizon_seconds=30)
+    daytrade = broker(autopilot_style="daytrade", autopilot_horizon_seconds=600)
+    for second in range(45):
+        row = tick(second, 100 + second / 100, 102 + second / 100)
+        scalp.on_tick(row)
+        daytrade.on_tick(row)
+
+    scalp_state = scalp.decision_state(START + timedelta(seconds=44))["autopilot"]
+    daytrade_state = daytrade.decision_state(START + timedelta(seconds=44))["autopilot"]
+    assert scalp_state["style"] == "scalp"
+    assert len(scalp_state["recent_ticks"]) == 40
+    assert scalp_state["recent_ticks"][-1]["delta_units"] == pytest.approx(0.01)
+    assert len(scalp_state["closed_1m_bars"]) <= 5
+    assert daytrade_state["style"] == "daytrade"
+    assert "recent_ticks" not in daytrade_state
+
+
+def test_scalp_question_prioritizes_tick_tape():
+    b = broker(autopilot_style="scalp", autopilot_horizon_seconds=30)
+    b.on_tick(tick(0))
+    specs = question_specs(b.decision_state(START))
+    instructions = specs["target_position"]["instructions"]
+    assert "recent_ticks" in instructions
+    assert "scalping" in instructions
+
+
+def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
+    assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
+    assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
+    with pytest.raises(ValueError):
+        PaperDemoInput(autopilot_style="swing")
+
+
 def test_scale_reduce_reverse_conserve_cash_and_allocate_all_costs():
     b = broker()
     cash = Decimal("100000")
