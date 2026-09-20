@@ -273,10 +273,15 @@ class AutopilotBroker(PaperBroker):
         if self._halted:
             return "risk_halted"
         if cfg.autopilot_style == "fifty":
-            # Fifty+ is intentionally always-in-market. Optional entry gates
-            # and supervisor pauses do not turn it into an abstaining strategy;
-            # only the mandatory capital invariant and fresh/open quote checks
-            # outside this helper may block an entry.
+            # Fifty+ stays direction-only, but deterministic market-safety gates
+            # remain code-owned. Recheck spread at execution time because it may
+            # widen after the Jev response was requested.
+            if (
+                cfg.autopilot_max_spread is not None
+                and (ask - bid) / self.price_unit
+                > Decimal(str(cfg.autopilot_max_spread))
+            ):
+                return "max_spread"
             return self._capacity_block(
                 side, quantity, bid, ask, optional_limits=False
             )
@@ -506,10 +511,25 @@ class AutopilotBroker(PaperBroker):
         else:
             target_units = Decimal(str(self.config.autopilot_fifty_target_units))
             target_jpy = target_units * quantity * self.price_unit
-        ready = quantity > 0 and target_jpy > estimated_round_trip_jpy
+        spread_units = (ask - bid) / self.price_unit
+        max_spread = (
+            None
+            if self.config.autopilot_max_spread is None
+            else Decimal(str(self.config.autopilot_max_spread))
+        )
+        spread_blocked = max_spread is not None and spread_units > max_spread
+        cost_blocked = target_jpy <= estimated_round_trip_jpy
+        ready = quantity > 0 and not spread_blocked and not cost_blocked
+        reason = None
+        if spread_blocked:
+            reason = "spread_above_limit"
+        elif cost_blocked:
+            reason = "round_trip_cost_at_or_above_target"
         return {
             "ready": ready,
-            "reason": None if ready else "round_trip_cost_at_or_above_target",
+            "reason": reason,
+            "spread_units": float(spread_units),
+            "max_spread_units": None if max_spread is None else float(max_spread),
             "estimated_round_trip_cost_jpy": float(estimated_round_trip_jpy),
             "estimated_round_trip_cost_units": float(round_trip_per_unit / self.price_unit),
             "target_jpy": float(target_jpy),
