@@ -256,6 +256,8 @@ def test_replay_calls_current_jev_on_raw_tick_history_and_reports_usage(tmp_path
         summary["billable_input_tokens"] * 0.042 / 1_000_000
     )
     assert summary["output_price_usd_per_million_tokens"] == 0.0
+    assert isinstance(summary["trades"], list)
+    assert all(trade["kind"] == "paper_trade" for trade in summary["trades"])
     assert result["cadence_seconds"] == 1
     assert result["selected_ticks"] == 9
     assert "current Jev model" in result["limitations"][0]
