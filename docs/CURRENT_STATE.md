@@ -23,10 +23,11 @@ UIの基本paper modeはJevおまかせです。Jev OFFのコード戦略、従�
 
 UIは機能を削らず、Jevおまかせ中心へ整理しています。
 
-- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jev API / Jevおまかせ / 基準数量 / 仮想残高」を中心にする
+- primary workflowは上部の銘柄選択と、右サイドの「取引モード / Jevおまかせ / Jev API / 基準数量 / 仮想残高」を中心にする。paper時のJev API設定はJevおまかせ直下に置き、観測のみでは取引モード直下へ戻す
 - 実行中は `raw tick収集中 / Jev API ON|OFF / 銘柄` を常時表示し、Jev OFFでもデータ収集されることを明示する
-- paper口座、建玉、最新Jev判断、約定履歴、損益内訳は下部の「現在」へ集約する
-- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる
+- 下部の「現在」は「デモ口座・建玉 / 最新Jev判断 / 約定履歴・損益内訳」を中心にする
+- 外国為替FX 実口座の参照表示は常時監視の主画面から外し、⚙設定内へ置く
+- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる。従来モードのJev supervisor状態もここでのみ表示する
 - Strategy BT / Jev BT / 戦略比較 / 統計リプレイには、使用データ・Jev API利用有無・token消費・目的を明示する
 - 既存element IDとAPI contractは維持し、情報階層の変更を中心とする
 
