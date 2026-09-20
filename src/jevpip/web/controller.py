@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from statistics import fmean
 import time
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -24,6 +26,7 @@ from jevpip.config import Settings
 from jevpip.context import ExternalContextItem, select_context, to_jev_context_state
 from jevpip.context_log import append_context_fetch
 from jevpip.context_sources import fetch_bls_events, fetch_boj_events, fetch_fed_events
+from jevpip.decision_trace import append_decision_trace, build_decision_trace
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.instruments import get_instrument
@@ -51,6 +54,9 @@ class UIController:
         self._last_error: str | None = None
         self._paper: PaperBroker | None = None
         self._paper_config: PaperConfig | None = None
+        self._trace_run_id: str | None = None
+        self._trace_run_config: dict[str, Any] | None = None
+        self._last_decision_trace: dict[str, Any] | None = None
         self._real_account_cache: tuple[float, dict[str, Any]] | None = None
         self._external_context_items: tuple[ExternalContextItem, ...] = ()
         self._external_context_fetched_at: datetime | None = None
@@ -146,6 +152,21 @@ class UIController:
         self._profile_name = profile_name
         self._signal_policy_name = signal_policy_name if with_jev else None
         self._with_jev = with_jev
+        self._trace_run_id = uuid4().hex if self._paper is not None else None
+        self._trace_run_config = (
+            None
+            if self._paper_config is None
+            else {
+                "started_at": self._started_at,
+                "profile_name": profile_name,
+                "with_jev": with_jev,
+                "signal_policy_name": (
+                    signal_policy_name if with_jev else None
+                ),
+                "paper": asdict(self._paper_config),
+            }
+        )
+        self._last_decision_trace = None
         self._last_error = None
         self._latest_market = None
         self._latest_decision = None
@@ -243,8 +264,47 @@ class UIController:
                     event,
                     allow_entry=supervisor_plan.allow_entry,
                     strategy_override=supervisor_plan.strategy,
+                    entry_gate_reason=supervisor_plan.reason,
                 ):
                     self._events.appendleft(paper_event)
+
+                broker_trace = self._paper.last_decision_trace
+                if (
+                    broker_trace is not None
+                    and self._trace_run_id is not None
+                    and self._trace_run_config is not None
+                ):
+                    jev_supervisor_trace = (
+                        None
+                        if jev_advice is None
+                        else {
+                            **asdict(jev_advice),
+                            "available_at": (
+                                None
+                                if self._jev_supervisor_available_at is None
+                                else self._jev_supervisor_available_at.isoformat()
+                            ),
+                            "expires_at": (
+                                None
+                                if self._jev_supervisor_expires_at is None
+                                else self._jev_supervisor_expires_at.isoformat()
+                            ),
+                        }
+                    )
+                    paper_snapshot = self._paper.snapshot()
+                    trace = build_decision_trace(
+                        run_id=self._trace_run_id,
+                        instrument_id=self._instrument_id,
+                        recorded_at=datetime.now(timezone.utc).isoformat(),
+                        run_config=self._trace_run_config,
+                        cost_model=dict(paper_snapshot["cost_model"]),
+                        broker_trace=broker_trace,
+                        event_supervisor=asdict(self._event_supervisor),
+                        jev_supervisor=jev_supervisor_trace,
+                        combined_supervisor=asdict(supervisor_plan),
+                    )
+                    append_decision_trace(self.settings.data_dir, trace)
+                    self._last_decision_trace = trace
         elif kind == "decision":
             self._latest_decision = event
             self._record_jev_usage(event)
@@ -317,6 +377,7 @@ class UIController:
             "signal_policy_name": self._signal_policy_name,
             "latest_market": self._latest_market,
             "latest_decision": self._latest_decision,
+            "latest_decision_trace": self._last_decision_trace,
             "last_error": self._last_error,
             "chart": list(self._chart),
             "paper": None if self._paper is None else self._paper.snapshot(),

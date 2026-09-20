@@ -191,6 +191,15 @@ Jev schemaには含めない:
 - stale / future position action拒否
 - decisionが参照した `opened_at` と現在positionが一致するときだけ適用
 - TP / SL / max holdは引き続きcode-ownedで優先
+- paper live tickごとのdecision trace schema v1
+- `data/decision_traces/<instrument>/YYYY-MM-DD.jsonl` へ永続化
+- run config / cost model version
+- gate前code candidate / Jev direction / gate後entry candidate
+- deterministic / event / Jev supervisor / combined gate
+- blocked-entry reason
+- Jev position-management decision
+- final action / holding time / turnover / paper trade linkage
+- supervisorで止めたtickでもcode candidateを保持
 
 未実装:
 
@@ -318,6 +327,7 @@ Technical strategy engine + Jev supervisor.
 - BLS official calendar adapter
 - deterministic event-window supervisor
 - paper entry gate / UI integration
+- decision trace schema v1 / runtime JSONL persistence
 
 未実装:
 
@@ -336,13 +346,14 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の順序を推奨:
 
-1. A/B/C/D decision trace schemaを固定・永続化
-2. run config / cost model version / code candidate / Jev directionを記録
-3. deterministic / event / Jev supervisor各gateとblocked-entry reasonを記録
-4. position-management decision / final action / holding time / turnover / trade linkageを記録
-5. traceを使ってA/B/C/D experiment harnessを実装
+1. decision trace schema v1を入力としてA/B/C/D experiment harnessを実装
+2. A: technical only
+3. B: technical + deterministic supervisor
+4. C: technical + deterministic + Jev supervisor
+5. D: Jev direct signal control
 6. blocked candidate entryのcounterfactualを同一market path / cost modelで計算
-7. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
+7. avoided loss / missed profitをtraceとtradeへlink
+8. BOJ policy decision本体は固定時刻を捏造しない表現が決まってから追加
 
 主に見る指標:
 
@@ -368,4 +379,4 @@ Jevを「相場方向を直接当てる主体」よりも、**code strategyが�
 
 次の作業テーマ:
 
-> A/B/C/D decision trace schemaを固定・永続化し、そのtraceを土台にexperiment harnessとblocked-entry counterfactual metricsへ進む。
+> decision trace schema v1を土台にA/B/C/D experiment harnessとblocked-entry counterfactual metricsを実装する。

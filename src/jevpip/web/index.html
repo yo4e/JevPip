@@ -34,6 +34,8 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 .settings-overlay{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.42);display:grid;place-items:center;padding:18px}.settings-overlay[hidden]{display:none}.settings-card{width:min(560px,100%);max-height:min(760px,calc(100vh - 36px));overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 70px rgba(15,23,42,.22)}.settings-head{display:flex;align-items:center;gap:10px;padding:15px 17px;border-bottom:1px solid var(--line)}.settings-head h2{font-size:16px;margin:0}.settings-body{padding:16px 17px}.settings-section{padding:13px 0;border-bottom:1px solid var(--line)}.settings-section:first-child{padding-top:0}.settings-section:last-child{border-bottom:0;padding-bottom:0}.settings-status{font-size:10px;font-weight:800;color:var(--muted);margin-left:6px}.secret-actions{display:flex;align-items:center;gap:10px;margin-top:6px}.secret-actions label{font-size:10px;color:var(--muted)}.settings-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 17px;border-top:1px solid var(--line);background:var(--panel2)}.token-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.token-grid .stat strong{font-size:14px}
 .toast{position:fixed;right:12px;bottom:12px;z-index:80;background:#111827;color:#fff;padding:8px 10px;border-radius:6px;font-size:10px;display:none}.toast.error{background:#7f1d1d}
 #quote-big{display:none}
+.support-link{display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;font-weight:800;text-decoration:none}.support-link:hover{color:var(--blue);text-decoration:underline}
+
 @media(max-width:1100px) and (min-width:901px){.workspace{grid-template-columns:minmax(0,1fr) 320px}.side-section{padding-left:13px;padding-right:13px}}
 @media(max-width:900px){body{overflow:auto}.app{height:auto;min-height:100vh;grid-template-rows:auto auto auto auto}.terminal-resizer{display:none}.topbar{flex-wrap:wrap;padding:8px 10px;gap:7px}.topbar .grow{display:none}.workspace{grid-template-columns:1fr}.chart-pane{height:58vh;min-height:420px;border-right:0}.side{border-top:1px solid var(--line);max-height:none}.terminal{min-height:500px}.terminal-grid{grid-template-columns:1fr}.terminal-cell{border-right:0;border-bottom:1px solid var(--line)}.results{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style></head><body><div class="app">
@@ -129,7 +131,10 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         </div>
       </details>
     </section>
-  </aside>
+      <section class="side-section">
+      <a class="support-link" href="https://ko-fi.com/yo4e" target="_blank" rel="noopener noreferrer" title="JevPipを応援">☕ コーヒーを奢る</a>
+    </section>
+</aside>
 </main>
 
 <div class="terminal-resizer" id="terminal-resizer" title="ドラッグして下部パネルの高さを変更。ダブルクリックで標準サイズへ戻します。"></div>

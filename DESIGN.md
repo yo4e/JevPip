@@ -2024,3 +2024,99 @@ Jevはposition horizonを延長できない。
 - trade linkage
 
 traceが揃った後、同一raw tick / 同一cost modelでA/B/C/D harnessとcounterfactual metricsへ進む。
+
+---
+
+## 35. Paper Decision Trace v1（2026-09-20）
+
+A/B/C/D experiment harnessの前提として、live paperの各tickについて固定schemaのdecision traceを保存する。
+
+保存先:
+
+```text
+data/decision_traces/<instrument>/YYYY-MM-DD.jsonl
+```
+
+runtime dataでありgitへcommitしない。
+
+### 35.1 Schema boundary
+
+各rowは `schema_version = 1` とrun idを持ち、最低限次を保存する。
+
+- run config
+- cost model version
+- market timestamp / received timestamp / BID / ASK / spread / status
+- gate適用前のcode candidate
+- Jev directionとbasis / requested / available timing
+- Jev direction gate適用後のentry candidate
+- PaperBroker deterministic supervisor
+- official event supervisor
+- active Jev supervisor
+- event + Jev combined supervisor
+- blocked-entry reason
+- bounded Jev position-management decision
+- final action
+- holding time
+- tick turnover
+- paper trade linkage
+
+TypeSafe keyやGMO credentialなどsecretはrun configへ含めない。
+
+### 35.2 Preserve blocked candidates
+
+counterfactual評価では、supervisorがentryを止めた瞬間の「本来code strategyが出していた候補」が必要になる。
+
+そのためPaperBrokerは外側のentry gateが `PAUSE_ENTRY` でもstrategy candidate自体は計算し、executionだけを止める。
+
+例:
+
+```text
+code candidate = LONG
+event supervisor = PAUSE_ENTRY
+final action = NOOP
+blocked_entry_reason = code:event_window
+```
+
+これにより後段で同一market path / cost modelを使い、
+
+- avoided loss
+- missed profit
+
+を計算できる。
+
+Jev direction gateについてもpre-gate code candidateとpost-gate entry candidateを分離して保存する。
+
+### 35.3 Position management / causal linkage
+
+Jev directの `HOLD / CLOSE` はdirectionとは別fieldとして記録する。
+
+traceにはposition target、confirmation数、action age、最終action、position before/afterの `opened_at` とpaper trade eventを残す。
+
+これにより古いJev responseが別positionへ適用されていないことを後から検証できる。
+
+### 35.4 Cost model
+
+traceのcost modelはversionを持つ。初期versionは `paper-v1`。
+
+個々のrunでは少なくとも、
+
+- real BID / ASK spread
+- fee rate / label
+- configured adverse slippage
+- synthetic short flag
+
+を記録する。
+
+A/B/C/D比較では同一cost model versionを使う。
+
+### 35.5 Next
+
+次はtraceを直接入力にしたA/B/C/D experiment harnessを実装する。
+
+- A: technical only
+- B: technical + deterministic supervisor
+- C: technical + deterministic + Jev supervisor
+- D: Jev direct signal control
+
+その後blocked candidateを同一market pathで仮想追跡し、avoided loss / missed profitを計算する。
+
