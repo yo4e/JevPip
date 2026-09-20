@@ -1940,3 +1940,87 @@ paper modeの意思決定を3つの独立スイッチへ分離する。
 一方、既存positionのTP / SL / max hold等のexit管理は戦略・安全監督・JevのON/OFFと切り離し、open positionが判断レイヤー停止によって取り残されないようにする。
 
 Jev bounded supervisorによるallowlisted strategy overrideは、コード戦略ONかつ安全監督ONの場合だけ有効とする。コード戦略OFF + Jev ONのJev direct modeへcode strategy overrideを混ぜない。
+
+
+---
+
+## 34. Jev direct position management（2026-09-20）
+
+Jev direct modeのposition exitをdirection predictionから分離する。
+
+従来はopen position中に反対directionが出ると `opposite_jev_signal` でcloseしていたが、direction questionは将来方向の予測であって、現在positionを今閉じるべきかという問いではない。この意味の混線を解消する。
+
+### 34.1 Bounded HOLD / CLOSE
+
+Jev directでpaper position保有中だけ、同じSystem One callへ `position_action` を追加する。
+
+許可するanswer:
+
+- `HOLD`
+- `CLOSE`
+
+含めない:
+
+- reverse
+- LONG / SHORT side指定
+- quantity
+- TP / SL
+- leverage
+- arbitrary order command
+
+position actionはdirection signalとは独立してeventへ保存する。
+
+### 34.2 Code-owned hysteresis
+
+Jevの単発回答だけでpositionを閉じない。
+
+標準guard:
+
+- CLOSE probability >= 0.70
+- CLOSE - HOLD margin >= 0.20
+- distinctなJev decisionでCLOSEを2回連続確認
+- HOLDが入ればconfirmation countを0へ戻す
+- minimum hold 2秒
+- action max age 3秒
+
+threshold / confirmation / minimum hold / freshnessはすべてcode-owned。Jevは変更できない。
+
+### 34.3 Position binding / causal boundary
+
+position actionはJev call時の `paper_context.position.opened_at` と結び付ける。
+
+response到着までにpositionがclose/reopenされていた場合、古いposition向けCLOSEを新しいpositionへ適用しない。
+
+requested / available timingはdirectionと同様に保持し、future / stale actionは拒否する。
+
+同一decisionの重複配送を複数confirmationとして数えない。
+
+### 34.4 Code-owned exits remain authoritative
+
+exit評価順:
+
+1. Take Profit
+2. Stop Loss
+3. `max_hold_seconds` position horizon
+4. bounded Jev position CLOSE
+
+Jev `HOLD` / missing / stale responseでTP / SL / max holdを止めない。
+Jevはposition horizonを延長できない。
+
+### 34.5 Next
+
+次はA/B/C/D decision trace schemaを固定する。
+
+最低限traceへ含める:
+
+- run config / cost model version
+- code candidate
+- Jev direction
+- deterministic / event / Jev supervisor gate
+- blocked-entry reason
+- Jev position-management decision
+- final action
+- holding time / turnover
+- trade linkage
+
+traceが揃った後、同一raw tick / 同一cost modelでA/B/C/D harnessとcounterfactual metricsへ進む。
