@@ -153,9 +153,9 @@ JevPipの実画面確認中に、以下を観測しました。
 
 参考:
 
-- 内閣府「国民の祝日について」: 2026-09-21は敬老の日
-- GMOクリック証券「FXのスプレッドとは？」: 早朝・休日・祝日など流動性低下時にspreadが広がる可能性を説明
-- GMOクリック証券「FXネオ」: 原則固定spreadには適用時間帯と例外がある
+- 内閣府「国民の祝日について」: https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html
+- GMOクリック証券「FXのスプレッドとは？」: https://www.click-sec.com/corp/guide/fxneo/column/howto-spread/
+- GMOクリック証券「FXネオ」: https://www.click-sec.com/corp/guide/fxneo/
 
 ## Jevを呼ぶタイミング
 
