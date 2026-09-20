@@ -137,6 +137,7 @@ class CredentialSettingsInput(BaseModel):
 
 class ObserverStartRequest(BaseModel):
     instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
+    paper_decision_mode: Literal["jev", "strategy", "spiritual"] | None = None
     profile_name: str = Field(default="custom", min_length=1, max_length=80)
     profile: FeatureSelection
     with_jev: bool = False
@@ -354,6 +355,22 @@ async def get_chart_history(
 async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
     try:
         get_instrument(request.instrument_id)
+        if request.paper_demo is not None and request.paper_decision_mode is not None:
+            cfg = request.paper_demo
+            mode = request.paper_decision_mode
+            spiritual = cfg.strategy in {"moon_phase", "zodiac_polarity"}
+            if mode == "jev" and (
+                not request.with_jev or not cfg.autopilot_enabled or cfg.strategy_enabled
+            ):
+                raise ValueError("JevモードはJev専用です。戦略モードと同時には動かせません。")
+            if mode == "strategy" and (
+                request.with_jev or cfg.autopilot_enabled or not cfg.strategy_enabled or spiritual
+            ):
+                raise ValueError("戦略モードではJevを使わず、通常のコード戦略だけを実行します。")
+            if mode == "spiritual" and (
+                request.with_jev or cfg.autopilot_enabled or not cfg.strategy_enabled or not spiritual
+            ):
+                raise ValueError("スピリチュアルモードではJev・通常戦略を使わず、専用実験だけを実行します。")
         await controller.start_observer(
             instrument_id=request.instrument_id,
             profile_name=request.profile_name,
