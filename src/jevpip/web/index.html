@@ -71,10 +71,11 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div id="paper-basic" style="display:none">
         <label class="toggle"><input id="autopilot" type="checkbox" checked><span>Jevおまかせ<small>コスト込みで保有方向と目標数量を判断。数量は基準の0・0.5・1・2倍から選びます。</small></span></label>
         <div id="autopilot-controls" style="margin-top:12px">
-          <div class="field"><label class="label">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
-          <div class="field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
-          <label class="toggle"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
-          <details><summary>Jevを縛る・詳細設定</summary><div class="details-body">
+          <div class="field"><label class="label">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
+          <div id="fifty-controls" class="notice" style="display:none;margin-bottom:10px"><strong>Fifty+ 🎲</strong><br>常に1ポジション。決済時だけJevが次のUP / DOWNを二択で判断します。<div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同幅。spread・手数料・slippage込みのネット損益で判定します。</small></div>
+          <div class="field" id="auto-horizon-field"><label class="label">見通す時間（判断間隔とは独立）</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
+          <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fed等の観測済み公式イベント予定を渡します。ニュース全般ではなく、過去BTでは利用できません。</small></span></label>
+          <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
             <div class="pair"><div class="field"><label class="label">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
             <div id="auto-limits"></div>
             <p>チェックした制約だけを適用。新規・増額は仮想資金の1倍以内。市場が閉じている時や古い価格では約定しません。</p>
@@ -100,7 +101,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
     <section class="side-section">
       <h2>Jev</h2>
       <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev判断<small>おまかせでは保有方向・数量を判断。おまかせOFFでは従来の方向判定・コード戦略との一致ゲートを使えます。</small></span></label>
-      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒</div></div>
+      <div class="field" style="margin-top:12px"><label class="label">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒 / Fifty+は決済時だけ</div></div>
       <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">実行中のコード戦略・安全監督・Jev設定は開始時の値で固定されています。変更は停止後に行ってください。</div>
     </section>
 
@@ -435,6 +436,8 @@ function syncSessionControls(s,activeInstrument){
       const cfg=s.paper.config||{};
       $("autopilot").checked=Boolean(s.paper.autopilot_enabled);
       $("auto-style").value=cfg.autopilot_style||"daytrade";
+      if(cfg.autopilot_fifty_target_units!=null)$("fifty-target-units").value=cfg.autopilot_fifty_target_units;
+      if(cfg.autopilot_fifty_target_jpy!=null)$("fifty-target-jpy").value=cfg.autopilot_fifty_target_jpy;
       autopilotStyleChanged(false);
       $("auto-horizon").value=cfg.autopilot_horizon_seconds||600;
       $("auto-fundamentals").checked=Boolean(cfg.autopilot_fundamentals);
@@ -467,7 +470,13 @@ function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
   const i=instrumentSpec();if(!i)return;
   if($("autopilot").checked){
-    const style=$("auto-style").value==="scalp"?"スキャルピング":"デイトレ";
+    const mode=$("auto-style").value;
+    if(mode==="fifty"){
+      const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
+      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 常に1ポジション。決済した時だけJevがUP / DOWNを二択で判断します。";
+      return;
+    }
+    const style=mode==="scalp"?"スキャルピング":"デイトレ";
     box.textContent="Jevおまかせ "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / "+i.paper_fee_label+"。同じ目標なら維持。通常のTP・SL・8秒決済は適用しません。";
     return;
   }
@@ -512,6 +521,7 @@ function applyInstrumentDefaults(){
   $("p-slip-label").textContent="slippage（"+i.move_unit_label+"）";
   $("p-ma-gap-label").textContent="MA差 最低（"+i.move_unit_label+"）";
   $("mid-label").textContent=i.display_symbol+" MID";
+  updateFiftyTargetUi();
   applySignal($("signal-policy").value);
   updateTradeSummary();
 }
@@ -604,7 +614,14 @@ function renderDecision(d,sup){
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
   if(!d?.jev){$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
-  $("decision-empty").style.display="none";$("decision").style.display="block";$("decision-signal").textContent=d.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d.direction_signal||d.research_signal||"WAIT";const a=d.jev.answers||{},pr=a.direction?.probabilities||{};$("up").textContent=d.target_decision?"—":pct(pr.UP||0);$("down").textContent=d.target_decision?"—":pct(pr.DOWN||0);$("flat").textContent=d.target_decision?"—":pct(pr.FLAT||0);$("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";$("signal-detail").textContent=d.target_error|| (d.target_decision?("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence)):signalGateSummary(d))
+  $("decision-empty").style.display="none";$("decision").style.display="block";
+  const a=d.jev.answers||{},fifty=d.state?.autopilot?.style==="fifty",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
+  $("decision-signal").textContent=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
+  $("up").textContent=fifty?pct(pr.UP||0):(d.target_decision?"—":pct(pr.UP||0));
+  $("down").textContent=fifty?pct(pr.DOWN||0):(d.target_decision?"—":pct(pr.DOWN||0));
+  $("flat").textContent=fifty?"—":(d.target_decision?"—":pct(pr.FLAT||0));
+  $("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";
+  $("signal-detail").textContent=d.target_error||(d.target_decision?(fifty?("Fifty+ 二択 / confidence "+pct(d.target_decision.confidence)):("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence))):signalGateSummary(d))
 }
 
 function chartPrice(p){
@@ -1060,19 +1077,32 @@ const autoLimits=[
 ];
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:Number($("auto-confirmations").value)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:Number($("auto-confirmations").value)};
   for(const [key] of autoLimits)config["autopilot_"+key]=$("auto-"+key+"-on").checked?Number($("auto-"+key).value):null;
   return config;
 }
+function updateFiftyTargetUi(){
+  const crypto=instrumentSpec()?.market_kind==="crypto_spot";
+  $("fifty-units-field").style.display=crypto?"none":"block";
+  $("fifty-jpy-field").style.display=crypto?"block":"none";
+}
 function autopilotStyleChanged(applyDefaults=true){
-  const scalp=$("auto-style").value==="scalp";
-  $("auto-style-note").textContent=scalp
-    ?"直近tick中心。標準は30秒先を見て1秒ごとに再判断。"
-    :"1分足中心。標準は10分先を見て5分ごとに再判断。";
+  const style=$("auto-style").value,scalp=style==="scalp",fifty=style==="fifty";
+  $("auto-style-note").textContent=fifty
+    ?"常に1ポジション。決済した時だけJevが次のUP / DOWNを判断。"
+    :scalp
+      ?"直近tick中心。標準は30秒先を見て1秒ごとに再判断。"
+      :"1分足中心。標準は10分先を見て5分ごとに再判断。";
+  $("fifty-controls").style.display=fifty?"block":"none";
+  $("auto-horizon-field").style.display=fifty?"none":"block";
+  $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
+  $("auto-constraints").style.display=fifty?"none":"block";
+  if(fifty)$("auto-fundamentals").checked=false;
+  updateFiftyTargetUi();
   if(applyDefaults){
-    $("auto-horizon").value=scalp?"30":"600";
-    $("jev-every").value=scalp?"1":"300";
-    $("jbt-cadence").value=scalp?"1":"300";
+    $("auto-horizon").value=(scalp||fifty)?"30":"600";
+    $("jev-every").value=(scalp||fifty)?"1":"300";
+    $("jbt-cadence").value=(scalp||fifty)?"1":"300";
     state.jevReplayPreview=null;
     $("jbt-run").disabled=true;
   }
@@ -1105,6 +1135,8 @@ function renderExecutions(id,rows){
 $("autopilot").addEventListener("change",autopilotChanged);
 $("auto-style").addEventListener("change",()=>autopilotStyleChanged(true));
 $("auto-horizon").addEventListener("change",updateTradeSummary);
+$("fifty-target-units").addEventListener("input",updateTradeSummary);
+$("fifty-target-jpy").addEventListener("input",updateTradeSummary);
 $("jev-every").addEventListener("input",updateTradeSummary);
 
 function setTerminalHeight(px){if(window.innerWidth<=900)return;const min=180,max=Math.max(min,window.innerHeight-220),height=Math.max(min,Math.min(max,px));document.querySelector(".app").style.setProperty("--terminal-height",height+"px");try{localStorage.setItem("jevpip-terminal-height",String(Math.round(height)))}catch{}const active=state.lastStatus?.instrument_id===$("instrument").value;requestAnimationFrame(()=>drawChart(activeChartPoints(),active?state.lastStatus?.paper?.trades||[]:[]))}

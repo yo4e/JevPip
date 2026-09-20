@@ -5,17 +5,20 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 ## 始め方
 
 1. デモ自動売買で「Jevおまかせ」をON（UI初期値）。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevおまかせスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。判断間隔とhorizonはUIで個別に変更できる。
+2. 銘柄、基準数量、仮想残高、Jevおまかせスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は常に1ポジションを持ち、決済時だけJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
 判断間隔と見通す時間は別。見通す時間は30秒・2分・10分・30分から選ぶ。デイトレの初期値は10分、スキャルピングは30秒。これらは最適化済みの推奨値でも強制決済時刻でもない。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
 
-### デイトレ / スキャルピング
+### デイトレ / スキャルピング / Fifty+
 
 - `daytrade`: 現行Jevおまかせのrolling market historyを維持し、最大30本の確定1分足を渡す。標準cadenceは300秒。
 - `scalp`: 直近40 tickの時刻・MID・spread・前tick比を `autopilot.recent_ticks` として渡し、確定1分足は最大5本に絞る。標準cadenceは1秒。
-- どちらも同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
+- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後にだけ次の方向判断を要求する。
+- Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
+- Fifty+では方向選択に不要なaccount / cost / constraints / recent executionをJev stateから外し、直近tickと短い価格履歴を中心に渡す。コストを理由に棄権する選択肢はない。
+- デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
 
 おまかせOFFで従来の方向判定・Momentum / RSI / MA・supervisorを使える。既存APIの `autopilot_enabled` は省略時OFF。Strategy BT、raw comparison、A/B/C/D harnessは従来モードの比較用として残る。
 

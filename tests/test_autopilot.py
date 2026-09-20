@@ -17,6 +17,7 @@ from jevpip.jev_replay import run_jev_historical_replay
 from jevpip.signals import SignalPolicy
 from jevpip.web.app import PaperDemoInput
 from jevpip.async_work import joined_thread
+from jevpip.observer import _should_request_jev
 
 START = datetime(2026, 9, 20, tzinfo=timezone.utc)
 
@@ -96,6 +97,86 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
+
+
+def test_fifty_plus_is_mandatory_up_down_and_event_driven():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    policy = state["autopilot"]
+    assert set(policy["targets"]) == {"UP", "DOWN"}
+    assert set(question_specs(state)) == {"target_position"}
+    assert _should_request_jev(state) is True
+    assert "costs" not in policy
+    assert "account" not in policy
+    assert set(policy["quote"]) == {"mid"}
+    assert "spread_units" not in policy["recent_ticks"][-1]
+
+    event = event_for(b, 0, "UP")
+    assert event["target_decision"]["target_side"] == "LONG"
+    assert event["target_decision"]["reason"] == "FIFTY_PLUS"
+    b.on_decision(event)
+    opened = b.on_tick(tick(0.2))
+    assert opened and opened[0]["action"] == "OPEN"
+    assert b.position is not None
+    assert _should_request_jev(b.decision_state(START + timedelta(seconds=1))) is False
+
+    closed = b.on_tick(tick(2, bid=106, ask=108))
+    assert closed and closed[0]["action"] == "CLOSE"
+    assert closed[0]["reason"] == "fifty_take_profit"
+    assert closed[0]["pnl"] == pytest.approx(50)
+    assert b.position is None
+    assert _should_request_jev(b.decision_state(START + timedelta(seconds=2))) is True
+
+
+def test_fifty_plus_fx_stop_is_symmetric_net_units():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    act(b, 0, "UP")
+    closed = b.on_tick(tick(2, bid=96, ask=98))
+    assert closed and closed[0]["reason"] == "fifty_stop_loss"
+    assert closed[0]["pnl"] == pytest.approx(-50)
+
+
+def test_fifty_plus_btc_uses_symmetric_net_yen_target():
+    cfg = PaperConfig(
+        autopilot_enabled=True,
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_jpy=500,
+        autopilot_confirmations=1,
+        instrument_id="BTC",
+        size=0.001,
+        price_unit=1,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b = AutopilotBroker(cfg)
+    def btc_tick(second, bid, ask):
+        at = (START + timedelta(seconds=second)).isoformat()
+        return {"instrument_id": "BTC", "market_timestamp": at, "received_at": at,
+                "bid": str(bid), "ask": str(ask), "status": "OPEN"}
+    b.on_tick(btc_tick(0, 10_000_000, 10_001_000))
+    state = b.decision_state(START)
+    event = {"jev": answer(state, "UP"), "state": state, "requested_at": START.isoformat(),
+             "available_at": (START + timedelta(seconds=.1)).isoformat()}
+    attach_target(event, state)
+    b.on_decision(event)
+    assert b.on_tick(btc_tick(.2, 10_000_000, 10_001_000))[0]["action"] == "OPEN"
+    closed = b.on_tick(btc_tick(2, 10_501_000, 10_502_000))
+    assert closed and closed[0]["reason"] == "fifty_take_profit"
+    assert closed[0]["pnl"] == pytest.approx(500)
 
 
 def test_scale_reduce_reverse_conserve_cash_and_allocate_all_costs():
