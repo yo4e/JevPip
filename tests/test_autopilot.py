@@ -97,12 +97,15 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
     defaults = PaperDemoInput()
     assert defaults.paper_leverage == 25
     assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
+    assert defaults.autopilot_fifty_reentry_seconds == pytest.approx(60)
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
     with pytest.raises(ValueError):
         PaperDemoInput(paper_leverage=25.1)
+    with pytest.raises(ValueError):
+        PaperDemoInput(autopilot_fifty_reentry_seconds=3600.1)
 
 
 def test_fx_fifty_plus_uses_margin_capacity_and_crypto_stays_one_x():
@@ -175,7 +178,21 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert closed[0]["reason"] == "fifty_take_profit"
     assert closed[0]["pnl"] == pytest.approx(50)
     assert b.position is None
-    assert _should_request_jev(b.decision_state(START + timedelta(seconds=2))) is True
+    waiting = b.decision_state(START + timedelta(seconds=2))
+    gate = waiting["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["ready"] is False
+    assert gate["reason"] == "post_close_wait"
+    assert gate["reentry_remaining_seconds"] == pytest.approx(60)
+    assert _should_request_jev(waiting) is False
+
+    almost = b.decision_state(START + timedelta(seconds=61))
+    assert almost["autopilot"]["fifty_plus"]["entry_gate"]["reentry_remaining_seconds"] == pytest.approx(1)
+    assert _should_request_jev(almost) is False
+
+    ready = b.decision_state(START + timedelta(seconds=62))
+    assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
+    assert _should_request_jev(ready) is True
 
 
 
