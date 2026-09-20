@@ -69,6 +69,8 @@ def test_strategy_backtest_runs_momentum_through_paper_broker(monkeypatch):
     assert result["rows"] == 4
     assert result["input_semantics"] == "historical_1m_close"
     assert result["summary"]["closed_trades"] >= 1
+    assert len(result["trades"]) == result["generated_events"]
+    assert all(trade["kind"] == "paper_trade" for trade in result["trades"])
     assert result["summary"]["realized_pnl"] == result["summary"]["net_pnl"]
     assert "no_trade" in result["baselines"]
     assert "buy_and_hold" in result["baselines"]
