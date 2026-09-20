@@ -58,6 +58,7 @@ class UIController:
         self._profile_name: str | None = None
         self._signal_policy_name: str | None = None
         self._with_jev = False
+        self._session_config: dict[str, Any] | None = None
         self._latest_market: dict[str, Any] | None = None
         self._latest_decision: dict[str, Any] | None = None
         self._last_error: str | None = None
@@ -168,6 +169,13 @@ class UIController:
             self._profile_name = profile_name
             self._signal_policy_name = signal_policy_name if with_jev else None
             self._with_jev = with_jev
+            # Public start-time settings let a reloaded UI describe the running
+            # session faithfully. Credentials never enter this payload.
+            self._session_config = {
+                "profile": dict(profile),
+                "signal_policy": asdict(signal_policy),
+                "jev_every_seconds": jev_every_seconds,
+            }
             self._trace_run_id = uuid4().hex if self._paper is not None else None
             self._trace_run_config = (
                 None
@@ -402,6 +410,7 @@ class UIController:
             "instrument_id": self._instrument_id,
             "profile_name": self._profile_name,
             "with_jev": self._with_jev,
+            "session_config": self._session_config,
             "signal_policy_name": self._signal_policy_name,
             "latest_market": self._latest_market,
             "latest_decision": self._latest_decision,
@@ -825,6 +834,7 @@ class UIController:
         instrument_id: str,
         interval: str,
         date: str,
+        warmup: bool = False,
     ) -> dict[str, Any]:
         instrument = get_instrument(instrument_id)
         requested = datetime.strptime(date, "%Y%m%d")
@@ -832,12 +842,12 @@ class UIController:
         # Keep the visible candle count roughly stable, so a larger timeframe
         # naturally shows a longer time span instead of repainting the same
         # single day with fewer candles.
-        target_candles = 180
+        target_candles = 379 if warmup else 180
         max_lookback_days = {
             "1min": 8,
             "5min": 8,
             "15min": 10,
-            "1hour": 18,
+            "1hour": 32 if warmup else 18,
         }[interval]
 
         by_open_time: dict[int, Any] = {}

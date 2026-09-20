@@ -54,7 +54,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "常に1ポジション" in response.text
         assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
         assert 'id="sbt-executions"' in response.text
-        assert "約定履歴・損益内訳" in response.text
+        assert "開くとコスト内訳" in response.text
         assert response.text.count('id="auto-live-executions"') == 1
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert response.text.count('id="account-refresh"') == 1
@@ -85,7 +85,7 @@ def test_config_exposes_btc_profiles_and_safety_flags():
 def test_chart_history_endpoint_routes_btc(monkeypatch):
     from jevpip.web.app import controller
 
-    async def fake_history(*, instrument_id, interval, date):
+    async def fake_history(*, instrument_id, interval, date, warmup=False):
         assert instrument_id == "BTC"
         assert interval == "5min"
         assert date == "20260919"
@@ -285,7 +285,7 @@ def test_chart_renderer_has_non_finite_and_bid_ask_fallback_guards():
         response = client.get("/")
         assert response.status_code == 200
         assert "function chartPrice" in response.text
-        assert "表示できるチャートデータがありません" in response.text
+        assert "表示できる価格がありません" in response.text
         assert "historyCache" in response.text
 
 
@@ -1058,7 +1058,7 @@ def test_homepage_describes_jev_as_direction_gate():
         response = client.get("/")
     assert response.status_code == 200
     assert "Jev方向一致時だけentry候補を通します" in response.text
-    assert "おまかせOFFでは従来の方向判定" in response.text
+    assert "コード戦略OFF。Jev方向" in response.text
 
 
 
@@ -1074,7 +1074,7 @@ def test_homepage_has_independent_strategy_safety_and_jev_toggles():
     assert '<option value="jev">Jevシグナル</option>' not in response.text
     assert 'id="session-lock-note"' in response.text
     assert "syncSessionControls(s,activeInstrument)" in response.text
-    assert "実行中のコード戦略・安全監督・Jev設定は開始時の値で固定" in response.text
+    assert "設定を変更するには、先に停止してください。" in response.text
     assert "手数料損益分岐概算" in response.text
 
 

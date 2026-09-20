@@ -21,3 +21,5 @@ jobs:
         run: uv sync --extra dev
       - name: Test
         run: uv run pytest
+      - name: Test UI chart and session behavior
+        run: node --test tests/web_ui.test.cjs
