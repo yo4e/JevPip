@@ -266,7 +266,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
   <section class="tab" id="tab-jevbt">
     <div class="back-wrap">
-      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は保存済みraw tickだけを使います。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
+      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は保存済みraw tickだけを使います。raw tickは対象銘柄を「観測」している間に保存され、収集時はJev OFFで構いません。保存されるのは観測していた時間帯だけです。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
       <div class="mode-grid">
         <div class="field"><label class="label">保存済みraw tick日</label><select id="jbt-date"><option value="">保存データを確認中…</option></select></div>
         <div class="field"><label class="label">開始時刻 UTC</label><input id="jbt-start" type="time" step="1"><div class="muted" style="font-size:9px;margin-top:3px">空欄ならその日の最初のraw tickから</div></div>
