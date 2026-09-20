@@ -562,7 +562,7 @@ function updateTradeSummary(){
     const mode=$("auto-style").value;
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
-      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止。決済した時だけJevがUP / DOWNを二択で判断します。";
+      box.textContent="Jevおまかせ Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 常に1ポジション。決済した時だけJevがUP / DOWNを二択で判断します。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
