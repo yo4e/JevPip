@@ -15,11 +15,23 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "MA200" in response.text
         assert "BTC/JPY" in response.text
         assert "デモ自動売買" in response.text
+        assert "現在のセッション" in response.text
+        assert "raw tick収集中" in response.text
+        assert "Jev APIを使う" in response.text
+        assert 'id="session-run-state"' in response.text
+        assert 'id="session-data-state"' in response.text
+        assert 'id="session-paper-state"' in response.text
+        assert 'id="session-target-state"' in response.text
         assert "RSI逆張り" in response.text
         assert "MAトレンド" in response.text
         assert "RSI/MA入力" in response.text
         assert "戦略BT" in response.text
         assert "統計リプレイ" in response.text
+        assert "historical 1分足" in response.text
+        assert "保存済みraw tick" in response.text
+        assert "消費あり" in response.text
+        assert "消費なし" in response.text
+        assert "現在のJevをhistorical replay" in response.text
         assert "現在設定で戦略バックテスト" in response.text
         assert "戦略比較" in response.text
         assert "No Trade" in response.text
