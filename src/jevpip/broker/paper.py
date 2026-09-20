@@ -120,6 +120,9 @@ class PaperBroker:
         self._latest_jev_position_available_at: datetime | None = None
         self._latest_jev_position_target_opened_at: datetime | None = None
         self._jev_close_confirmation_count = 0
+        self._last_jev_position_confirmation_key: tuple[
+            datetime | None, datetime | None, datetime | None
+        ] | None = None
         self._last_exit_at: datetime | None = None
         self._last_bid: Decimal | None = None
         self._last_ask: Decimal | None = None
@@ -199,14 +202,22 @@ class PaperBroker:
                         target_opened_at = None
         self._latest_jev_position_target_opened_at = target_opened_at
 
+        confirmation_key = (
+            self._latest_jev_position_requested_at,
+            self._latest_jev_position_available_at,
+            target_opened_at,
+        )
         if (
             action == "CLOSE"
             and self.position is not None
             and target_opened_at == self.position.opened_at
         ):
-            self._jev_close_confirmation_count += 1
+            if confirmation_key != self._last_jev_position_confirmation_key:
+                self._jev_close_confirmation_count += 1
+                self._last_jev_position_confirmation_key = confirmation_key
         else:
             self._jev_close_confirmation_count = 0
+            self._last_jev_position_confirmation_key = confirmation_key
 
     def on_tick(
         self,
@@ -616,6 +627,7 @@ class PaperBroker:
         self._latest_jev_position_available_at = None
         self._latest_jev_position_target_opened_at = None
         self._jev_close_confirmation_count = 0
+        self._last_jev_position_confirmation_key = None
 
     def _open(self, side: Side, at: datetime, bid: Decimal, ask: Decimal, reason: str) -> PaperTrade:
         size = Decimal(str(self.config.size))
