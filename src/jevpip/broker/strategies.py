@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
+from datetime import datetime
+import random
 from decimal import Decimal
 from typing import Literal, Sequence
 
@@ -214,13 +214,10 @@ _TAROT_MAJOR_ARCANA = (
 )
 
 
-def tarot_signal(*, at: datetime, key: str = "") -> StrategyDecision:
-    """Reproducible one-card Major Arcana baseline for Fifty+ experiments."""
-    normalized = at.astimezone(timezone.utc) if at.tzinfo else at.replace(tzinfo=timezone.utc)
-    material = f"tarot-v1|{key}|{normalized.isoformat()}".encode("utf-8")
-    digest = hashlib.sha256(material).digest()
-    card_index = int.from_bytes(digest[:4], "big") % len(_TAROT_MAJOR_ARCANA)
-    upright = bool(digest[4] & 1)
+def tarot_signal(*, rng: random.Random) -> StrategyDecision:
+    """Random one-card Major Arcana baseline for Fifty+ experiments."""
+    card_index = rng.randrange(len(_TAROT_MAJOR_ARCANA))
+    upright = bool(rng.getrandbits(1))
     signal: Signal = "LONG" if upright else "SHORT"
     return StrategyDecision(
         signal,
@@ -229,7 +226,7 @@ def tarot_signal(*, at: datetime, key: str = "") -> StrategyDecision:
             "card": _TAROT_MAJOR_ARCANA[card_index],
             "card_index": card_index,
             "orientation": "upright" if upright else "reversed",
-            "shuffle": "sha256(tarot-v1|instrument|utc_timestamp)",
+            "shuffle": "seeded_random_major_arcana",
             "semantics": "experimental_spiritual_baseline",
         },
     )
