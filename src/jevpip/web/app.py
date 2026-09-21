@@ -574,6 +574,27 @@ async def run_spiritual_backtest_api(
         ) from exc
 
 
+@app.post("/api/statistical-replay")
+async def run_statistical_replay_api(request: BacktestRequest) -> dict[str, Any]:
+    try:
+        get_instrument(request.instrument_id)
+        return await controller.run_statistical_replay(
+            date=request.date,
+            instrument_id=request.instrument_id,
+            profile_name=request.profile_name,
+            profile=request.profile.model_dump(),
+            limit=request.limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"統計リプレイに失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+# Compatibility endpoint retained for older clients. New UI uses /api/statistical-replay.
 @app.post("/api/backtest")
 async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
     try:
