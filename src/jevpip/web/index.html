@@ -125,6 +125,53 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field legacy-exit"><label class="label" id="p-sl-label" for="p-sl">Stop Loss</label><input id="p-sl" type="number" value="1" step="any"></div>
               <div class="field legacy-exit"><label class="label" id="p-spread-label" for="p-spread">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
             </div>
+            <details class="session-details" id="strategy-research-settings">
+              <summary>戦略の詳細設定・研究</summary>
+              <div class="details-body">
+                <div class="research-callout"><strong>戦略パラメータ</strong><br>Momentum / RSI / MAの細部やslippage、最大保有時間などを調整します。</div>
+                <div id="paper-advanced">
+                <div class="detail-grid">
+                <div class="field"><label class="label" for="p-window">判定時間 秒</label><input id="p-window" type="number" value="5" step=".5"></div>
+                <div class="field"><label class="label" id="p-trigger-label" for="p-trigger">エントリー幅</label><input id="p-trigger" type="number" value=".6" step="any"></div>
+                <div class="field"><label class="label" for="p-hold">最大保有 秒</label><input id="p-hold" type="number" value="8" step="1"></div>
+                <div class="field"><label class="label" for="p-cool">再entry待機 秒</label><input id="p-cool" type="number" value="2" step=".5"></div>
+                <div class="field"><label class="label" id="p-slip-label" for="p-slip">slippage（pips）</label><input id="p-slip" type="number" value="0" min="0" step="any"></div>
+                <div class="field"><label class="label" for="p-stale">stale判定 秒</label><input id="p-stale" type="number" value="5" min=".1" step=".5"></div>
+                <div class="field"><label class="label" for="p-bar-seconds">RSI/MA入力</label><select id="p-bar-seconds"><option value="0">tick</option><option value="5">5秒bar</option><option value="15">15秒bar</option><option value="60">1分bar</option><option value="300">5分bar</option></select></div>
+                <div class="field"><label class="label" for="p-rsi-period">RSI期間（本数）</label><input id="p-rsi-period" type="number" value="14" min="2"></div>
+                <div class="field"><label class="label" for="p-rsi-low">RSI売られすぎ</label><input id="p-rsi-low" type="number" value="30" min="0" max="100"></div>
+                <div class="field"><label class="label" for="p-rsi-high">RSI買われすぎ</label><input id="p-rsi-high" type="number" value="70" min="0" max="100"></div>
+                <div class="field"><label class="label" for="p-ma-fast">MA短期（本数）</label><input id="p-ma-fast" type="number" value="5" min="1"></div>
+                <div class="field"><label class="label" for="p-ma-slow">MA長期（本数）</label><input id="p-ma-slow" type="number" value="20" min="2"></div>
+                <div class="field"><label class="label" id="p-ma-gap-label" for="p-ma-gap">MA差 最低（pips）</label><input id="p-ma-gap" type="number" value=".2" min="0" step="any"></div>
+                </div>
+                </div>
+                <details class="session-details" id="legacy-research-settings">
+                  <summary>比較研究用の旧設定</summary>
+                  <div class="details-body">
+                    <div class="research-callout"><strong>比較研究用</strong><br>Feature、Signal Policy、旧Jev監督など、過去の比較実験との互換用設定です。通常の戦略売買では触らなくてかまいません。</div>
+                    <div class="field"><label class="label" for="profile">Featureプリセット</label><select id="profile"></select></div><div class="pillrow" id="feature-summary"></div>
+                    <div class="feature-grid" style="margin-top:8px">
+                    <label class="toggle"><input id="f-quote" type="checkbox"><span>価格</span></label>
+                    <label class="toggle"><input id="f-random" type="checkbox"><span>対照</span></label><label class="toggle"><input id="f-rsi-on" type="checkbox"><span>RSI</span></label>
+                    <input id="f-moon" type="checkbox" hidden>
+                    </div>
+                    <div class="detail-grid" style="margin-top:8px">
+                    <div class="field"><label class="label" for="returns">価格変化 秒</label><input id="returns" type="text"></div><div class="field"><label class="label" for="ranges">値幅 秒</label><input id="ranges" type="text"></div>
+                    <div class="field"><label class="label" for="ticks">tick数 秒</label><input id="ticks" type="text"></div><div class="field"><label class="label" for="vols">実現ボラ 秒</label><input id="vols" type="text"></div>
+                    <div class="field"><label class="label" for="rsi">RSI期間</label><input id="rsi" type="number" value="14"></div><div class="field"><label class="label" for="sma">SMA期間</label><input id="sma" type="text"></div>
+                    </div>
+                    <div class="field"><label class="label" for="signal-policy">Jevシグナル</label><select id="signal-policy"></select></div>
+                    <div class="notice" id="jev-supervisor" style="margin:8px 0">比較研究用 Jev監督: OFF</div>
+                    <div class="detail-grid">
+                    <div class="field"><label class="label" for="s-dir">方向確率</label><input id="s-dir" type="number" step=".01"></div><div class="field"><label class="label" for="s-margin">方向差</label><input id="s-margin" type="number" step=".01"></div>
+                    <div class="field"><label class="label" for="s-noise">ノイズ上限</label><input id="s-noise" type="number" step=".01"></div><div class="field"><label class="label" for="s-rev">反転上限</label><input id="s-rev" type="number" step=".01"></div>
+                    <div class="field"><label class="label" for="s-trend">trend最低</label><input id="s-trend" type="number" step=".1"></div><div class="field"><label class="label" for="s-spread">spread上限</label><input id="s-spread" type="number" step=".1"></div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </details>
           </div>
 
           <div id="spiritual-mode-panel" style="display:none;margin-top:8px">
@@ -159,49 +206,6 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       </div>
     </section>
 
-    <section class="side-section">
-      <details class="research-details">
-        <summary>研究・従来設定</summary>
-        <div class="details-body">
-          <div class="research-callout"><strong>Advanced / Research</strong><br>Feature、Signal Policy、従来コード戦略の細部を調整します。Jevおまかせだけを使う場合は触らなくてかまいません。</div>
-          <div class="field"><label class="label" for="profile">Featureプリセット</label><select id="profile"></select></div><div class="pillrow" id="feature-summary"></div>
-          <div class="feature-grid" style="margin-top:8px">
-            <label class="toggle"><input id="f-quote" type="checkbox"><span>価格</span></label>
-            <label class="toggle"><input id="f-random" type="checkbox"><span>対照</span></label><label class="toggle"><input id="f-rsi-on" type="checkbox"><span>RSI</span></label>
-            <input id="f-moon" type="checkbox" hidden>
-          </div>
-          <div class="detail-grid" style="margin-top:8px">
-            <div class="field"><label class="label" for="returns">価格変化 秒</label><input id="returns" type="text"></div><div class="field"><label class="label" for="ranges">値幅 秒</label><input id="ranges" type="text"></div>
-            <div class="field"><label class="label" for="ticks">tick数 秒</label><input id="ticks" type="text"></div><div class="field"><label class="label" for="vols">実現ボラ 秒</label><input id="vols" type="text"></div>
-            <div class="field"><label class="label" for="rsi">RSI期間</label><input id="rsi" type="number" value="14"></div><div class="field"><label class="label" for="sma">SMA期間</label><input id="sma" type="text"></div>
-          </div>
-          <div class="field"><label class="label" for="signal-policy">Jevシグナル</label><select id="signal-policy"></select></div>
-          <div class="notice" id="jev-supervisor" style="margin:8px 0">従来モード Jev監督: OFF</div>
-          <div class="detail-grid">
-            <div class="field"><label class="label" for="s-dir">方向確率</label><input id="s-dir" type="number" step=".01"></div><div class="field"><label class="label" for="s-margin">方向差</label><input id="s-margin" type="number" step=".01"></div>
-            <div class="field"><label class="label" for="s-noise">ノイズ上限</label><input id="s-noise" type="number" step=".01"></div><div class="field"><label class="label" for="s-rev">反転上限</label><input id="s-rev" type="number" step=".01"></div>
-            <div class="field"><label class="label" for="s-trend">trend最低</label><input id="s-trend" type="number" step=".1"></div><div class="field"><label class="label" for="s-spread">spread上限</label><input id="s-spread" type="number" step=".1"></div>
-          </div>
-          <div id="paper-advanced">
-            <div class="detail-grid">
-              <div class="field"><label class="label" for="p-window">判定時間 秒</label><input id="p-window" type="number" value="5" step=".5"></div>
-              <div class="field"><label class="label" id="p-trigger-label" for="p-trigger">エントリー幅</label><input id="p-trigger" type="number" value=".6" step="any"></div>
-              <div class="field"><label class="label" for="p-hold">最大保有 秒</label><input id="p-hold" type="number" value="8" step="1"></div>
-              <div class="field"><label class="label" for="p-cool">再entry待機 秒</label><input id="p-cool" type="number" value="2" step=".5"></div>
-              <div class="field"><label class="label" id="p-slip-label" for="p-slip">slippage（pips）</label><input id="p-slip" type="number" value="0" min="0" step="any"></div>
-              <div class="field"><label class="label" for="p-stale">stale判定 秒</label><input id="p-stale" type="number" value="5" min=".1" step=".5"></div>
-              <div class="field"><label class="label" for="p-bar-seconds">RSI/MA入力</label><select id="p-bar-seconds"><option value="0">tick</option><option value="5">5秒bar</option><option value="15">15秒bar</option><option value="60">1分bar</option><option value="300">5分bar</option></select></div>
-              <div class="field"><label class="label" for="p-rsi-period">RSI期間（本数）</label><input id="p-rsi-period" type="number" value="14" min="2"></div>
-              <div class="field"><label class="label" for="p-rsi-low">RSI売られすぎ</label><input id="p-rsi-low" type="number" value="30" min="0" max="100"></div>
-              <div class="field"><label class="label" for="p-rsi-high">RSI買われすぎ</label><input id="p-rsi-high" type="number" value="70" min="0" max="100"></div>
-              <div class="field"><label class="label" for="p-ma-fast">MA短期（本数）</label><input id="p-ma-fast" type="number" value="5" min="1"></div>
-              <div class="field"><label class="label" for="p-ma-slow">MA長期（本数）</label><input id="p-ma-slow" type="number" value="20" min="2"></div>
-              <div class="field"><label class="label" id="p-ma-gap-label" for="p-ma-gap">MA差 最低（pips）</label><input id="p-ma-gap" type="number" value=".2" min="0" step="any"></div>
-            </div>
-          </div>
-        </div>
-      </details>
-    </section>
     <section class="side-section">
       <a class="support-link" href="https://ko-fi.com/yo4e" target="_blank" rel="noopener noreferrer" title="JevPipを応援">☕ コーヒーを奢る</a>
     </section>
@@ -950,7 +954,7 @@ function signalGateSummary(d){
 function renderDecision(d,sup,paper=null){
   const supBox=$("jev-supervisor");
   if(supBox){
-    if(!sup?.enabled){supBox.textContent="従来モード Jev監督: OFF"}
+    if(!sup?.enabled){supBox.textContent="比較研究用 Jev監督: OFF"}
     else if(sup?.advice){
       const a=sup.advice;
       const strategy=a.strategy?(" / 戦略 "+a.strategy):"";
