@@ -1290,7 +1290,7 @@ def test_homepage_has_separate_token_warned_jev_backtest_ui():
     assert 'id="jbt-date" type="date"' in response.text
     assert "raw tick優先 / GMO 1分足fallback" in response.text
     assert "未保存日はGMO historical 1分足へ自動fallback" in response.text
-    assert "誤差があります" in response.text
+    assert '(r.data_source_note||"")' in response.text
     assert '<option value="1">1秒</option>' in response.text
     assert '<option value="300" selected>5分</option>' in response.text
     assert '<option value="86400">1日</option>' in response.text
