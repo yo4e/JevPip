@@ -17,7 +17,7 @@ JevPipはローカルで動くmarket research terminalです。
 3. Observer / Feature Lab
 4. Backtester
 
-paper取引の通常UIは **Jevモード / 戦略モード / スピリチュアルモード** の3タブに分離し、同時に複数の判断系を発動させない構成です。JevモードはJev専用、戦略モードはコード戦略専用、スピリチュアルモードはFifty+骨格＋決定論的な月相/星座方向源です。
+paper取引の通常UIは **Jevモード / 戦略モード / スピリチュアルモード** の3タブに分離し、同時に複数の判断系を発動させない構成です。JevモードはJev専用、戦略モードはコード戦略専用、スピリチュアルモードはFifty+骨格＋月相 / 星座 / タロット / コイントスの方向源です。コイントスはJev Fifty+のrandom controlとして使います。
 
 ## UI情報設計（Issue #21）
 
@@ -33,20 +33,27 @@ UIは機能を削らず、判断系を混ぜない構成へ整理しています
 - 既存element IDとAPI contractは維持し、情報階層の変更を中心とする
 
 
-## Jevモード（Issue #17）
+## Jevモード
 
-実装済みのpaper prototype:
+Jevおまかせはprimary paper workflowとして実装済みです。
 
-- 基準数量の0.5/1/2倍とKEEP/FLATから目標総数量を選び、差分だけ約定
+共通:
+- target-position方式で差分だけ約定
 - 増額・部分決済・全決済・反転、加重平均建値と費用配賦
-- 口座/equity・コスト・直近約定・確定足を同じJev stateへ投入
-- 標準1秒判断と独立した見通し時間、従来の8秒強制exitを不適用
-- 全任意制約のcheckbox、必須の鮮度・資金・session/version検証
-- liveとhistorical raw replayで同一policy、historicalファンダONは拒否
-- 約定表、損益分解、保有額・turnover・目標変更頻度・tick間隔
-- 同時開始/重複API call抑止、停止時のworker終了待ち
+- 口座/equity・コスト・直近約定・market stateをJevへ渡す
+- 必須の鮮度・資金・session/version検証
+- liveとhistorical replayで同じbroker/accounting semantics
+- 約定表、損益分解、保有額・turnover・tick間隔を記録
+- 同時開始 / 重複API callを抑止
 
-詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md)。有料APIでの収益性検証は未実施。以下のコード戦略・direction/supervisor・A/B/C/Dの説明は従来モードを指します。
+スタイル:
+- **デイトレ**: 1分足中心。標準は300秒ごとに10分先を再評価
+- **スキャルピング**: 直近raw/live tick中心。標準1秒ごとに30秒先を再評価
+- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。対称のnet TP/SLと決済後待機を使う
+
+Fifty+にはspread上限、往復コストgate、最大DD停止、FX paper leverage等のcode-owned safetyを共通適用します。詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md) と [FIFTY_PLUS.md](FIFTY_PLUS.md)。
+
+有料APIでの十分な試行数による収益性検証は未完了です。コード戦略・direction/supervisor・A/B/C/Dは比較研究用として残しています。
 
 ## 対応市場
 
@@ -251,33 +258,35 @@ Jev schemaには含めない:
 
 ### Strategy BT
 
-historical 1min pointsをPaperBrokerへ流す。
-
-対応:
-
-- Momentum
-- RSI
-- MA
+historical 1min pointsをPaperBrokerへ流し、Momentum / RSI / MAをPnL評価します。
 
 比較:
-
 - strategy
 - No Trade
 - Buy & Hold
 
 制約:
-
 - 1min close-only execution
 - intrabar high / low orderは復元しない
 - BTCはhistorical BID / ASKがないため `bid = ask = close`
-- Jev direct historical BTは未対応
+
+### Spiritual Fifty+ BT
+
+historical 1min pointsでFifty+のexecution/accountingを再生し、方向源だけを差し替えます。
+
+方向源:
+- moon phase
+- zodiac polarity
+- tarot
+- coin flip
+
+Jev APIは呼びません。coin flipはrandom controlです。
 
 ### Raw tick strategy comparison
 
-保存済みraw tickを同条件で再生。
+保存済みraw tickを同条件で再生します。
 
 比較:
-
 - No Trade
 - Buy & Hold
 - Momentum
@@ -288,9 +297,17 @@ deterministic supervisor ON/OFFとbar inputを切替可能。
 
 ### Statistical replay
 
-historical 1min dataをFeature pipelineへ流し、次の1分のmove / edgeを調べる。
+historical 1min dataをFeature pipelineへ流し、次の1分のmove / edgeを調べます。
 
-strategy PnL backtestではない。
+strategy PnL backtestではありません。
+
+### Jev historical replay
+
+保存済みraw tickを優先し、なければGMO historical 1分足へfallbackして、現在のJevを過去market stateへ再実行します。Jev APIを実際に呼ぶためtokenを消費します。
+
+### A/B/C/D experiment
+
+保存済みdecision traceを使い、technical / deterministic supervisor / Jev supervisor / recorded Jev directionを同じmarket path・cost model上で比較します。Jevへは再問い合わせしません。
 
 ## Private API / account
 
@@ -356,61 +373,37 @@ strategy PnL backtestではない。
 GMO FX scalp operation constraints.
 
 paper / read-only段階で実装済み:
-
 - cooldown
 - spread / fee / slippage
 - stale feed
 - market status gate
 - Private GET rate limiter
 
-live order導入まで保留:
-
+live order導入を検討する場合だけ残るもの:
 - POST limiter
 - idempotency
 - reconnect order/account synchronization
 - POST retry policy
 
-### Issue #4
-
-Technical strategy engine + Jev supervisor.
-
-実装済み:
-
-- strategy abstraction
-- Momentum / RSI / MA
-- deterministic supervisor
-- Jev supervisor bounded schema
-- raw tick comparison
-- historical strategy BT
-
-実装済み:
-
-- external context source / reuse research
-- provenance-first context schema
-- look-ahead-safe context selection
-
-実装済み:
-
-- BLS official calendar adapter
-- deterministic event-window supervisor
-- paper entry gate / UI integration
-- decision trace schema v1 / runtime JSONL persistence
-
-実装済み:
-
-- A/B/C/D experiment harness
-- blocked-entry counterfactual metrics
-
-未実装:
-
-- BOJ policy decision本体の安全な時刻表現
-- 実採取C-run traceでのexperiment validation
+現行scopeではlive tradingを実装しないため、急いで進めない。
 
 ### Issue #5
 
 Non-JPY FX pairs with historical cross-rate JPY accounting.
 
-未着手。
+未着手。対円FX 12ペアで研究できるため優先度は低い。
+
+### Issue #32
+
+BTC現物paperと暗号資産FX paperの分離。
+
+当面は **BTC現物paper = 1x固定 / SHORTはsynthetic** を維持する。暗号資産FX paperが必要になった時だけ、margin / fee / liquidation modelを別商品として設計する。
+
+### Fifty+ comparison experiment
+
+次の検証ではJev Fifty+とcoin flipを、同じmarket path・quantity・勝負幅・fee / slippage・spread gate・DD ruleで比較する。
+
+単発のcoin flip結果ではなく、複数seed / 複数期間でrandom controlの分布を見る設計を優先する。
 
 ## 次の大きなテーマ
 
@@ -423,7 +416,7 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 1. Fifty+を複数銘柄・複数時間帯でpaper運転し、ラウンド数とraw tickを蓄積
 2. 勝負幅を固定した区間を残し、UP / DOWN勝率、net PnL、fee / spread / slippage、1ラウンド所要時間を確認
 3. 別日・別区間でも同じ傾向が再現するか確認
-4. random control / code-only / 従来Jevとbaseline比較し、50%超過が偶然や相場偏りでないかを見る
+4. coin flip random controlを複数seedで回し、code-only / 従来Jevも含めてbaseline比較し、50%超過が偶然や相場偏りでないかを見る
 5. 従来supervisorは採取したC-run traceを `uv run jevpip experiment --trace ...` でA/B/C/D比較
 6. historical fundamentalsは観測時点のrevisionを再現できる設計を先に整える
 
@@ -434,7 +427,7 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 - fee / spread / slippage
 - 平均ラウンド時間
 - 銘柄・時間帯ごとの偏り
-- random / code-only / 従来Jevとの差
+- coin flip random control / code-only / 従来Jevとの差
 - Jev call / token効率
 
 目的は、一時的な含み益ではなく、**Fifty+の方向二択に再現性のある50%超過があるか**、またコスト込みで研究価値が残るかを確認すること。
@@ -445,9 +438,22 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 
 1. README.md
 2. docs/CURRENT_STATE.md
-3. docs/JEV_AUTOPILOT.md と DESIGN.md の Section 38
-4. GitHub Issue #17（従来supervisorについては #4）
+3. docs/JEV_AUTOPILOT.md
+4. docs/FIFTY_PLUS.md
+5. 必要な場合だけ DESIGN.md の該当Section
+
+主要な完了Issue:
+- #4: technical strategy / supervisor / A-B-C-D
+- #17: Jevおまかせ
+- #21: UI情報設計
+- #22: daytrade / scalp / Fifty+
+
+現在の主なopen work:
+- #3: live orderを将来検討する場合の運用制約
+- #5: non-JPY FXのJPY accounting
+- #32: BTC暗号資産FX paperの将来設計
+- Fifty+ direction-source comparison
 
 次の作業テーマ:
 
-> Fifty+を含むJevおまかせを複数区間でpaper検証し、random / code-only / 従来Jevと同条件で比較する。
+> Jev Fifty+とcoin flip random controlを、同じmarket path / cost modelで比較できるexperimentへ整理し、十分な試行数で検証する。
