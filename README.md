@@ -7,7 +7,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 - historical / live chart
 - raw tick収集
 - code-based paper trading
-- Jevおまかせ（コスト・口座状態を見た目標ポジション判断）
+- 排他的な3つのpaper判断モード（Jev / 戦略 / スピリチュアル実験）
 - strategy backtest
 - raw tick replay comparison
 - optionalなJev研究レイヤー
@@ -16,9 +16,13 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 > **現時点では実売買しません。** 現行スコープはpaper tradingとread-onlyな実口座参照です。GMO Private APIは口座・建玉のGET参照だけを使い、注文POST経路は実装していません。将来live tradingを検討する場合も、別途安全設計と明示的な実装判断を先に行います。
 
-Jevは必須ではありません。Jev OFFでも、チャート・データ収集・paper strategy・backtestは動きます。
+paper取引の判断系は、UI上で **Jevモード / 戦略モード / スピリチュアルモード** の3つに分離しています。同時には動きません。
 
-UIの基本paper modeは **Jevおまかせ** です。現在は **デイトレ / スキャルピング / Fifty+** の3スタイルを選べます。デイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tickを中心に標準1秒ごとに30秒先を再評価します。Fifty+は1ポジションずつ持つ実験モードで、ポジション決済後は標準60秒待ってからJevへ次の `UP / DOWN` 二択を問い合わせ、同じ幅のネット利確・損切りへ進みます。FXはpips、BTCは円損益で勝負幅を指定できます。見通す時間は判断間隔と独立し、従来の固定TP/SL・8秒決済は適用しません。任意制約、手数料込みの損益内訳、約定履歴をlive paperとJev BTで共用します。おまかせOFFで従来モードに戻せます。仕様・制限・検証手順は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) を参照してください。Fifty+の発想、実験仮説、1:1の考え方は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) にまとめています。
+- **Jevモード**: Jev APIだけが売買判断を担当。デイトレ / スキャルピング / Fifty+を選ぶ
+- **戦略モード**: Jev APIを呼ばず、Momentum / RSI逆張り / MAトレンドのコード戦略を使う
+- **スピリチュアルモード**: Jev APIと通常戦略を使わず、Fifty+の売買骨格に月相または太陽星座の決定論的な方向ルールを接続する実験用baseline
+
+Jevモードのデイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tick中心で標準1秒ごとに30秒先を再評価します。Fifty+は1ポジションずつ持ち、決済後は標準60秒待って次の方向を決めます。FXはpips、BTCは円損益で対称の勝負幅を指定できます。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 
 ## ライセンス・免責・サポート
@@ -64,7 +68,7 @@ uv run jevpip ui
 
 ## ブラウザUI
 
-UIは日本語です。中央にチャート、右にJevおまかせ中心のセッション設定、下に現在状態・検証・ログを置いた1画面の市場研究UIです。
+UIは日本語です。中央にチャート、右に3つの排他的な判断モードを持つセッション設定、下に現在状態・検証・ログを置いた1画面の市場研究UIです。
 
 主な機能:
 
@@ -77,7 +81,7 @@ UIは日本語です。中央にチャート、右にJevおまかせ中心のセ
 - live MIDをhistorical chart末尾へ接続
 - 仮想資金・建玉・PnL表示
 - paper tradeのOPEN / CLOSE marker
-- Jev ON / OFF
+- Jev / 戦略 / スピリチュアルのpaper判断モード切替
 - read-onlyなGMO FX実口座表示（右上の ⚙ 設定内）
 - 下部ターミナルの高さをドラッグで変更
 - 右サイド下部の控えめなKo-fi支援リンク
@@ -113,15 +117,30 @@ PaperBrokerでは比較研究のためLONG / SHORT両方向を扱いますが、
 
 ## Paper trading
 
-通常のpaper利用は **Jevおまかせ** が中心です。
+paper取引では、判断方式を3つの排他的なモードから選びます。
+
+### Jevモード
+
+Jev APIが売買判断を担当し、コード戦略や旧research filterを売買判断へ混ぜません。
 
 - **デイトレ**: 1分足中心、標準5分ごとに10分先を再評価
 - **スキャルピング**: 直近tick中心、標準1秒ごとに30秒先を再評価
 - **Fifty+**: 1ポジションずつ。決済後は標準60秒待ってからJevが次の `UP / DOWN` を二択で判断
 
-Fifty+では数量やTP/SLをJevへ任せず、コード側が対称のネット損益境界、spread、fee、slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
+### 戦略モード
 
-**JevおまかせOFF**では比較・研究用の従来モードへ戻り、Momentum / RSI mean reversion / MA trend、Jev direction gate、deterministic / Jev supervisorを組み合わせられます。従来モードの細部は [CURRENT_STATE.md](./docs/CURRENT_STATE.md) と [DESIGN.md](./DESIGN.md) に残しています。
+Jev APIを呼ばず、コードだけでpaper売買します。通常UIのおすすめプリセットは Momentum / RSI mean reversion / MA trend です。
+
+### スピリチュアルモード
+
+Fifty+のentry / exit骨格、安全弁、会計をそのまま使い、次の方向だけを決定論的な実験ルールへ差し替えます。
+
+- **月相**: 朔望月の前半をLONG、後半をSHORTとする単純な二択baseline
+- **太陽星座の極性**: 固定カレンダーの12星座を陽/陰へ分け、LONG / SHORTへ対応させるbaseline
+
+これは予測力や収益性を前提とするものではありません。外部APIを使わず再現可能な、比較・対照実験用のルールです。
+
+Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 PaperBroker / AutopilotBrokerは主に次を反映します。
 
@@ -130,7 +149,7 @@ PaperBroker / AutopilotBrokerは主に次を反映します。
 - instrumentごとのreference fee
 - code-owned risk / exit rules
 - FX paperの最大25xレバレッジによる必要証拠金近似（BTCは1x固定）
-- Jevおまかせの最大DD 20%初期停止
+- Jev / スピリチュアルFifty+の最大DD 20%初期停止
 - single position
 - net / gross PnL、fee / slippage cost、Profit Factor、max drawdown、win rate
 
