@@ -203,6 +203,31 @@ class StrategyBacktestRequest(BaseModel):
         return value
 
 
+class SpiritualBacktestRequest(BaseModel):
+    instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
+    date: str = Field(pattern=r"^\d{8}$")
+    oracle: Literal["moon_phase", "zodiac_polarity"] = "moon_phase"
+    initial_balance: float = Field(default=100000, gt=0, le=1000000000)
+    size: float = Field(gt=0, le=100000000)
+    paper_leverage: float = Field(default=25.0, ge=1, le=25)
+    target_units: float = Field(default=10.0, gt=0, le=100000000)
+    target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
+    reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
+    max_spread_units: float = Field(default=1.5, ge=0, le=100000000)
+    max_drawdown_pct: float = Field(default=0.20, gt=0, le=1)
+    slippage_units: float = Field(default=0.0, ge=0, le=100000000)
+    limit: int | None = Field(default=None, ge=2, le=10000)
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        try:
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError as exc:
+            raise ValueError("日付はYYYYMMDD形式で指定してください。") from exc
+        return value
+
+
 class BacktestRequest(BaseModel):
     instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{8}$")
@@ -521,6 +546,31 @@ async def run_strategy_backtest_api(
         raise HTTPException(
             status_code=502,
             detail=f"戦略バックテストに失敗しました: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.post("/api/spiritual-backtest")
+async def run_spiritual_backtest_api(
+    request: SpiritualBacktestRequest,
+) -> dict[str, Any]:
+    try:
+        get_instrument(request.instrument_id)
+        payload = request.model_dump()
+        instrument_id = payload.pop("instrument_id")
+        date = payload.pop("date")
+        limit = payload.pop("limit")
+        return await controller.run_spiritual_backtest(
+            date=date,
+            instrument_id=instrument_id,
+            config=payload,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"スピバックテストに失敗しました: {type(exc).__name__}: {exc}",
         ) from exc
 
 
