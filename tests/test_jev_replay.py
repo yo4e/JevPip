@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import jevpip.jev_replay as replay
 from jevpip.broker.paper import PaperConfig
 from jevpip.jev_replay import (
     MAX_JEV_REPLAY_CALLS,
@@ -86,6 +87,37 @@ def _write_ticks(data_dir: Path) -> Path:
     return path
 
 
+def _historical_ticks():
+    rows = []
+    for minute, (bid, ask) in enumerate(
+        [
+            (150.000, 150.002),
+            (150.010, 150.012),
+            (150.020, 150.022),
+            (150.030, 150.032),
+        ],
+        start=1,
+    ):
+        stamp = f"2026-09-19T00:{minute:02d}:00+00:00"
+        rows.append(
+            replay._tick_from_row(
+                {
+                    "instrument_id": "USD_JPY",
+                    "symbol": "USD_JPY",
+                    "display_symbol": "USD/JPY",
+                    "bid": str(bid),
+                    "ask": str(ask),
+                    "market_timestamp": stamp,
+                    "received_at": stamp,
+                    "price_unit": "0.01",
+                    "move_unit_label": "pips",
+                    "status": "HISTORICAL",
+                }
+            )
+        )
+    return rows
+
+
 def _paper_config() -> PaperConfig:
     return PaperConfig(
         initial_balance=100000,
@@ -140,6 +172,95 @@ def test_plan_uses_raw_ticks_and_configurable_cadence(tmp_path: Path):
     assert one_second.planned_max_calls == 5
     assert two_seconds.planned_max_calls == 3
     assert five_minutes.planned_max_calls == 1
+
+
+def test_plan_prefers_raw_ticks_over_historical_fallback(tmp_path: Path, monkeypatch):
+    _write_ticks(tmp_path)
+
+    def must_not_fetch(*args, **kwargs):
+        pytest.fail("historical fallback must not run when raw ticks exist")
+
+    monkeypatch.setattr(replay, "load_historical_ticks", must_not_fetch)
+    plan = plan_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time=None,
+        duration_seconds=4,
+        cadence_seconds=1,
+    )
+    assert plan.source_kind == "raw_ticks"
+    assert plan.source_path is not None
+    assert plan.replay_mode == "raw_tick"
+
+
+def test_plan_falls_back_to_gmo_historical_1m_without_raw_ticks(
+    tmp_path: Path,
+    monkeypatch,
+):
+    ticks = _historical_ticks()
+
+    def fake_history(date, *, instrument_id, limit=None):
+        assert date == "20260919"
+        assert instrument_id == "USD_JPY"
+        return ticks, "fx_bid_ask_close"
+
+    monkeypatch.setattr(replay, "load_historical_ticks", fake_history)
+    plan = plan_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-19",
+        start_time=None,
+        duration_seconds=180,
+        cadence_seconds=1,
+    )
+    assert plan.source_kind == "gmo_historical_1m"
+    assert plan.source_path is None
+    assert plan.replay_mode == "fx_bid_ask_close"
+    assert plan.selected_ticks == 4
+    assert plan.planned_max_calls == 4
+
+    preview = preview_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-19",
+        start_time=None,
+        duration_seconds=180,
+        cadence_seconds=1,
+    )
+    assert preview["source_kind"] == "gmo_historical_1m"
+    assert "GMO historical 1分足" in preview["source_note"]
+
+
+def test_replay_runs_on_historical_1m_fallback_and_marks_result(
+    tmp_path: Path,
+    monkeypatch,
+):
+    ticks = _historical_ticks()
+    monkeypatch.setattr(
+        replay,
+        "load_historical_ticks",
+        lambda date, *, instrument_id, limit=None: (ticks, "fx_bid_ask_close"),
+    )
+    client = FakeJevClient()
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-19",
+        start_time=None,
+        duration_seconds=180,
+        cadence_seconds=60,
+        profile={"quote": True},
+        signal_policy=SignalPolicy(),
+        paper_config=_paper_config(),
+        jev_client=client,
+        acknowledged_token_use=True,
+    )
+    assert result["data_source"] == "gmo_historical_1m"
+    assert result["replay_mode"] == "fx_bid_ask_close"
+    assert "誤差があります" in result["data_source_note"]
+    assert result["summary"]["calls"] == client.calls
+    assert client.calls > 0
 
 
 def test_preview_estimates_tokens_from_recent_reported_usage(tmp_path: Path):
