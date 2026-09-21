@@ -19,6 +19,7 @@ from jevpip.jev.autopilot import REASONS, attach_target, question_specs
 from jevpip.jev_replay import run_jev_historical_replay
 from jevpip.signals import SignalPolicy
 from jevpip.web.app import PaperDemoInput
+from jevpip.web.schemas import ObserverStartRequest
 from jevpip.async_work import joined_thread
 from jevpip.observer import _should_request_jev
 
@@ -69,7 +70,7 @@ def test_factory_preserves_legacy():
     assert isinstance(make_paper_broker(PaperConfig(autopilot_enabled=True)), AutopilotBroker)
 
 
-def test_scalp_state_exposes_recent_tick_tape_but_daytrade_does_not():
+def test_daytrade_and_scalp_share_full_trader_context():
     scalp = broker(autopilot_style="scalp", autopilot_horizon_seconds=30)
     daytrade = broker(autopilot_style="daytrade", autopilot_horizon_seconds=600)
     for second in range(45):
@@ -79,24 +80,47 @@ def test_scalp_state_exposes_recent_tick_tape_but_daytrade_does_not():
 
     scalp_state = scalp.decision_state(START + timedelta(seconds=44))["autopilot"]
     daytrade_state = daytrade.decision_state(START + timedelta(seconds=44))["autopilot"]
-    assert scalp_state["style"] == "scalp"
-    assert len(scalp_state["recent_ticks"]) == 40
-    assert scalp_state["recent_ticks"][-1]["delta_units"] == pytest.approx(0.01)
+    for state, style in ((scalp_state, "scalp"), (daytrade_state, "daytrade")):
+        assert state["style"] == style
+        assert state["context_version"] == "trader_context_v1"
+        assert len(state["recent_ticks"]) == 40
+        assert state["recent_ticks"][-1]["delta_units"] == pytest.approx(0.01)
+        assert set(state["timeframes"]) == {"1min", "5min", "15min", "1hour"}
+        assert "clock" in state
+        assert "account" in state
+        assert "performance" in state
+        assert "costs" in state
     assert len(scalp_state["closed_1m_bars"]) <= 5
-    assert daytrade_state["style"] == "daytrade"
-    assert "recent_ticks" not in daytrade_state
+    assert len(daytrade_state["closed_1m_bars"]) <= 30
 
 
-def test_scalp_question_prioritizes_tick_tape():
-    b = broker(autopilot_style="scalp", autopilot_horizon_seconds=30)
+@pytest.mark.parametrize("style,horizon", [("scalp", 30), ("daytrade", 600)])
+def test_regular_jev_questions_tell_model_to_weigh_full_context(style, horizon):
+    b = broker(autopilot_style=style, autopilot_horizon_seconds=horizon)
     b.on_tick(tick(0))
-    specs = question_specs(b.decision_state(START))
-    instructions = specs["target_position"]["instructions"]
-    assert "recent_ticks" in instructions
-    assert "scalping" in instructions
+    instructions = question_specs(b.decision_state(START))["target_position"]["instructions"]
+    assert "1m/5m/15m/1h" in instructions
+    assert "account/PnL" in instructions
+    assert "Decide for yourself" in instructions
 
 
-def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
+def test_live_cadence_schema_defaults_to_fifteen_minutes_and_accepts_it():
+    request = ObserverStartRequest(profile={}, signal_policy={})
+    assert request.jev_every_seconds == pytest.approx(900)
+    assert ObserverStartRequest(
+        profile={},
+        signal_policy={},
+        jev_every_seconds=900,
+    ).jev_every_seconds == pytest.approx(900)
+    with pytest.raises(ValueError):
+        ObserverStartRequest(
+            profile={},
+            signal_policy={},
+            jev_every_seconds=3600.1,
+        )
+
+
+def test_paper_demo_accepts_styles_and_current_defaults():
     defaults = PaperDemoInput()
     assert defaults.paper_leverage == 25
     assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
