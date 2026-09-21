@@ -34,19 +34,24 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
     policy = state["autopilot"]
     style = policy.get("style", "daytrade")
     if style == "fifty":
+        fifty = policy["fifty_plus"]
+        target_value = float(fifty["target_value"])
+        target_label = str(fifty["target_label"])
+        target_text = f"{target_value:g} {target_label}"
         target_instructions = (
-            "Fifty+ round: choose which symmetric NET boundary is reached first from the "
-            "current market state. You MUST choose exactly one option from "
+            f"Fifty+ round: the configured symmetric NET race width is {target_text}. "
+            f"Predict which directional boundary is reached first: UP-side +{target_text} "
+            f"or DOWN-side -{target_text}. You MUST choose exactly one option from "
             "`autopilot.targets`: UP or DOWN. UP maps to one LONG position and DOWN maps "
-            "to one SHORT position. There is no abstain, FLAT, KEEP, or position sizing "
+            "to one SHORT position. The broker settles the chosen position using the same "
+            f"symmetric +{target_text} / -{target_text} NET profit/loss width after spread, "
+            "fees, and slippage. There is no abstain, FLAT, KEEP, or position sizing "
             "decision. Use the supplied trader context broadly: current quote, recent ticks, "
             "1m/5m/15m/1h price structure and indicators, clock, account/PnL history, "
             "recent executions, costs, constraints, and any supplied external context. "
             "Decide for yourself which information is useful, irrelevant, noisy, or "
             "conflicting; no technical indicator or past result is a mandatory rule. "
-            "The broker owns execution, position size, and the equal take-profit/stop-loss "
-            "boundary described in `autopilot.fifty_plus`. Confidence is not a measured "
-            "win rate."
+            "Confidence is not a measured win rate."
         )
     elif style == "scalp":
         target_instructions = (
