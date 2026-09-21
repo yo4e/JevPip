@@ -12,9 +12,7 @@ from jevpip.broker.strategies import (
     StrategyName,
     ma_trend_signal,
     momentum_signal,
-    moon_phase_signal,
     rsi_mean_reversion_signal,
-    zodiac_polarity_signal,
 )
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_supervisor
 
@@ -64,6 +62,7 @@ class PaperConfig:
     autopilot_fifty_target_units: float = 5.0
     autopilot_fifty_target_jpy: float = 500.0
     autopilot_fifty_reentry_seconds: float = 60.0
+    autopilot_fifty_oracle: str = "jev"
     autopilot_ttl_seconds: float = 5.0
     autopilot_confirmations: int = 2
     autopilot_max_quantity: float | None = None
@@ -662,12 +661,6 @@ class PaperBroker:
                 decision.reason,
                 {**decision.metrics, "semantics": semantics},
             )
-
-        if strategy == "moon_phase":
-            return moon_phase_signal(at=at)
-
-        if strategy == "zodiac_polarity":
-            return zodiac_polarity_signal(at=at)
 
         if strategy == "ma_trend":
             decision = ma_trend_signal(
