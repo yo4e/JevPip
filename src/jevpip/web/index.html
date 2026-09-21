@@ -71,7 +71,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="session-stat" hidden><span>実行</span><strong id="session-run-state">停止中</strong></div>
         <div class="session-stat"><span>データ</span><strong id="session-data-state">開始するとraw tickを保存します</strong></div>
         <div class="session-stat" hidden><span>デモ口座</span><strong id="session-paper-state">デモOFF</strong></div>
-        <div class="session-stat" hidden><span>最新Jev</span><strong id="session-target-state">-</strong></div>
+        <div class="session-stat" hidden><span>最新判断</span><strong id="session-target-state">-</strong></div>
       </div>
       <div class="field"><label class="label" for="mode">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper" selected>デモ自動売買</option></select></div>
       <div id="jev-access-observe-slot">
@@ -245,7 +245,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       </div>
 
       <div class="terminal-cell">
-        <h3>最新Jev判断</h3>
+        <h3 id="decision-panel-title">最新判断</h3>
         <div id="decision-empty" class="empty">まだ判断はありません。</div>
         <div id="decision" style="display:none">
           <div class="money" id="decision-signal">WAIT</div><div class="decision-meta" id="decision-time"></div>
@@ -800,7 +800,7 @@ async function refreshPreviewQuote(force=false){
     console.debug("preview quote unavailable",e);
   }finally{state.previewQuotePending=false}
 }
-async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.history=[];state.previewQuote=null;state.previewQuoteAt=0;$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="Jev OFF";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);refresh()}
+async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.history=[];state.previewQuote=null;state.previewQuoteAt=0;$("mid").textContent="-";$("spread").textContent="spread -";$("status-sub").textContent="未開始";$("signal").textContent="-";$("signal-sub").textContent="";renderPaper(null);renderDecision(null);drawChart([],[]);await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);refresh()}
 
 async function start(){
   if(!state.ready||state.pendingSession||state.lastStatus?.running)return;
@@ -891,7 +891,7 @@ function signalGateSummary(d){
   if(quality.length)text+=" / 研究フィルタWAIT: "+quality.join(" / ");
   return text;
 }
-function renderDecision(d,sup){
+function renderDecision(d,sup,paper=null){
   const supBox=$("jev-supervisor");
   if(supBox){
     if(!sup?.enabled){supBox.textContent="従来モード Jev監督: OFF"}
@@ -903,7 +903,34 @@ function renderDecision(d,sup){
     }else{supBox.textContent="従来モード Jev監督: 待機中"}
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
-  if(!d?.jev){$("decision-empty").textContent=!state.lastStatus?.running?"開始後のJev判断をここに表示します。":state.lastStatus?.with_jev?"最初の判断を待っています。":"Jev APIはOFFです。";$("session-target-state").textContent="-";$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return}
+  if(!d?.jev){
+    const spiritual=paper?.spiritual_decision;
+    const strategy=!paper?.autopilot_enabled?paper?.strategy_decision:null;
+    const local=spiritual||strategy;
+    if(local){
+      const title=spiritual?"スピリチュアル判断":"戦略判断";
+      $("decision-panel-title").textContent=title;
+      $("decision-empty").style.display="none";$("decision").style.display="block";
+      $("decision-signal").textContent=local.signal||"WAIT";
+      $("session-target-state").textContent=local.signal||"WAIT";
+      ["up","down","flat"].forEach(id=>$(id).parentElement.hidden=true);
+      $("latency").textContent="—";
+      const at=spiritual?.at;
+      $("decision-time").textContent=at?"判断時刻 "+new Date(at).toLocaleString("ja-JP"):"";
+      if(spiritual){
+        const m=spiritual.metrics||{},source=spiritual.oracle==="moon_phase"?"月相 🌙":"太陽星座 ♈";
+        const detail=spiritual.oracle==="moon_phase"?("phase "+(m.phase||"-")+" / 月齢 "+(m.age_days??"-")):("sign "+(m.sun_sign||"-")+" / polarity "+(m.polarity||"-"));
+        $("signal-detail").textContent=source+" / "+detail+" / Fifty+";
+      }else{
+        $("signal-detail").textContent=(local.reason||"code strategy")+" / Jev API不使用";
+      }
+      return;
+    }
+    $("decision-panel-title").textContent="最新判断";
+    $("decision-empty").textContent=!state.lastStatus?.running?"開始後の判断をここに表示します。":state.lastStatus?.with_jev?"最初のJev判断を待っています。":"判断を待っています。";
+    $("session-target-state").textContent="-";$("decision-empty").style.display="block";$("decision").style.display="none";$("signal-detail").textContent="";return
+  }
+  $("decision-panel-title").textContent="最新Jev判断";
   $("decision-empty").style.display="none";$("decision").style.display="block";
   const a=d.jev.answers||{},fifty=d.state?.autopilot?.style==="fifty",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
   const decisionText=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
@@ -1091,6 +1118,20 @@ async function refreshContext(){
 }
 function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.direction_signal||e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
 
+function activeDecisionModeLabel(s){
+  const p=s?.paper,cfg=p?.config||{};
+  if(!p)return s?.with_jev?"Jev観測":"観測";
+  if(p.autopilot_enabled){
+    const oracle=cfg.autopilot_fifty_oracle||"jev";
+    if(oracle==="moon_phase")return "スピ: 月相 🌙";
+    if(oracle==="zodiac_polarity")return "スピ: 星座 ♈";
+    const style=cfg.autopilot_style==="scalp"?"スキャ":cfg.autopilot_style==="fifty"?"Fifty+":"デイトレ";
+    return "Jev: "+style;
+  }
+  const labels={momentum:"モメンタム",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
+  return "戦略: "+(labels[cfg.strategy]||cfg.strategy||"ルール");
+}
+
 async function refresh(){
   try{
     const s=await api("/api/status");
@@ -1103,16 +1144,18 @@ async function refresh(){
     $("status-sub").textContent=activeInstrument?(s.profile_name||"未開始"):"未開始";
         syncSessionControls(s,activeInstrument);
     const spec=state.config?.instruments?.[selectedInstrument]||instrumentSpec();
-    $("session-data-state").textContent=state.pendingSession==="start"?"起動準備中…":state.pendingSession==="stop"?"停止処理中…":s.running&&activeInstrument?((s.latest_market?"● raw tick収集中":"価格を待機中")+" · Jev API "+(s.with_jev?"ON":"OFF")):"停止中 · 開始するとraw tickを保存";
+    const activePaper=activeInstrument?s.paper:null,modeLabel=activeDecisionModeLabel(s);
+    $("session-data-state").textContent=state.pendingSession==="start"?"起動準備中…":state.pendingSession==="stop"?"停止処理中…":s.running&&activeInstrument?((s.latest_market?"● raw tick収集中":"価格を待機中")+" · "+modeLabel):"停止中 · 開始するとraw tickを保存";
     const m=s.running&&activeInstrument?s.latest_market:(!s.running&&state.previewQuote?.instrument_id===selectedInstrument?state.previewQuote:null);
     renderTopQuote(m,!s.running&&Boolean(m));
     if(!s.running)refreshPreviewQuote();
     const d=activeInstrument?s.latest_decision:null;
-    $("signal").textContent=d?.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d?.direction_signal||d?.research_signal||"-";
-    $("signal-sub").textContent=s.running&&activeInstrument?(s.with_jev?"Jev ON":"Jev OFF"):"";
-    renderPaper(activeInstrument?s.paper:null);
+    const localDecision=activePaper?.spiritual_decision||(!activePaper?.autopilot_enabled?activePaper?.strategy_decision:null);
+    $("signal").textContent=d?.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d?.direction_signal||d?.research_signal||localDecision?.signal||"-";
+    $("signal-sub").textContent=s.running&&activeInstrument?modeLabel:"";
+    renderPaper(activePaper);
     renderEventContext(activeInstrument?s.external_context:null);
-    renderDecision(d,activeInstrument?s.jev_supervisor:null);
+    renderDecision(d,activeInstrument?s.jev_supervisor:null,activePaper);
     renderJevUsage(s.jev_usage);
     drawChart(activeChartPoints(),activeInstrument?s.paper?.trades:[]);
     renderLogs(activeInstrument?s.events:[]);
