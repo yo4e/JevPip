@@ -827,7 +827,25 @@ class AutopilotBroker(PaperBroker):
             # Transition estimate only: previously paid entry costs are sunk.
             transition = change*((ask-bid)/2+self.slippage_price+(ask+bid)/2*self.fee_rate)
             targets[key] = {"side": side, "quantity": str(quantity)}
-            if self.config.autopilot_style != "fifty":
+            if self.config.autopilot_style == "fifty":
+                fifty_target = (
+                    self.config.autopilot_fifty_target_jpy
+                    if self.instrument.market_kind == "crypto_spot"
+                    else self.config.autopilot_fifty_target_units
+                )
+                fifty_label = (
+                    "円"
+                    if self.instrument.market_kind == "crypto_spot"
+                    else self.config.move_unit_label
+                )
+                signed_boundary = fifty_target if key == "UP" else -fifty_target
+                targets[key].update(
+                    directional_boundary_value=signed_boundary,
+                    directional_boundary_label=(
+                        f"{signed_boundary:+g} {fifty_label}"
+                    ),
+                )
+            else:
                 targets[key].update(
                     notional_jpy=float(quantity*(ask+bid)/2),
                     estimated_transition_cost_jpy=float(transition),
