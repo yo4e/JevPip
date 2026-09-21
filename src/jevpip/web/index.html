@@ -212,7 +212,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 <section class="terminal" id="terminal">
   <nav class="tabs" aria-label="JevPip terminal">
     <span class="tab-group-label">NOW</span><button class="tabbtn active" data-tab="dashboard">現在</button>
-    <span class="tab-group-label">BACKTEST</span><button class="tabbtn" data-tab="strategybt">戦略BT</button><button class="tabbtn" data-tab="jevbt">Jev BT</button>
+    <span class="tab-group-label">BACKTEST</span><button class="tabbtn" data-tab="strategybt">戦略BT</button><button class="tabbtn" data-tab="spiritualbt">スピBT 🌙</button><button class="tabbtn" data-tab="jevbt">Jev BT</button>
     <span class="tab-group-label">RESEARCH</span><button class="tabbtn" data-tab="compare">戦略比較</button><button class="tabbtn" data-tab="backtest">統計リプレイ</button><button class="tabbtn" data-tab="logs">ログ</button>
   </nav>
 
@@ -292,6 +292,51 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="notice" id="sbt-mode-note" style="margin-top:8px"></div>
         <div class="muted" id="sbt-exits" style="font-size:10px;margin-top:6px"></div>
         <details style="margin-top:8px"><summary>約定履歴</summary><div id="sbt-executions" class="table-scroll"></div></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-spiritualbt">
+    <div class="back-wrap">
+      <div class="bt-guide"><div><span>DATA</span><strong>historical 1分足</strong></div><div><span>JEV API / TOKEN</span><strong>使わない・消費なし</strong></div><div><span>PURPOSE</span><strong>Fifty+ × 月相 / 星座</strong></div></div>
+      <div class="notice" style="margin-bottom:9px"><strong>スピBT 🌙</strong> はFifty+の売買骨格を使い、方向だけを月相または太陽星座の決定論ルールで選びます。占術の予測力を前提にしたものではなく、再現可能な比較実験です。</div>
+      <div class="mode-grid">
+        <div class="field"><label class="label" for="spbt-date">日付</label><input id="spbt-date" type="date"></div>
+        <div class="field"><label class="label" for="spbt-oracle">方向を決めるもの</label><select id="spbt-oracle"><option value="moon_phase">月相 🌙</option><option value="zodiac_polarity">太陽星座の極性 ♈</option></select></div>
+        <div class="field"><label class="label" for="spbt-limit">最大本数</label><input id="spbt-limit" type="number" min="2" max="10000" placeholder="空欄=全件"></div>
+      </div>
+      <div class="mode-grid">
+        <div class="field"><label class="label" id="spbt-size-label" for="spbt-size">数量</label><input id="spbt-size" type="number" value="1000" min="0.00000001" step="any"></div>
+        <div class="field"><label class="label" for="spbt-balance">仮想残高</label><input id="spbt-balance" type="number" value="100000" min="1"></div>
+        <div class="field"><label class="label" id="spbt-target-label" for="spbt-target">勝負幅</label><input id="spbt-target" type="number" value="10" min="0.01" step="any"></div>
+      </div>
+      <div class="mode-grid">
+        <div class="field"><label class="label" for="spbt-reentry">決済後の待機（秒）</label><input id="spbt-reentry" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くするとhistoricalでも往復ビンタ寄りになります。</div></div>
+        <div class="field"><label class="label" id="spbt-spread-label" for="spbt-spread">最大spread</label><input id="spbt-spread" type="number" value="1.5" min="0" step="any"></div>
+        <div class="field"><label class="label" id="spbt-slip-label" for="spbt-slip">slippage</label><input id="spbt-slip" type="number" value="0" min="0" step="any"></div>
+      </div>
+      <div class="mode-grid">
+        <div class="field"><label class="label" for="spbt-leverage">最大レバレッジ</label><input id="spbt-leverage" type="number" value="25" min="1" max="25" step="1"></div>
+        <div class="field"><label class="label" for="spbt-dd">最大DDで停止（%）</label><input id="spbt-dd" type="number" value="20" min="1" max="100" step="1"></div>
+      </div>
+      <div class="notice" id="spbt-config-note" style="margin-top:8px">設定を読み込み中…</div>
+      <button class="btn primary" id="spbt-run" style="margin-top:8px">スピバックテスト</button>
+      <div class="back-result" id="spbt-result" style="display:none">
+        <div class="results">
+          <div class="result"><span>スピ損益</span><strong id="spbt-pnl">-</strong></div>
+          <div class="result"><span>Buy & Hold</span><strong id="spbt-hold-pnl">-</strong></div>
+          <div class="result"><span>No Trade</span><strong id="spbt-no-trade">-</strong></div>
+          <div class="result"><span>Profit Factor</span><strong id="spbt-pf">-</strong></div>
+          <div class="result"><span>最大DD</span><strong id="spbt-max-dd">-</strong></div>
+          <div class="result"><span>勝率</span><strong id="spbt-win">-</strong></div>
+          <div class="result"><span>決済</span><strong id="spbt-trades">-</strong></div>
+          <div class="result"><span>手数料</span><strong id="spbt-fees">-</strong></div>
+          <div class="result"><span>LONG / SHORT</span><strong id="spbt-directions">-</strong></div>
+          <div class="result"><span>平均1取引</span><strong id="spbt-avg">-</strong></div>
+        </div>
+        <div class="notice" id="spbt-mode-note" style="margin-top:8px"></div>
+        <div class="muted" id="spbt-exits" style="font-size:10px;margin-top:6px"></div>
+        <details style="margin-top:8px"><summary>約定履歴</summary><div id="spbt-executions" class="table-scroll"></div></details>
       </div>
     </div>
   </section>
@@ -734,8 +779,19 @@ function applyInstrumentDefaults(){
   $("p-sl-label").textContent="損切り幅 / Stop Loss（"+i.move_unit_label+"）";
   $("p-slip-label").textContent="slippage（"+i.move_unit_label+"）";
   $("p-ma-gap-label").textContent="MA差 最低（"+i.move_unit_label+"）";
+  $("spbt-size").value=i.default_paper_size;
+  $("spbt-size-label").textContent="数量（"+i.quantity_label+"）";
+  $("spbt-target").value=i.market_kind==="crypto_spot"?500:10;
+  $("spbt-target-label").textContent=i.market_kind==="crypto_spot"?"勝負額（ネット損益・円）":"勝負幅（ネット損益・"+i.move_unit_label+"）";
+  $("spbt-spread").value=i.default_max_spread;
+  $("spbt-spread-label").textContent="最大spread（"+i.move_unit_label+"）";
+  $("spbt-slip").value=i.default_slippage_units||0;
+  $("spbt-slip-label").textContent="slippage（"+i.move_unit_label+"）";
+  $("spbt-leverage").value=i.market_kind==="crypto_spot"?1:25;
+  $("spbt-leverage").disabled=i.market_kind==="crypto_spot";
   $("mid-label").textContent=i.display_symbol+" MID";
   updateFiftyTargetUi();
+  updateSpiritualBacktestSummary();
   applySignal($("signal-policy").value);
   updateTradeSummary();
 }
@@ -1362,10 +1418,59 @@ async function runStrategyBacktest(){
   finally{b.disabled=$("paper-strategy").value==="jev";b.textContent="現在設定で戦略バックテスト"}
 }
 
+function updateSpiritualBacktestSummary(){
+  const i=instrumentSpec();if(!i)return;
+  const oracle=$("spbt-oracle").value==="zodiac_polarity"?"太陽星座の極性 ♈":"月相 🌙";
+  $("spbt-config-note").innerHTML="<strong>"+esc(i.display_symbol)+" / "+oracle+"</strong>　Fifty+ / 勝負幅 ±"+esc($("spbt-target").value)+" "+esc(i.market_kind==="crypto_spot"?"円":i.move_unit_label)+" / 決済後 "+esc($("spbt-reentry").value)+"秒待機 / 最大spread "+esc($("spbt-spread").value)+" "+esc(i.move_unit_label)+" / 最大DD "+esc($("spbt-dd").value)+"% / "+esc($("spbt-leverage").value)+"x。historical 1分足closeで判定するため、足内で先にTP/SLのどちらへ触れたかは再現しません。";
+}
+async function runSpiritualBacktest(){
+  const date=$("spbt-date").value;
+  if(!date){toast("日付を選んでください。",true);return}
+  const i=instrumentSpec(),b=$("spbt-run");b.disabled=true;b.textContent="宇宙を検証中…";
+  try{
+    const target=Number($("spbt-target").value);
+    const payload={
+      instrument_id:$("instrument").value,
+      date:date.replaceAll("-",""),
+      oracle:$("spbt-oracle").value,
+      initial_balance:Number($("spbt-balance").value),
+      size:Number($("spbt-size").value),
+      paper_leverage:Number($("spbt-leverage").value),
+      target_units:i.market_kind==="crypto_spot"?10:target,
+      target_jpy:i.market_kind==="crypto_spot"?target:500,
+      reentry_seconds:Number($("spbt-reentry").value),
+      max_spread_units:Number($("spbt-spread").value),
+      max_drawdown_pct:Number($("spbt-dd").value)/100,
+      slippage_units:Number($("spbt-slip").value||0),
+      limit:$("spbt-limit").value?Number($("spbt-limit").value):null
+    };
+    const r=await api("/api/spiritual-backtest",{method:"POST",body:JSON.stringify(payload)}),s=r.summary,hold=r.baselines?.buy_and_hold,noTrade=r.baselines?.no_trade;
+    $("spbt-result").style.display="block";
+    const net=Number(s.net_pnl||0),holdNet=Number(hold?.net_pnl||0);
+    $("spbt-pnl").textContent=(net>=0?"+":"")+yen(net);pnlClass($("spbt-pnl"),net);
+    $("spbt-hold-pnl").textContent=(holdNet>=0?"+":"")+yen(holdNet);pnlClass($("spbt-hold-pnl"),holdNet);
+    $("spbt-no-trade").textContent=yen(noTrade?.net_pnl??0);
+    $("spbt-pf").textContent=s.profit_factor==null?(s.closed_trades&&net>0?"∞":"-"):Number(s.profit_factor).toFixed(2);
+    $("spbt-max-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
+    $("spbt-win").textContent=pct(s.win_rate);
+    $("spbt-trades").textContent=s.closed_trades;
+    $("spbt-fees").textContent=yen(s.fees_paid);
+    $("spbt-directions").textContent=Number(s.long_entries||0)+" / "+Number(s.short_entries||0);
+    $("spbt-avg").textContent=s.average_trade_pnl==null?"-":yen(s.average_trade_pnl);
+    $("spbt-exits").textContent=Object.entries(s.exit_reasons||{}).map(([reason,x])=>reason+" "+x.count+"回 "+yen(x.net_pnl)).join(" / ")||"決済なし";
+    renderExecutions("spbt-executions",r.trades||[]);
+    $("spbt-mode-note").textContent=r.replay_mode==="crypto_close_only"
+      ?"BTC historicalはbid=ask=closeの近似。spreadは再現できませんがfee / slippageとFifty+の他の安全弁は反映します。"
+      :"FX historical BID/ASK closeでFifty+を再生。1分足close単位なので足内TP/SL順序は再現しません。";
+    toast("スピバックテスト完了 🌙");
+  }catch(e){toast(e.message,true)}
+  finally{b.disabled=false;b.textContent="スピバックテスト"}
+}
+
 function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
 async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/backtest",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles,visibleProfiles=Object.entries(ps).filter(([n,p])=>!p.moon_phase||n==="minimal");$("profile").innerHTML=visibleProfiles.map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":visibleProfiles[0]?.[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);setPaperDecisionMode("jev",false);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles,visibleProfiles=Object.entries(ps).filter(([n,p])=>!p.moon_phase||n==="minimal");$("profile").innerHTML=visibleProfiles.map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":visibleProfiles[0]?.[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);$("spbt-date").max=fmt(today);$("spbt-date").value=fmt(d);setPaperDecisionMode("jev",false);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 
 const autoLimits=[
@@ -1482,7 +1587,7 @@ initTerminalResizer();$("settings-open").addEventListener("click",openSettings);
   const first=items[0],last=items.at(-1);
   if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
   else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
-});$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("jbt-preview").addEventListener("click",()=>previewJevReplay(false));$("jbt-run").addEventListener("click",runJevReplay);["jbt-date","jbt-start","jbt-duration","jbt-cadence"].forEach(id=>$(id).addEventListener("change",()=>{state.jevReplayPreview=null;$("jbt-run").disabled=true;$("jbt-estimate").textContent="設定が変わりました。「消費見積り」を更新してください。"}));$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);$("paper-strategy-enabled").addEventListener("change",strategyEnabledChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("with-jev").addEventListener("change",()=>{updateTradeSummary();updateJevAccess()});$("context-refresh").addEventListener("click",refreshContext);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);
+});$("instrument").addEventListener("change",instrumentChanged);$("chart-interval").addEventListener("change",loadHistory);$("cmp-run").addEventListener("click",runRawCompare);$("jbt-preview").addEventListener("click",()=>previewJevReplay(false));$("jbt-run").addEventListener("click",runJevReplay);["jbt-date","jbt-start","jbt-duration","jbt-cadence"].forEach(id=>$(id).addEventListener("change",()=>{state.jevReplayPreview=null;$("jbt-run").disabled=true;$("jbt-estimate").textContent="設定が変わりました。「消費見積り」を更新してください。"}));$("profile").addEventListener("change",e=>applyProfile(e.target.value));$("signal-policy").addEventListener("change",e=>applySignal(e.target.value));$("mode").addEventListener("change",modeChanged);$("paper-strategy").addEventListener("change",strategyChanged);$("paper-strategy-enabled").addEventListener("change",strategyEnabledChanged);["paper-size","p-window","p-trigger","p-spread","p-tp","p-sl","p-slip","p-rsi-period","p-rsi-low","p-rsi-high","p-ma-fast","p-ma-slow","p-ma-gap","p-stale"].forEach(id=>$(id).addEventListener("input",()=>{updateTradeSummary();updateStrategyBacktestSummary()}));$("p-bar-seconds").addEventListener("change",updateTradeSummary);["sbt-lookback","sbt-hold","sbt-cool"].forEach(id=>$(id).addEventListener("input",updateStrategyBacktestSummary));$("paper-supervisor").addEventListener("change",updateTradeSummary);$("with-jev").addEventListener("change",()=>{updateTradeSummary();updateJevAccess()});$("context-refresh").addEventListener("click",refreshContext);$("start").addEventListener("click",start);$("stop").addEventListener("click",stop);$("paper-reset").addEventListener("click",resetPaper);$("account-refresh").addEventListener("click",()=>refreshAccount(true));$("bt-run").addEventListener("click",runBacktest);$("sbt-run").addEventListener("click",runStrategyBacktest);$("spbt-run").addEventListener("click",runSpiritualBacktest);["spbt-oracle","spbt-target","spbt-reentry","spbt-spread","spbt-slip","spbt-leverage","spbt-dd","spbt-size","spbt-balance"].forEach(id=>$(id).addEventListener("input",updateSpiritualBacktestSummary));
 ["f-quote","f-moon","f-random","f-rsi-on","returns","ranges","ticks","vols","rsi","sma"].forEach(id=>$(id).addEventListener("input",renderFeatures));
 init();setInterval(()=>{if(!state.ready)return;refresh();if(state.config?.gmo_private_credentials_configured&&Date.now()-state.lastAccountAt>10000)refreshAccount()},1000);
 </script></body></html>
