@@ -14,6 +14,7 @@ import httpx
 
 from jevpip.backtest.kline import replay_kline
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
+from jevpip.backtest.spiritual import SpiritualBacktestConfig, run_spiritual_backtest
 from jevpip.broker.comparison import compare_raw_file
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
@@ -1122,6 +1123,24 @@ class UIController:
             limit=limit,
         )
         return result
+
+    async def run_spiritual_backtest(
+        self,
+        *,
+        date: str,
+        instrument_id: str,
+        config: dict[str, Any],
+        limit: int | None,
+    ) -> dict[str, Any]:
+        get_instrument(instrument_id)
+        parsed = SpiritualBacktestConfig(**config)
+        return await asyncio.to_thread(
+            run_spiritual_backtest,
+            date=date,
+            instrument_id=instrument_id,
+            config=parsed,
+            limit=limit,
+        )
 
     async def run_backtest(
         self,
