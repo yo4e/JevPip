@@ -375,10 +375,10 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
 
   <section class="tab" id="tab-jevbt">
     <div class="back-wrap">
-      <div class="bt-guide"><div><span>DATA</span><strong>保存済みraw tick</strong></div><div><span>JEV API / TOKEN</span><strong>実際に使う・消費あり</strong></div><div><span>PURPOSE</span><strong>現在のJevをhistorical replay</strong></div></div>
-      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は保存済みraw tickだけを使います。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
+      <div class="bt-guide"><div><span>DATA</span><strong>raw tick優先 / GMO 1分足fallback</strong></div><div><span>JEV API / TOKEN</span><strong>実際に使う・消費あり</strong></div><div><span>PURPOSE</span><strong>現在のJevをhistorical replay</strong></div></div>
+      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は、選んだ日に保存済みraw tickがあればそれを優先し、なければGMO historical 1分足を使います。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
       <div class="mode-grid">
-        <div class="field"><label class="label" for="jbt-date">保存済みraw tick日</label><select id="jbt-date"><option value="">保存データを確認中…</option></select></div>
+        <div class="field"><label class="label" for="jbt-date">日付</label><input id="jbt-date" type="date"><div class="muted" style="font-size:9px;margin-top:3px">raw tick保存日ならtickを優先。未保存日はGMO historical 1分足へ自動fallback。</div></div>
         <div class="field"><label class="label" for="jbt-start">開始時刻 UTC</label><input id="jbt-start" type="time" step="1"><div class="muted" style="font-size:9px;margin-top:3px">空欄ならその日の最初のraw tickから</div></div>
       </div>
       <div class="mode-grid">
@@ -1241,17 +1241,22 @@ async function loadCompareDates(){
 }
 async function loadJevReplayDates(){
   if(!state.config)return;
-  const select=$("jbt-date"),instrument=$("instrument").value;
-  state.jevReplayPreview=null;$("jbt-run").disabled=true;
+  const input=$("jbt-date"),instrument=$("instrument").value;
+  state.jevReplayPreview=null;$("jbt-run").disabled=true;$("jbt-preview").disabled=false;
+  const today=new Date(),fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  input.max=fmt(today);
   try{
     const r=await api(`/api/raw/dates?instrument_id=${encodeURIComponent(instrument)}`);
     if(instrument!==$("instrument").value)return;
     const dates=r.dates||[];
-    select.innerHTML=dates.length?dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join(""):'<option value="">保存データなし</option>';
-    $("jbt-preview").disabled=!dates.length;
-    if(dates.length)await previewJevReplay(true);
+    if(!input.value){
+      if(dates.length)input.value=dates[0];
+      else{const d=new Date(today);d.setDate(d.getDate()-1);input.value=fmt(d)}
+    }
+    if(input.value)await previewJevReplay(true);
   }catch(e){
-    select.innerHTML='<option value="">取得失敗</option>';$("jbt-preview").disabled=true;$("jbt-run").disabled=true;
+    if(!input.value){const d=new Date(today);d.setDate(d.getDate()-1);input.value=fmt(d)}
+    $("jbt-estimate").textContent="任意の日付で見積りできます。保存tickの確認に失敗した場合もGMO historical 1分足を試します。";
   }
 }
 function jevReplayBasePayload(){
@@ -1273,14 +1278,15 @@ function formatUsd(x){
 }
 async function previewJevReplay(silent=false){
   const base=jevReplayBasePayload();
-  if(!base.date){if(!silent)toast("Jev BT用のraw tickデータがありません。",true);return null}
+  if(!base.date){if(!silent)toast("Jev BTの日付を選んでください。",true);return null}
   const b=$("jbt-preview");if(!silent){b.disabled=true;b.textContent="見積り中…"}
   try{
     const r=await api("/api/jev-replay/preview",{method:"POST",body:JSON.stringify(base)});
     state.jevReplayPreview=r;
     const t=r.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
     const range=new Date(r.selected_start).toISOString().slice(11,19)+"〜"+new Date(r.selected_end).toISOString().slice(11,19)+" UTC";
-    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>対象 ${esc(range)} / raw tick ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒 / tick間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input $${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
+    const sourceLabel=r.source_kind==="raw_ticks"?"保存済みraw tick":"GMO historical 1分足";
+    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>データ: <strong>${esc(sourceLabel)}</strong> / 対象 ${esc(range)} / 市場点 ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒 / データ間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>${esc(r.source_note||"")}<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
     $("jbt-run").disabled=!r.within_call_limit||!state.config?.typesafe_api_key_configured;
     return r;
   }catch(e){
@@ -1320,7 +1326,7 @@ async function runJevReplay(){
     $("jbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("jbt-win").textContent=pct(s.win_rate);$("jbt-trades").textContent=s.closed_trades??0;
     $("jbt-latency").textContent=s.average_latency_ms==null?"-":Number(s.average_latency_ms).toFixed(0)+" ms";
-    $("jbt-result-note").textContent="usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
+    $("jbt-result-note").textContent=(r.data_source_note||"")+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
     $("jbt-diagnostics").textContent=diagnosticsText(s);
     renderExecutions("jbt-executions",s.trades||[]);
