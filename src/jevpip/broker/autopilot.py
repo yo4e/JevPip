@@ -9,7 +9,11 @@ from typing import Any
 from uuid import uuid4
 
 from jevpip.broker.paper import PaperBroker, PaperConfig, PaperPosition
-from jevpip.broker.strategies import StrategyDecision
+from jevpip.broker.strategies import (
+    StrategyDecision,
+    moon_phase_signal,
+    zodiac_polarity_signal,
+)
 from jevpip.instruments import get_instrument
 from jevpip.jev.autopilot import REASONS, finite_decimal
 
@@ -44,13 +48,27 @@ class AutopilotBroker(PaperBroker):
             finite_decimal(getattr(config, name), name)
         for name, value in asdict(config).items():
             if name.startswith("autopilot_") and value is not None and name not in {
-                "autopilot_enabled", "autopilot_style", "autopilot_fundamentals",
+                "autopilot_enabled",
+                "autopilot_style",
+                "autopilot_fundamentals",
+                "autopilot_fifty_oracle",
             }:
                 finite_decimal(value, name)
         if config.fee_rate >= 1 or config.size < self.quantity_step:
             raise ValueError("invalid fee rate or base quantity")
         if config.autopilot_style not in {"daytrade", "scalp", "fifty"}:
             raise ValueError("unsupported autopilot style")
+        if config.autopilot_fifty_oracle not in {
+            "jev",
+            "moon_phase",
+            "zodiac_polarity",
+        }:
+            raise ValueError("unsupported Fifty+ direction oracle")
+        if (
+            config.autopilot_fifty_oracle != "jev"
+            and config.autopilot_style != "fifty"
+        ):
+            raise ValueError("spiritual direction oracle requires Fifty+ style")
         if config.autopilot_horizon_seconds not in {30, 120, 600, 1800}:
             raise ValueError("unsupported autopilot horizon")
         if type(config.autopilot_confirmations) is not int or not 1 <= config.autopilot_confirmations <= 5:
@@ -69,11 +87,16 @@ class AutopilotBroker(PaperBroker):
         self._pending: dict[str, Any] | None = None
         self._last_request_at: datetime | None = None
         self._last_target: dict[str, Any] | None = None
-        self._target_status = "waiting_for_jev"
+        self._target_status = (
+            "waiting_for_jev"
+            if config.autopilot_fifty_oracle == "jev"
+            else "waiting_for_spiritual_direction"
+        )
         self._candidate: tuple[str, Decimal] | None = None
         self._confirmations = 0
         self._last_change_at: datetime | None = None
         self._fifty_last_close_at: datetime | None = None
+        self._last_spiritual_decision: dict[str, Any] | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
         self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
@@ -492,6 +515,58 @@ class AutopilotBroker(PaperBroker):
                     allow_entry=allow_entry,
                     require_new_market=True,
                 ))
+            elif (
+                self.position is None
+                and self.config.autopilot_style == "fifty"
+                and self.config.autopilot_fifty_oracle != "jev"
+            ):
+                gate = self._fifty_entry_gate(bid, ask, as_of=now)
+                if not allow_entry:
+                    self._target_status = entry_gate_reason or "external_supervisor"
+                elif not gate["ready"]:
+                    self._target_status = str(gate["reason"] or "waiting")
+                else:
+                    if self.config.autopilot_fifty_oracle == "moon_phase":
+                        decision = moon_phase_signal(at=at)
+                    else:
+                        decision = zodiac_polarity_signal(at=at)
+                    if decision.signal not in {"LONG", "SHORT"}:
+                        raise ValueError("spiritual oracle must always choose LONG or SHORT")
+                    quantity = (
+                        Decimal(str(self.config.size)) / self.quantity_step
+                    ).to_integral_value(rounding=ROUND_DOWN) * self.quantity_step
+                    block = self._capacity_block(
+                        decision.signal,
+                        quantity,
+                        bid,
+                        ask,
+                        optional_limits=False,
+                    )
+                    self._last_spiritual_decision = {
+                        "oracle": self.config.autopilot_fifty_oracle,
+                        "signal": decision.signal,
+                        "reason": decision.reason,
+                        "metrics": dict(decision.metrics),
+                        "at": at.isoformat(),
+                    }
+                    if block is not None:
+                        self._target_status = block
+                    else:
+                        self._target_status = (
+                            f"spiritual:{self.config.autopilot_fifty_oracle}:"
+                            f"{decision.signal.lower()}"
+                        )
+                        trades.append(
+                            self._add(
+                                decision.signal,
+                                quantity,
+                                at,
+                                bid,
+                                ask,
+                                self._target_status,
+                                None,
+                            )
+                        )
         return self._finish_cycle(
             at=at,
             now=now,
@@ -651,6 +726,7 @@ class AutopilotBroker(PaperBroker):
         bar_limit = 5 if self.config.autopilot_style in {"scalp", "fifty"} else 30
         autopilot_state = {
             "schema_version": 1, "style": self.config.autopilot_style,
+            "fifty_oracle": self.config.autopilot_fifty_oracle,
             "instrument_id": self.instrument.id, "session_id": self.session_id,
             "account_version": self.account_version, "as_of": as_of.isoformat(),
             "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
@@ -684,6 +760,7 @@ class AutopilotBroker(PaperBroker):
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
+                "oracle": self.config.autopilot_fifty_oracle,
                 "entry_gate": fifty_entry_gate,
                 "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
                 "target_value": (
@@ -736,8 +813,16 @@ class AutopilotBroker(PaperBroker):
                 as_of=self._last_received_at,
             )
         result.update(
-            strategy="jev_autopilot", strategy_enabled=False, autopilot_enabled=True,
+            strategy=(
+                "jev_autopilot"
+                if self.config.autopilot_fifty_oracle == "jev"
+                else "spiritual_fifty"
+            ),
+            strategy_enabled=False,
+            autopilot_enabled=True,
             fifty_entry_gate=fifty_entry_gate,
+            fifty_oracle=self.config.autopilot_fifty_oracle,
+            spiritual_decision=self._last_spiritual_decision,
             balance=float(self.initial_balance+self.closed_net_pnl-open_fee),
             unrealized_pnl=float(unrealized),
             trades=list(self._executions)[:100], account_version=self.account_version,
