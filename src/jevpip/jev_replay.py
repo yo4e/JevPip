@@ -200,7 +200,7 @@ def plan_jev_replay(
     start_at = _resolve_start(ticks, start_time)
     available_end = ticks[-1].market_timestamp
     if start_at > available_end:
-        raise ValueError("start_time is after the available raw tick range")
+        raise ValueError("start_time is after the available replay range")
 
     requested_end = start_at + timedelta(seconds=duration_seconds)
     end_at = min(requested_end, available_end)
