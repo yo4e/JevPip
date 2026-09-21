@@ -983,27 +983,27 @@ class UIController:
 
         from jevpip.jev.client import JevClient
 
-        client = JevClient(self.settings.typesafe_api_key)
-        trader_history_seed = None
-        if parsed_config.autopilot_enabled:
-            plan = await asyncio.to_thread(
-                plan_jev_replay,
-                self.settings.data_dir,
-                instrument_id=instrument_id,
-                date=date,
-                start_time=start_time,
-                duration_seconds=duration_seconds,
-                cadence_seconds=cadence_seconds,
-            )
-            replay_start = datetime.fromisoformat(plan.selected_start)
-            trader_history_seed = await self._read.fetch_trader_history(
-                instrument_id=instrument.id,
-                as_of=replay_start,
-            )
-
         self._jev_replay_running = True
         cancel_event = Event()
         try:
+            client = JevClient(self.settings.typesafe_api_key)
+            trader_history_seed = None
+            if parsed_config.autopilot_enabled:
+                plan = await asyncio.to_thread(
+                    plan_jev_replay,
+                    self.settings.data_dir,
+                    instrument_id=instrument_id,
+                    date=date,
+                    start_time=start_time,
+                    duration_seconds=duration_seconds,
+                    cadence_seconds=cadence_seconds,
+                )
+                replay_start = datetime.fromisoformat(plan.selected_start)
+                trader_history_seed = await self._read.fetch_trader_history(
+                    instrument_id=instrument.id,
+                    as_of=replay_start,
+                )
+
             return await joined_thread(
                 run_jev_historical_replay,
                 self.settings.data_dir,
