@@ -93,40 +93,31 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <input id="paper-mode" type="hidden" value="jev">
           <input id="autopilot" type="checkbox" checked hidden>
           <input id="paper-strategy-enabled" type="checkbox" hidden>
-          <div id="jev-access-paper-slot"></div>
-          <div id="jev-mode-panel">
-            <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevおまかせスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
+
           <div class="pair" style="margin-top:8px">
             <div class="field"><label class="label" id="paper-size-label" for="paper-size">基準数量</label><input id="paper-size" type="number" value="1000" min="0.00000001" step="any"></div>
             <div class="field"><label class="label" for="paper-balance">仮想残高</label><input id="paper-balance" type="number" value="100000" min="1"></div>
           </div>
-          <div id="autopilot-controls">
-            
 
-            <div id="fifty-controls" class="fifty-controls" style="display:none"><div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div><div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div><small>利確・損切りは同額。spread・手数料・滑りを含みます。</small><details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details></div>
-            <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
-            <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
-            <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
-            <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
-              <div class="pair"><div class="field"><label class="label" for="auto-ttl">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label" for="auto-confirmations">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
-              <div id="auto-limits"></div>
-              <p>チェックした制約だけを適用。新規・増額は仮想資金の1倍以内。市場が閉じている時や古い価格では約定しません。</p>
-            </div></details>
-          </div>
+          <div id="jev-mode-panel" style="margin-top:8px">
+            <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
+            <div id="jev-access-paper-slot"></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
+            <div id="autopilot-controls">
+              <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
+              <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
+              <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
+                <div class="pair"><div class="field"><label class="label" for="auto-ttl">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label" for="auto-confirmations">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
+                <div id="auto-limits"></div>
+                <p>チェックした制約だけを適用。市場が閉じている時や古い価格では約定しません。</p>
+              </div></details>
+            </div>
           </div>
 
-          <div id="legacy-strategies" style="display:none">
-            <div id="strategy-mode-panel">
-              <div class="research-callout"><strong>戦略モード</strong><br>Jev APIは呼ばず、選んだコード戦略だけで売買します。</div>
-              <div class="field"><label class="label" for="paper-strategy">おすすめプリセット</label><select id="paper-strategy"><option value="momentum">短期モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option></select></div>
-            </div>
-            <div id="spiritual-mode-panel" style="display:none">
-              <div class="research-callout"><strong>スピリチュアルモード 🌙</strong><br>再現可能なネタ兼対照実験です。予測力や収益性を前提にしません。</div>
-              <div class="field"><label class="label" for="spiritual-strategy">宇宙プリセット</label><select id="spiritual-strategy"><option value="moon_phase">月相 🌙</option><option value="zodiac_polarity">太陽星座の極性 ♈</option></select></div>
-              <div class="spiritual-note">月相は満ち欠け、太陽星座は12星座の陽/陰の極性を機械的なLONG / SHORTルールへ変換します。外部APIなしの実験用baselineです。</div>
-            </div>
-            <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>ON時だけ、市場状態・stale data・spread・公式経済イベントを監視して新規entryを止めます。</small></span></label>
+          <div id="strategy-mode-panel" style="display:none;margin-top:8px">
+            <div class="research-callout"><strong>戦略モード</strong><br>Jev APIは呼ばず、選んだコード戦略だけで売買します。</div>
+            <div class="field"><label class="label" for="paper-strategy">おすすめプリセット</label><select id="paper-strategy"><option value="momentum">短期モメンタム</option><option value="rsi_mean_reversion">RSI逆張り</option><option value="ma_trend">MAトレンド</option></select></div>
+            <label class="toggle" style="margin-bottom:10px"><input id="paper-supervisor" type="checkbox" checked><span>安全監督<small>市場状態・stale data・spread・公式経済イベントを監視して新規entryを止めます。</small></span></label>
             <div class="notice" id="event-context" style="margin-bottom:8px">公式イベント: 未取得</div>
             <button class="btn ghost" id="context-refresh" type="button" style="margin-bottom:10px">公式イベント更新</button>
             <div class="pair">
@@ -135,17 +126,34 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field legacy-exit"><label class="label" id="p-spread-label" for="p-spread">最大spread</label><input id="p-spread" type="number" value="1.5" step="any"></div>
             </div>
           </div>
+
+          <div id="spiritual-mode-panel" style="display:none;margin-top:8px">
+            <div class="research-callout"><strong>スピリチュアルモード 🌙</strong><br>Fifty+の売買骨格を使い、方向だけを月相・占星術の決定論ルールで選ぶ実験です。予測力や収益性は前提にしません。</div>
+            <div class="field"><label class="label" for="spiritual-strategy">方向を決めるもの</label><select id="spiritual-strategy"><option value="moon_phase">月相 🌙</option><option value="zodiac_polarity">太陽星座の極性 ♈</option></select></div>
+            <div class="spiritual-note">Jev APIも通常戦略も使いません。決済・待機・spread/コスト安全弁はFifty+と共通です。</div>
+          </div>
+
+          <div id="fifty-shared-controls" style="display:none">
+            <div id="fifty-controls" class="fifty-controls">
+              <div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div>
+              <div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div>
+              <small>利確・損切りは同額。spread・手数料・滑りを含みます。</small>
+              <details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details>
+            </div>
+            <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
+          </div>
+
           <details class="session-details" id="paper-risk-settings">
-              <summary>ドローダウン・レバレッジ</summary>
-              <div class="details-body">
-                <div class="pair">
-                  <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
-                  <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
-                </div>
-                <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1.5" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
-                <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
+            <summary>ドローダウン・レバレッジ</summary>
+            <div class="details-body">
+              <div class="pair">
+                <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
+                <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
               </div>
-            </details>
+              <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1.5" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
+              <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
+            </div>
+          </details>
           <details class="session-details"><summary>動作・コストの詳細</summary><div class="trade-summary" id="trade-summary">売買条件を読み込み中…</div></details>
         </div>
       </div>
