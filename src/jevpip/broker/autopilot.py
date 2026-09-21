@@ -521,7 +521,9 @@ class AutopilotBroker(PaperBroker):
                 and self.config.autopilot_fifty_oracle != "jev"
             ):
                 gate = self._fifty_entry_gate(bid, ask, as_of=now)
-                if not allow_entry:
+                if self._halted:
+                    self._target_status = "risk_halted"
+                elif not allow_entry:
                     self._target_status = entry_gate_reason or "external_supervisor"
                 elif not gate["ready"]:
                     self._target_status = str(gate["reason"] or "waiting")
