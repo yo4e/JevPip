@@ -39,8 +39,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "現在のJevをhistorical replay" in response.text
         assert "現在設定で戦略バックテスト" in response.text
         assert "戦略比較" in response.text
-        assert "No Trade" in response.text
-        assert "Buy & Hold" in response.text
+        assert "No Trade（比較用）" in response.text
+        assert "Buy & Hold（比較用）" in response.text
         assert "baseline含む5者比較" in response.text
         assert "1分bar" in response.text
         assert "安全監督" in response.text
