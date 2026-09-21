@@ -377,9 +377,11 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 
 runtime結果は `data/jev_replays/<instrument>/` へ保存し、Gitでは無視します。performance実測値をpublic repoへcommitしない方針は他のJev実験と同じです。
 
-## 従来モードについて
+## 比較研究用の互換機能
 
-Jevおまかせ以前の code strategy / Jev direction gate / Jev supervisor / A/B/C/D experiment は、**比較・研究用として維持**しています。通常利用では右側の「研究・従来設定」に畳んであります。
+Jevおまかせ以前の code strategy / Jev direction gate / Jev supervisor / A/B/C/D experiment は、**比較・研究用として内部互換を維持**しています。
+
+通常UIでは独立した「研究・従来設定」は置かず、戦略モードの **「戦略の詳細設定・研究」** の中へ集約しています。Jevモードとスピリチュアルモードでは表示しません。Momentum / RSI / MAの実運用設定を先に置き、旧Feature / Signal Policy / Jev supervisorなどはさらに「比較研究用の旧設定」へ畳んでいます。
 
 古い `strategy="jev"` 設定も互換入口として内部では受け付けますが、新しいUIでは独立strategyとして表示しません。詳細な契約・閾値・position managementは [CURRENT_STATE.md](./docs/CURRENT_STATE.md) と [DESIGN.md](./DESIGN.md) を参照してください。
 
