@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+import hashlib
 from decimal import Decimal
 from typing import Literal, Sequence
 
@@ -181,6 +182,54 @@ def zodiac_polarity_signal(*, at: datetime) -> StrategyDecision:
         {
             "sun_sign": sign,
             "polarity": "positive" if signal == "LONG" else "negative",
+            "semantics": "experimental_spiritual_baseline",
+        },
+    )
+
+
+
+_TAROT_MAJOR_ARCANA = (
+    "The Fool",
+    "The Magician",
+    "The High Priestess",
+    "The Empress",
+    "The Emperor",
+    "The Hierophant",
+    "The Lovers",
+    "The Chariot",
+    "Strength",
+    "The Hermit",
+    "Wheel of Fortune",
+    "Justice",
+    "The Hanged Man",
+    "Death",
+    "Temperance",
+    "The Devil",
+    "The Tower",
+    "The Star",
+    "The Moon",
+    "The Sun",
+    "Judgement",
+    "The World",
+)
+
+
+def tarot_signal(*, at: datetime, key: str = "") -> StrategyDecision:
+    """Reproducible one-card Major Arcana baseline for Fifty+ experiments."""
+    normalized = at.astimezone(timezone.utc) if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    material = f"tarot-v1|{key}|{normalized.isoformat()}".encode("utf-8")
+    digest = hashlib.sha256(material).digest()
+    card_index = int.from_bytes(digest[:4], "big") % len(_TAROT_MAJOR_ARCANA)
+    upright = bool(digest[4] & 1)
+    signal: Signal = "LONG" if upright else "SHORT"
+    return StrategyDecision(
+        signal,
+        "tarot",
+        {
+            "card": _TAROT_MAJOR_ARCANA[card_index],
+            "card_index": card_index,
+            "orientation": "upright" if upright else "reversed",
+            "shuffle": "sha256(tarot-v1|instrument|utc_timestamp)",
             "semantics": "experimental_spiritual_baseline",
         },
     )
