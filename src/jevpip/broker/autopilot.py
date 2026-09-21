@@ -900,21 +900,20 @@ class AutopilotBroker(PaperBroker):
             "history_seconds": 0 if not history else (as_of-history[0][0]).total_seconds(),
             "max_tick_gap_seconds": self._max_gap,
         }
-        if self.config.autopilot_style in {"scalp", "fifty"}:
-            autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        autopilot_state["context_version"] = "trader_context_v1"
+        autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        autopilot_state["clock"] = market_clock(as_of)
+        autopilot_state["timeframes"] = self._trader_timeframes(as_of)
+        autopilot_state["trader_history"] = dict(self._trader_history_meta)
+        autopilot_state["performance"] = {
+            "exit_reasons": snapshot["exit_reasons"],
+            "pnl_breakdown": snapshot.get("pnl_breakdown"),
+            "turnover_notional": snapshot.get("turnover_notional"),
+            "max_exposure": snapshot.get("max_exposure"),
+            "average_exposure": snapshot.get("average_exposure"),
+            "target_changes": snapshot.get("target_changes"),
+        }
         if self.config.autopilot_style == "fifty":
-            autopilot_state["context_version"] = "trader_context_v1"
-            autopilot_state["clock"] = market_clock(as_of)
-            autopilot_state["timeframes"] = self._trader_timeframes(as_of)
-            autopilot_state["trader_history"] = dict(self._trader_history_meta)
-            autopilot_state["performance"] = {
-                "exit_reasons": snapshot["exit_reasons"],
-                "pnl_breakdown": snapshot.get("pnl_breakdown"),
-                "turnover_notional": snapshot.get("turnover_notional"),
-                "max_exposure": snapshot.get("max_exposure"),
-                "average_exposure": snapshot.get("average_exposure"),
-                "target_changes": snapshot.get("target_changes"),
-            }
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
