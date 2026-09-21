@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import httpx
 
-from jevpip.backtest.kline import replay_kline
+from jevpip.backtest.kline import run_statistical_replay
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
 from jevpip.backtest.spiritual import SpiritualBacktestConfig, run_spiritual_backtest
 from jevpip.broker.comparison import compare_raw_file
@@ -1142,6 +1142,36 @@ class UIController:
             limit=limit,
         )
 
+    async def run_statistical_replay(
+        self,
+        *,
+        date: str,
+        instrument_id: str,
+        profile_name: str,
+        profile: dict[str, Any],
+        limit: int | None,
+    ) -> dict[str, Any]:
+        """Run the feature/outcome replay. This is not a trading PnL backtest."""
+        slug = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in profile_name)[:64] or "custom"
+        get_instrument(instrument_id)
+        output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
+        rows = await asyncio.to_thread(
+            run_statistical_replay,
+            date,
+            profile,
+            output,
+            limit,
+            instrument_id,
+        )
+        return {
+            "analysis_kind": "statistical_replay",
+            "date": date,
+            "instrument_id": instrument_id,
+            "profile_name": profile_name,
+            "output": str(output),
+            "summary": summarize_statistical_replay(rows),
+        }
+
     async def run_backtest(
         self,
         *,
@@ -1151,27 +1181,17 @@ class UIController:
         profile: dict[str, Any],
         limit: int | None,
     ) -> dict[str, Any]:
-        slug = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in profile_name)[:64] or "custom"
-        instrument = get_instrument(instrument_id)
-        output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
-        rows = await asyncio.to_thread(
-            replay_kline,
-            date,
-            profile,
-            output,
-            limit,
-            instrument_id,
+        """Backward-compatible alias for the old generic backtest name."""
+        return await self.run_statistical_replay(
+            date=date,
+            instrument_id=instrument_id,
+            profile_name=profile_name,
+            profile=profile,
+            limit=limit,
         )
-        return {
-            "date": date,
-            "instrument_id": instrument_id,
-            "profile_name": profile_name,
-            "output": str(output),
-            "summary": summarize_backtest(rows),
-        }
 
 
-def summarize_backtest(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_statistical_replay(rows: list[dict[str, Any]]) -> dict[str, Any]:
     outcomes = [row["outcome_1m"] for row in rows if row.get("outcome_1m") is not None]
     mode = rows[0].get("replay_mode") if rows else None
     if not outcomes:
@@ -1230,3 +1250,7 @@ def summarize_backtest(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "down_ratio": round(sum(value < 0 for value in changes) / len(changes), 6),
     }
 
+
+
+# Backward-compatible import used by older tests/consumers.
+summarize_backtest = summarize_statistical_replay
