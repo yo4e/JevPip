@@ -69,6 +69,7 @@ class PaperDemoInput(BaseModel):
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
     autopilot_fifty_target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
     autopilot_fifty_reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
+    autopilot_fifty_oracle: Literal["jev", "moon_phase", "zodiac_polarity"] = "jev"
     autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
     autopilot_confirmations: int = Field(default=2, ge=1, le=5)
     autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
@@ -86,14 +87,7 @@ class PaperDemoInput(BaseModel):
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(default=1000, gt=0, le=100000000)
     paper_leverage: float = Field(default=25.0, ge=1, le=25)
-    strategy: Literal[
-        "momentum",
-        "rsi_mean_reversion",
-        "ma_trend",
-        "moon_phase",
-        "zodiac_polarity",
-        "jev",
-    ] = "momentum"
+    strategy: Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"] = "momentum"
     strategy_enabled: bool = True
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
     momentum_trigger_units: float = Field(default=0.6, gt=0, le=100000000)
@@ -358,19 +352,26 @@ async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
         if request.paper_demo is not None and request.paper_decision_mode is not None:
             cfg = request.paper_demo
             mode = request.paper_decision_mode
-            spiritual = cfg.strategy in {"moon_phase", "zodiac_polarity"}
+            oracle = cfg.autopilot_fifty_oracle
             if mode == "jev" and (
-                not request.with_jev or not cfg.autopilot_enabled or cfg.strategy_enabled
+                not request.with_jev
+                or not cfg.autopilot_enabled
+                or cfg.strategy_enabled
+                or oracle != "jev"
             ):
                 raise ValueError("JevモードはJev専用です。戦略モードと同時には動かせません。")
             if mode == "strategy" and (
-                request.with_jev or cfg.autopilot_enabled or not cfg.strategy_enabled or spiritual
+                request.with_jev or cfg.autopilot_enabled or not cfg.strategy_enabled
             ):
                 raise ValueError("戦略モードではJevを使わず、通常のコード戦略だけを実行します。")
             if mode == "spiritual" and (
-                request.with_jev or cfg.autopilot_enabled or not cfg.strategy_enabled or not spiritual
+                request.with_jev
+                or not cfg.autopilot_enabled
+                or cfg.autopilot_style != "fifty"
+                or cfg.strategy_enabled
+                or oracle not in {"moon_phase", "zodiac_polarity"}
             ):
-                raise ValueError("スピリチュアルモードではJev・通常戦略を使わず、専用実験だけを実行します。")
+                raise ValueError("スピリチュアルモードはFifty+骨格で、月相/星座の二択だけを使います。")
         await controller.start_observer(
             instrument_id=request.instrument_id,
             profile_name=request.profile_name,
