@@ -69,7 +69,11 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "方向を決めるもの" in response.text
         assert "太陽星座の極性" in response.text
         assert "タロット1枚引き" in response.text
+        assert "コイントス" in response.text
         assert "正位置=UP / 逆位置=DOWN" in response.text
+        assert "表=UP / 裏=DOWN" in response.text
+        assert "Buy & Hold（比較用）" in response.text
+        assert "No Trade（比較用）" in response.text
         assert "Jev APIも通常戦略も使いません" in response.text
         assert 'id="paper-max-spread"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
