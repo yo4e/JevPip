@@ -81,6 +81,7 @@ test('starting and running lock every start-time input, even before instrument r
 
 test('Jev style defaults use 15-minute daytrade and 60-second scalp cadence',()=>{
   const {context:c,$}=runtime();
+  vm.runInContext(source('function autopilotStyleChanged(', 'function autopilotChanged()'),c);
   const apply=()=>vm.runInContext('autopilotStyleChanged(true)',c);
   $('auto-style').value='daytrade';
   apply();
