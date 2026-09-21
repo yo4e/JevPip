@@ -5,8 +5,6 @@ from collections import deque
 from dataclasses import asdict, replace
 from datetime import datetime
 from decimal import Decimal, ROUND_DOWN
-import random
-import secrets
 from typing import Any
 from uuid import uuid4
 
@@ -55,7 +53,6 @@ class AutopilotBroker(PaperBroker):
                 "autopilot_style",
                 "autopilot_fundamentals",
                 "autopilot_fifty_oracle",
-                "autopilot_tarot_seed",
             }:
                 finite_decimal(value, name)
         if config.fee_rate >= 1 or config.size < self.quantity_step:
@@ -74,14 +71,6 @@ class AutopilotBroker(PaperBroker):
             and config.autopilot_style != "fifty"
         ):
             raise ValueError("spiritual direction oracle requires Fifty+ style")
-        tarot_seed = config.autopilot_tarot_seed
-        if tarot_seed is not None and (
-            type(tarot_seed) is not int or tarot_seed < 0
-        ):
-            raise ValueError("tarot seed must be a non-negative integer")
-        if config.autopilot_fifty_oracle == "tarot":
-            tarot_seed = tarot_seed if tarot_seed is not None else secrets.randbits(63)
-            config = replace(config, autopilot_tarot_seed=tarot_seed)
         if config.autopilot_horizon_seconds not in {30, 120, 600, 1800}:
             raise ValueError("unsupported autopilot horizon")
         if type(config.autopilot_confirmations) is not int or not 1 <= config.autopilot_confirmations <= 5:
@@ -95,12 +84,6 @@ class AutopilotBroker(PaperBroker):
         if config.autopilot_max_drawdown_pct is not None and config.autopilot_max_drawdown_pct > 1:
             raise ValueError("drawdown fraction must be <= 1")
         super().__init__(config)
-        self._tarot_seed = config.autopilot_tarot_seed
-        self._tarot_rng = (
-            random.Random(self._tarot_seed)
-            if self._tarot_seed is not None
-            else None
-        )
         self.session_id = uuid4().hex
         self.account_version = 0
         self._pending: dict[str, Any] | None = None
@@ -552,9 +535,7 @@ class AutopilotBroker(PaperBroker):
                     elif self.config.autopilot_fifty_oracle == "zodiac_polarity":
                         decision = zodiac_polarity_signal(at=at)
                     else:
-                        if self._tarot_rng is None:
-                            raise ValueError("tarot RNG is not initialized")
-                        decision = tarot_signal(rng=self._tarot_rng)
+                        decision = tarot_signal()
                     if decision.signal not in {"LONG", "SHORT"}:
                         raise ValueError("spiritual oracle must always choose LONG or SHORT")
                     quantity = (
@@ -847,7 +828,6 @@ class AutopilotBroker(PaperBroker):
             autopilot_enabled=True,
             fifty_entry_gate=fifty_entry_gate,
             fifty_oracle=self.config.autopilot_fifty_oracle,
-            tarot_seed=self._tarot_seed,
             spiritual_decision=self._last_spiritual_decision,
             balance=float(self.initial_balance+self.closed_net_pnl-open_fee),
             unrealized_pnl=float(unrealized),
