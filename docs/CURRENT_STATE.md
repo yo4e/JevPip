@@ -1,6 +1,6 @@
 # JevPip Current State
 
-更新日: 2026-09-20
+更新日: 2026-09-21
 
 この文書は、JevPipの**現在の実装状態と次の作業境界**を短く把握するためのhandoffです。
 
@@ -49,9 +49,9 @@ Jevおまかせはprimary paper workflowとして実装済みです。
 スタイル:
 - **デイトレ**: 1分足中心。標準は300秒ごとに10分先を再評価
 - **スキャルピング**: 直近raw/live tick中心。標準1秒ごとに30秒先を再評価
-- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。対称のnet TP/SLと決済後待機を使う
+- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。対称のnet TP/SLと決済後待機を使う。方向判断には `trader_context_v1` として1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
 
-Fifty+にはspread上限、往復コストgate、最大DD停止、FX paper leverage等のcode-owned safetyを共通適用します。詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md) と [FIFTY_PLUS.md](FIFTY_PLUS.md)。
+Fifty+にはspread上限、往復コストgate、最大DD停止、FX paper leverage等のcode-owned safetyを共通適用します。live開始時はPublic historical KLineでmulti-timeframeをwarmupし、未確定future barは除外します。詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md) と [FIFTY_PLUS.md](FIFTY_PLUS.md)。
 
 有料APIでの十分な試行数による収益性検証は未完了です。コード戦略・direction/supervisor・A/B/C/Dは比較研究用として残しています。
 
