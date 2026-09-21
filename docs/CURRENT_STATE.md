@@ -28,7 +28,7 @@ UIは機能を削らず、判断系を混ぜない構成へ整理しています
 - 実行中は `Jev: デイトレ` / `戦略: RSI逆張り` / `スピ: 月相` のように現在の判断源を常時表示する
 - 下部の「現在」は「デモ口座・建玉 / 最新判断 / 約定履歴・損益内訳」を中心にする
 - 外国為替FX 実口座の参照表示は常時監視の主画面から外し、⚙設定内へ置く
-- Feature / Signal Policy / code strategy / supervisorなどは「研究・従来設定」へ残し、通常は閉じる。従来モードのJev supervisor状態もここでのみ表示する
+- Feature / Signal Policy / code strategy / supervisorなどの詳細・互換設定は戦略モード内の「戦略の詳細設定・研究」へ集約する。Jev / スピリチュアルモードでは表示しない。旧Jev supervisorはさらに「比較研究用の旧設定」へ畳む
 - Strategy BT / Jev BT / 戦略比較 / 統計リプレイには、使用データ・Jev API利用有無・token消費・目的を明示する
 - 既存element IDとAPI contractは維持し、情報階層の変更を中心とする
 
