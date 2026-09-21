@@ -46,7 +46,7 @@ class UIController:
         self._jev_replay_running = False
         self._observer_starting = False
         self.settings = settings or Settings()
-        self._research = ResearchService(self.settings.data_dir)
+        self._research = ResearchService(self.settings)
         self._task: asyncio.Task[None] | None = None
         self._context_task: asyncio.Task[None] | None = None
         self._events: deque[dict[str, Any]] = deque(maxlen=120)
