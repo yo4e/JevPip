@@ -79,7 +79,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ファンダONのhistorical replayは明示的に拒否する。現在のイベント情報を過去へ流用しない。liveの公式contextも、後日観測したrevisionを過去時点の判断に混ぜない。
 
-Jev BT開始時もliveと同じ `fetch_trader_history(as_of=start_at)` → `seed_trader_history()` を使い、開始時点までに確定済みのPublic KLineだけで `trader_context_v1` の1m / 5m / 15m / 1hをwarmupする。window前のraw tickは短いrolling/tick contextにも使うが、multi-timeframe seedはliveと同じclosed-bar historyを正とする。判断開始後はreplay tickで更新し、開始時刻より後に閉じるbarを先取りしない。
+Jev BT開始時もliveと同じ `fetch_trader_history(as_of=start_at)` → `seed_trader_history()` を使い、開始時点までに確定済みのPublic KLineだけで `trader_context_v1` の1m / 5m / 15m / 1hをwarmupする。live起動直後と揃えるため、window前のraw tickは `recent_ticks` や短期feature bufferへ注入しない。判断開始後に実際に到着したreplay tickだけでそれらを育て、開始時刻より後に閉じるbarも先取りしない。
 
 `data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
