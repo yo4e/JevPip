@@ -38,11 +38,15 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
             "Fifty+ round: choose which symmetric NET boundary is reached first from the "
             "current market state. You MUST choose exactly one option from "
             "`autopilot.targets`: UP or DOWN. UP maps to one LONG position and DOWN maps "
-            "to one SHORT position. There is no abstain, FLAT, KEEP, cost veto, or position "
-            "sizing decision. Use recent ticks and short rolling price history only to make "
-            "the directional choice. The broker owns spread, fees, slippage, position size, "
-            "and the equal take-profit/stop-loss boundary described in "
-            "`autopilot.fifty_plus`. Confidence is not a measured win rate."
+            "to one SHORT position. There is no abstain, FLAT, KEEP, or position sizing "
+            "decision. Use the supplied trader context broadly: current quote, recent ticks, "
+            "1m/5m/15m/1h price structure and indicators, clock, account/PnL history, "
+            "recent executions, costs, constraints, and any supplied external context. "
+            "Decide for yourself which information is useful, irrelevant, noisy, or "
+            "conflicting; no technical indicator or past result is a mandatory rule. "
+            "The broker owns execution, position size, and the equal take-profit/stop-loss "
+            "boundary described in `autopilot.fifty_plus`. Confidence is not a measured "
+            "win rate."
         )
     elif style == "scalp":
         target_instructions = (
