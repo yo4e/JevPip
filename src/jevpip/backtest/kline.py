@@ -86,7 +86,7 @@ def load_historical_ticks(
     return ticks, "crypto_close_only"
 
 
-def replay_kline(
+def run_statistical_replay(
     date: str,
     profile: dict[str, Any],
     output: Path | None = None,
@@ -140,3 +140,20 @@ def replay_kline(
             append_jsonl(output, row)
     return rows
 
+
+
+def replay_kline(
+    date: str,
+    profile: dict[str, Any],
+    output: Path | None = None,
+    limit: int | None = None,
+    instrument_id: str = "USD_JPY",
+) -> list[dict[str, Any]]:
+    """Backward-compatible alias for the former generic backtest name."""
+    return run_statistical_replay(
+        date,
+        profile,
+        output,
+        limit,
+        instrument_id,
+    )
