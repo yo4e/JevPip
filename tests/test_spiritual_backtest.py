@@ -109,6 +109,41 @@ def test_spiritual_backtest_reuses_fifty_spread_gate(monkeypatch):
     assert opens[0]["timestamp"] == ticks[1].market_timestamp.isoformat()
 
 
+def test_spiritual_backtest_accepts_random_tarot(monkeypatch):
+    ticks = _ticks(
+        [
+            ("150.000", "150.002"),
+            ("150.010", "150.012"),
+            ("150.020", "150.022"),
+        ]
+    )
+    monkeypatch.setattr(
+        module,
+        "load_historical_ticks",
+        lambda date, instrument_id, limit=None: (ticks, "fx_bid_ask_close"),
+    )
+    result = module.run_spiritual_backtest(
+        date="20260920",
+        instrument_id="USD_JPY",
+        config=SpiritualBacktestConfig(
+            oracle="tarot",
+            initial_balance=100000,
+            size=1000,
+            paper_leverage=25,
+            target_units=20,
+            target_jpy=500,
+            reentry_seconds=60,
+            max_spread_units=1.5,
+            max_drawdown_pct=0.20,
+            slippage_units=0,
+        ),
+    )
+
+    assert result["oracle"] == "tarot"
+    assert result["generated_events"] >= 1
+    assert any(x.get("action") == "OPEN" for x in result["trades"])
+
+
 def test_spiritual_backtest_btc_keeps_close_only_limitation(monkeypatch):
     instrument = get_instrument("BTC")
     start = datetime(2026, 9, 20, tzinfo=timezone.utc)
