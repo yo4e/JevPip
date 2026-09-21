@@ -146,7 +146,6 @@ def decode_target(
         "choice": choice,
         "confidence": confidence,
         "reason": factor,
-        "horizon_seconds": policy["horizon_seconds"],
         "basis_market_timestamp": policy["as_of"],
         "requested_at": requested_at.isoformat(),
         "available_at": available_at.isoformat(),
