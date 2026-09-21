@@ -850,7 +850,7 @@ class AutopilotBroker(PaperBroker):
             "fifty_oracle": self.config.autopilot_fifty_oracle,
             "instrument_id": self.instrument.id, "session_id": self.session_id,
             "account_version": self.account_version, "as_of": as_of.isoformat(),
-            "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
+            "ttl_seconds": self.config.autopilot_ttl_seconds,
             "paper_leverage": float(self.paper_leverage), "risk_halted": self._halted,
             "targets": targets,
             "quote": {
