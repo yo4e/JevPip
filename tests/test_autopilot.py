@@ -875,7 +875,8 @@ def test_replay_uses_same_policy_and_preserves_full_diagnostics(tmp_path, monkey
     class Fake:
         calls = 0
         def decide(self, state, horizon, **kwargs):
-            assert horizon == "600s"
+            assert horizon == "5s"
+            assert "horizon_seconds" not in state["autopilot"]
             assert "external_context" not in state
             assert all(x["end_unix"] <= datetime.fromisoformat(state["autopilot"]["as_of"]).timestamp() for x in state["autopilot"]["closed_1m_bars"])
             self.calls += 1
