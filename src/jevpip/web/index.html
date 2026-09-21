@@ -284,8 +284,8 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="back-result" id="sbt-result" style="display:none">
         <div class="results">
           <div class="result"><span>戦略損益</span><strong id="sbt-pnl">-</strong></div>
-          <div class="result"><span>Buy & Hold</span><strong id="sbt-hold-pnl">-</strong></div>
-          <div class="result"><span>No Trade</span><strong id="sbt-no-trade">-</strong></div>
+          <div class="result"><span>Buy & Hold（比較用）</span><strong id="sbt-hold-pnl">-</strong></div>
+          <div class="result"><span>No Trade（比較用）</span><strong id="sbt-no-trade">-</strong></div>
           <div class="result"><span>Profit Factor</span><strong id="sbt-pf">-</strong></div>
           <div class="result"><span>最大DD</span><strong id="sbt-dd">-</strong></div>
           <div class="result"><span>勝率</span><strong id="sbt-win">-</strong></div>
@@ -328,8 +328,8 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="back-result" id="spbt-result" style="display:none">
         <div class="results">
           <div class="result"><span>スピ損益</span><strong id="spbt-pnl">-</strong></div>
-          <div class="result"><span>Buy & Hold</span><strong id="spbt-hold-pnl">-</strong></div>
-          <div class="result"><span>No Trade</span><strong id="spbt-no-trade">-</strong></div>
+          <div class="result"><span>Buy & Hold（比較用）</span><strong id="spbt-hold-pnl">-</strong></div>
+          <div class="result"><span>No Trade（比較用）</span><strong id="spbt-no-trade">-</strong></div>
           <div class="result"><span>Profit Factor</span><strong id="spbt-pf">-</strong></div>
           <div class="result"><span>最大DD</span><strong id="spbt-max-dd">-</strong></div>
           <div class="result"><span>勝率</span><strong id="spbt-win">-</strong></div>
@@ -1349,7 +1349,7 @@ async function runRawCompare(){
       bar_seconds:Number($("cmp-bar").value||0)
     };
     const r=await api("/api/compare/raw",{method:"POST",body:JSON.stringify(payload)});
-    const labels={no_trade:"No Trade",buy_and_hold:"Buy & Hold",momentum:"Momentum",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
+    const labels={no_trade:"No Trade（比較用）",buy_and_hold:"Buy & Hold（比較用）",momentum:"Momentum",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
     $("cmp-results").innerHTML=Object.entries(r.results||{}).map(([name,x])=>{
       const net=Number(x.net_pnl||0),klass=net>0?"pos":net<0?"neg":"";
       const pf=x.profit_factor==null?(x.closed_trades&&net>0?"∞":"-"):Number(x.profit_factor).toFixed(2);
