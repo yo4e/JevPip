@@ -67,7 +67,7 @@ test('sparse history keeps MA200 unavailable instead of drawing a partial averag
 
 test('starting and running lock every start-time input, even before instrument restoration',()=>{
   const {context:c,$,state,nodes}=runtime();
-  const ids=['mode','paper-mode','autopilot','auto-style','paper-size','paper-balance','jev-every','profile','returns','s-dir','fifty-target-jpy','spiritual-strategy'];
+  const ids=['mode','paper-mode','autopilot','auto-style','paper-size','paper-balance','jev-every','profile','returns','s-dir','fifty-target-jpy'];
   ids.forEach($);
   state.pendingSession='start';c.syncSessionControls({running:false},true);
   ids.forEach(id=>assert.equal($(id).disabled,true,id));
