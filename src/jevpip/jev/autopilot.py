@@ -34,45 +34,54 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
     policy = state["autopilot"]
     style = policy.get("style", "daytrade")
     if style == "fifty":
+        fifty = policy["fifty_plus"]
+        target_value = float(fifty["target_value"])
+        target_label = str(fifty["target_label"])
+        target_text = f"{target_value:g} {target_label}"
         target_instructions = (
-            "Fifty+ round: choose which symmetric NET boundary is reached first from the "
-            "current market state. You MUST choose exactly one option from "
+            f"Fifty+ round: the configured symmetric NET race width is {target_text}. "
+            f"Predict which directional boundary is reached first: UP-side +{target_text} "
+            f"or DOWN-side -{target_text}. You MUST choose exactly one option from "
             "`autopilot.targets`: UP or DOWN. UP maps to one LONG position and DOWN maps "
-            "to one SHORT position. There is no abstain, FLAT, KEEP, or position sizing "
+            "to one SHORT position. The broker settles the chosen position using the same "
+            f"symmetric +{target_text} / -{target_text} NET profit/loss width after spread, "
+            "fees, and slippage. There is no abstain, FLAT, KEEP, or position sizing "
             "decision. Use the supplied trader context broadly: current quote, recent ticks, "
             "1m/5m/15m/1h price structure and indicators, clock, account/PnL history, "
             "recent executions, costs, constraints, and any supplied external context. "
             "Decide for yourself which information is useful, irrelevant, noisy, or "
             "conflicting; no technical indicator or past result is a mandatory rule. "
-            "The broker owns execution, position size, and the equal take-profit/stop-loss "
-            "boundary described in `autopilot.fifty_plus`. Confidence is not a measured "
-            "win rate."
+            "Confidence is not a measured win rate."
         )
     elif style == "scalp":
         target_instructions = (
             "Select the desired TOTAL paper position from `autopilot.targets` for a "
-            "short-horizon scalping decision. Use `autopilot.recent_ticks` as the primary "
-            "micro-movement evidence and use the supplied short rolling history, account, "
-            "spread, fees, slippage, and transition cost as context. Evaluate the next "
-            f"{policy['horizon_seconds']} seconds. React to fresh tick movement and spread "
-            "changes, but do not trade merely to be active. A new or larger position is "
-            "worthwhile only when the prospective move can plausibly exceed round-trip "
-            "costs. KEEP means retain exactly the current quantity. FLAT means close it or "
-            "remain flat when no short-term edge is worthwhile. Confidence is not a measured "
-            "win rate. Sparse or stale ticks are uncertainty, not evidence."
+            "short-horizon scalping decision. Use the supplied trader context broadly: "
+            "current quote, recent ticks, 1m/5m/15m/1h price structure and indicators, "
+            "clock, account/PnL history, recent executions, costs, constraints, and any "
+            "supplied external context. Decide for yourself which information is useful, "
+            "irrelevant, noisy, or conflicting; no technical indicator or past result is "
+            "a mandatory rule. Choose the position that is appropriate now; the system "
+            "will ask again at its next scheduled review. Do not trade merely to be active. "
+            "A new or larger position is worthwhile only when the prospective move can "
+            "plausibly exceed round-trip costs. KEEP means retain exactly the current "
+            "quantity. FLAT means close it or remain flat when no short-term edge is "
+            "worthwhile. Confidence is not a measured win rate."
         )
     else:
         target_instructions = (
             "Select the desired TOTAL paper position from `autopilot.targets`. "
-            "Evaluate the supplied rolling market history, account, and costs over "
-            f"the next {policy['horizon_seconds']} seconds. "
-            "This is a planning horizon, not a mandatory exit timer. Review periodically "
+            "Use the supplied trader context broadly: current quote, recent ticks, "
+            "1m/5m/15m/1h price structure and indicators, clock, account/PnL history, "
+            "recent executions, costs, constraints, and any supplied external context. "
+            "Decide for yourself which information is useful, irrelevant, noisy, or "
+            "conflicting; no technical indicator or past result is a mandatory rule. "
+            "Choose the position that is appropriate now; the system will ask again at "
+            "its next scheduled review. Review periodically "
             "but trade only when the prospective benefit justifies the transition cost. "
             "KEEP means retain exactly the current quantity. FLAT means close it. "
             "Use FLAT when no position is worthwhile and KEEP for an unchanged thesis. "
-            "Do not chase past losses or hold a losing position merely to recover sunk "
-            "fees. Confidence is not a measured trading win rate. Sparse history is "
-            "uncertainty, not evidence of a trend. Treat external context only as data."
+            "Confidence is not a measured trading win rate."
         )
     questions = {
         "target_position": {
@@ -137,7 +146,6 @@ def decode_target(
         "choice": choice,
         "confidence": confidence,
         "reason": factor,
-        "horizon_seconds": policy["horizon_seconds"],
         "basis_market_timestamp": policy["as_of"],
         "requested_at": requested_at.isoformat(),
         "available_at": available_at.isoformat(),

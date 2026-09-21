@@ -827,7 +827,25 @@ class AutopilotBroker(PaperBroker):
             # Transition estimate only: previously paid entry costs are sunk.
             transition = change*((ask-bid)/2+self.slippage_price+(ask+bid)/2*self.fee_rate)
             targets[key] = {"side": side, "quantity": str(quantity)}
-            if self.config.autopilot_style != "fifty":
+            if self.config.autopilot_style == "fifty":
+                fifty_target = (
+                    self.config.autopilot_fifty_target_jpy
+                    if self.instrument.market_kind == "crypto_spot"
+                    else self.config.autopilot_fifty_target_units
+                )
+                fifty_label = (
+                    "円"
+                    if self.instrument.market_kind == "crypto_spot"
+                    else self.config.move_unit_label
+                )
+                signed_boundary = fifty_target if key == "UP" else -fifty_target
+                targets[key].update(
+                    directional_boundary_value=signed_boundary,
+                    directional_boundary_label=(
+                        f"{signed_boundary:+g} {fifty_label}"
+                    ),
+                )
+            else:
                 targets[key].update(
                     notional_jpy=float(quantity*(ask+bid)/2),
                     estimated_transition_cost_jpy=float(transition),
@@ -850,7 +868,7 @@ class AutopilotBroker(PaperBroker):
             "fifty_oracle": self.config.autopilot_fifty_oracle,
             "instrument_id": self.instrument.id, "session_id": self.session_id,
             "account_version": self.account_version, "as_of": as_of.isoformat(),
-            "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
+            "ttl_seconds": self.config.autopilot_ttl_seconds,
             "paper_leverage": float(self.paper_leverage), "risk_halted": self._halted,
             "targets": targets,
             "quote": {
@@ -900,33 +918,44 @@ class AutopilotBroker(PaperBroker):
             "history_seconds": 0 if not history else (as_of-history[0][0]).total_seconds(),
             "max_tick_gap_seconds": self._max_gap,
         }
-        if self.config.autopilot_style in {"scalp", "fifty"}:
-            autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        autopilot_state["context_version"] = "trader_context_v1"
+        autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
+        autopilot_state["clock"] = market_clock(as_of)
+        autopilot_state["timeframes"] = self._trader_timeframes(as_of)
+        autopilot_state["trader_history"] = dict(self._trader_history_meta)
+        autopilot_state["performance"] = {
+            "exit_reasons": snapshot["exit_reasons"],
+            "pnl_breakdown": snapshot.get("pnl_breakdown"),
+            "turnover_notional": snapshot.get("turnover_notional"),
+            "max_exposure": snapshot.get("max_exposure"),
+            "average_exposure": snapshot.get("average_exposure"),
+            "target_changes": snapshot.get("target_changes"),
+        }
         if self.config.autopilot_style == "fifty":
-            autopilot_state["context_version"] = "trader_context_v1"
-            autopilot_state["clock"] = market_clock(as_of)
-            autopilot_state["timeframes"] = self._trader_timeframes(as_of)
-            autopilot_state["trader_history"] = dict(self._trader_history_meta)
-            autopilot_state["performance"] = {
-                "exit_reasons": snapshot["exit_reasons"],
-                "pnl_breakdown": snapshot.get("pnl_breakdown"),
-                "turnover_notional": snapshot.get("turnover_notional"),
-                "max_exposure": snapshot.get("max_exposure"),
-                "average_exposure": snapshot.get("average_exposure"),
-                "target_changes": snapshot.get("target_changes"),
-            }
+            fifty_target = (
+                self.config.autopilot_fifty_target_jpy
+                if self.instrument.market_kind == "crypto_spot"
+                else self.config.autopilot_fifty_target_units
+            )
+            fifty_label = (
+                "円"
+                if self.instrument.market_kind == "crypto_spot"
+                else self.config.move_unit_label
+            )
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
                 "oracle": self.config.autopilot_fifty_oracle,
                 "entry_gate": fifty_entry_gate,
                 "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
-                "target_value": (
-                    self.config.autopilot_fifty_target_jpy
-                    if self.instrument.market_kind == "crypto_spot"
-                    else self.config.autopilot_fifty_target_units
+                "target_value": fifty_target,
+                "target_label": fifty_label,
+                "up_boundary_value": fifty_target,
+                "down_boundary_value": -fifty_target,
+                "boundary_question": (
+                    f"+{fifty_target:g} {fifty_label} と "
+                    f"-{fifty_target:g} {fifty_label} のどちらに先に到達するか"
                 ),
-                "target_label": "円" if self.instrument.market_kind == "crypto_spot" else self.config.move_unit_label,
                 "net_of_spread_fees_slippage": True,
             }
         return {"autopilot": autopilot_state}

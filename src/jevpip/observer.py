@@ -86,7 +86,7 @@ async def observe(
             answer = await joined_thread(
                 jev_client.decide,
                 jev_state,
-                f"{jev_state['autopilot']['horizon_seconds']}s" if "autopilot" in jev_state else "5s",
+                "5s",
                 supervisor_strategies=jev_supervisor_strategies,
                 instrument_label=tick.display_symbol,
             )

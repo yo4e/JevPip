@@ -23,7 +23,7 @@ paper取引の判断系は、UI上で **Jevモード / 戦略モード / スピ�
 - **戦略モード**: Jev APIを呼ばず、Momentum / RSI逆張り / MAトレンドのコード戦略を使う
 - **スピリチュアルモード**: Jev APIと通常戦略を使わず、Fifty+の売買骨格に月相・太陽星座・ランダムタロット・コイントスの方向ルールを接続する実験用baseline
 
-Jevモードのデイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tick中心で標準1秒ごとに30秒先を再評価します。Fifty+は1ポジションずつ持ち、決済後は標準60秒待って次の方向を決めます。FXはpips、BTCは円損益で対称の勝負幅を指定できます。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
+Jevモードのデイトレは標準15分ごと、スキャルピングは標準60秒ごとに、固定の予測時間を課さず現在の最適total positionを再判断します。どちらもFifty+と同じ `trader_context_v1` を使い、1分 / 5分 / 15分 / 1時間足、基本テクニカル、口座/PnL、cost、recent execution等を広くJevへ渡します。短い判断間隔ほどJev API callとinput token消費が増えます。Fifty+は1ポジションずつ持ち、決済後は標準60秒待って次の方向を決めます。FXはpips、BTCは円損益で対称の勝負幅を指定できます。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 
 ## ライセンス・免責・サポート
@@ -124,8 +124,8 @@ paper取引では、判断方式を3つの排他的なモードから選びま�
 
 Jev APIが売買判断を担当し、コード戦略や旧research filterを売買判断へ混ぜません。
 
-- **デイトレ**: 1分足中心、標準5分ごとに10分先を再評価
-- **スキャルピング**: 直近tick中心、標準1秒ごとに30秒先を再評価
+- **デイトレ**: `trader_context_v1` を利用、標準15分ごとに現在の最適total positionを再判断
+- **スキャルピング**: `trader_context_v1` を利用、標準60秒ごとに現在の最適total positionを再判断。短くするほどtoken消費が増える
 - **Fifty+**: 1ポジションずつ。決済後は標準60秒待ってからJevが次の `UP / DOWN` を二択で判断
 
 ### 戦略モード
@@ -371,7 +371,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 raw tick時は秒以下の市場経路を使えます。1分足fallback時はFXならhistorical BID / ASK close、BTCなら `bid = ask = close` 近似を使います。この場合、1分内の値動き順序、細かいspread変化、秒単位のentry timingは再現できません。結果欄へ使用データ源と誤差を明記します。
 
 - 検証時間: 30秒 / 1分 / 5分 / 15分 / 1時間 / 6時間 / 1日
-- Jev判断間隔: 1 / 2 / 5 / 10 / 30 / 60秒
+- Jev判断間隔: 1 / 2 / 5 / 10 / 30 / 60 / 300 / 900秒
 - API実latencyをhistorical market timeへ反映
 - Jev応答待ち中は次のcallを開始しない
 - Jevモードのデイトレ / スキャ / Fifty+設定をpaper replayへ流用

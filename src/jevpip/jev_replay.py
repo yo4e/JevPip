@@ -28,7 +28,7 @@ from jevpip.storage.jsonl import append_jsonl
 
 MAX_JEV_REPLAY_CALLS = 10_000
 JEV_INPUT_USD_PER_MILLION_TOKENS = 0.042
-ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60, 300)
+ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60, 300, 900)
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,7 +654,7 @@ def run_jev_historical_replay(
         try:
             answer = jev_client.decide(
                 state,
-                f"{config.autopilot_horizon_seconds}s" if config.autopilot_enabled else "5s",
+                "5s",
                 instrument_label=tick.display_symbol,
             )
         except Exception as exc:

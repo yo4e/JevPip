@@ -81,7 +81,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "最大DDで停止" in response.text
         assert 'id="fifty-cost-warning"' in response.text
         assert "スプレッド等の取引コストが高いため取引しません" in response.text
-        assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
+        assert "デイトレ標準 900秒（15分） / スキャ標準 60秒" in response.text
+        assert "input token消費が増えます" in response.text
         assert 'id="sbt-executions"' in response.text
         assert "開くとコスト内訳" in response.text
         assert response.text.count('id="auto-live-executions"') == 1
@@ -1296,7 +1297,8 @@ def test_homepage_has_separate_token_warned_jev_backtest_ui():
     assert "未保存日はGMO historical 1分足へ自動fallback" in response.text
     assert '(r.data_source_note||"")' in response.text
     assert '<option value="1">1秒</option>' in response.text
-    assert '<option value="300" selected>5分</option>' in response.text
+    assert '<option value="300">5分</option>' in response.text
+    assert '<option value="900" selected>15分</option>' in response.text
     assert '<option value="86400">1日</option>' in response.text
     assert "TypeSafeの課金対象input tokenを消費します" in response.text
     assert "output tokenは無料" in response.text

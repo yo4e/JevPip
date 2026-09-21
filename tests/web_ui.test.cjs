@@ -79,6 +79,27 @@ test('starting and running lock every start-time input, even before instrument r
   assert.equal($('paper-mode').disabled,false);
 });
 
+test('Jev style defaults use 15-minute daytrade and 60-second scalp cadence',()=>{
+  const {context:c,$}=runtime();
+  vm.runInContext(source('function updateFiftyTargetUi()', 'function autopilotChanged()'),c);
+  const apply=()=>vm.runInContext('autopilotStyleChanged(true)',c);
+  $('auto-style').value='daytrade';
+  apply();
+  assert.equal($('jev-every').value,'900');
+  assert.equal($('jbt-cadence').value,'900');
+  assert.ok($('auto-style-note').textContent.includes('15分'));
+
+  $('auto-style').value='scalp';
+  apply();
+  assert.equal($('jev-every').value,'60');
+  assert.equal($('jbt-cadence').value,'60');
+  assert.ok($('auto-style-note').textContent.includes('token'));
+
+  $('auto-style').value='fifty';
+  apply();
+  assert.equal($('jev-every').value,'1');
+});
+
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{
   const {context:c,$,state}=runtime();
   const snapshot={running:true,status:'running',started_at:'2026-09-20T00:00:00Z',instrument_id:'BTC',profile_name:'custom / UI',with_jev:true,signal_policy_name:'policy / UI',session_config:{profile:{quote:true},signal_policy:{min_direction_probability:.75},jev_every_seconds:2},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',size:.002,initial_balance:200000,autopilot_fifty_target_jpy:700,autopilot_fifty_target_units:7,autopilot_fifty_reentry_seconds:90,cooldown_seconds:0,slippage_units:0,autopilot_max_spread:0,deterministic_supervisor_enabled:false}}};
