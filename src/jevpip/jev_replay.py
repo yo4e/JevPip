@@ -832,7 +832,9 @@ def run_jev_historical_replay(
             "This is a historical replay using the current Jev model, not a recreation "
             "of the model as it existed at the historical time.",
             (
-                "Only information built from raw ticks up to each basis timestamp is sent."
+                "Execution follows saved raw ticks, while multi-timeframe startup context "
+                "uses only public historical candles closed by replay start; no future candle "
+                "or pre-start raw tick tape is injected into a live-parity decision."
                 if source_kind == "raw_ticks"
                 else "GMO historical 1-minute close points are used because no saved raw "
                 "ticks are available; intra-minute path and sub-minute execution are unavailable."
