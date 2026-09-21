@@ -167,10 +167,14 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert set(policy["targets"]) == {"UP", "DOWN"}
     assert set(question_specs(state)) == {"target_position"}
     assert _should_request_jev(state) is True
-    assert "costs" not in policy
-    assert "account" not in policy
-    assert set(policy["quote"]) == {"mid"}
-    assert "spread_units" not in policy["recent_ticks"][-1]
+    assert policy["context_version"] == "trader_context_v1"
+    assert "costs" in policy
+    assert "account" in policy
+    assert "performance" in policy
+    assert set(policy["timeframes"]) == {"1min", "5min", "15min", "1hour"}
+    assert {"bid", "ask", "mid", "spread", "spread_units"} <= set(policy["quote"])
+    assert "spread_units" in policy["recent_ticks"][-1]
+    assert set(policy["clock"]) == {"utc", "tokyo", "london", "new_york"}
 
     event = event_for(b, 0, "UP")
     assert event["target_decision"]["target_side"] == "LONG"
@@ -201,6 +205,92 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
     assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
     assert _should_request_jev(ready) is True
+
+
+def test_fifty_trader_context_keeps_past_performance_and_filters_future_bars():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    as_of = START + timedelta(hours=4)
+    histories = {}
+    for interval, seconds in (
+        ("1min", 60),
+        ("5min", 300),
+        ("15min", 900),
+        ("1hour", 3600),
+    ):
+        rows = []
+        for index in range(205):
+            opened = as_of - timedelta(seconds=seconds * (206 - index))
+            value = 100 + index / 10
+            rows.append({
+                "open_time": opened.isoformat(),
+                "end_time": (opened + timedelta(seconds=seconds)).isoformat(),
+                "open": value,
+                "high": value + 1,
+                "low": value - 1,
+                "close": value + 0.25,
+            })
+        rows.append({
+            "open_time": as_of.isoformat(),
+            "end_time": (as_of + timedelta(seconds=seconds)).isoformat(),
+            "open": 999,
+            "high": 1000,
+            "low": 998,
+            "close": 999,
+        })
+        histories[interval] = rows
+
+    b.seed_trader_history(
+        {
+            "source": "test_history",
+            "as_of": as_of.isoformat(),
+            "timeframes": histories,
+            "used_dates": {},
+            "errors": {},
+        },
+        as_of=as_of,
+    )
+    b.on_tick({
+        **tick(4 * 3600, bid=120, ask=121),
+        "market_timestamp": as_of.isoformat(),
+        "received_at": as_of.isoformat(),
+    })
+    state = b.decision_state(as_of)["autopilot"]
+
+    assert state["trader_history"]["source"] == "test_history"
+    one_min = state["timeframes"]["1min"]
+    assert one_min["closed_bars_available"] == 205
+    assert one_min["indicators"]["sma200"] is not None
+    assert one_min["indicators"]["rsi14"] is not None
+    assert one_min["indicators"]["atr14"] is not None
+    assert len(one_min["closed_bars"]) == 60
+    assert all(
+        datetime.fromisoformat(row["end_time"]) <= as_of
+        for row in one_min["closed_bars"]
+    )
+    assert all(row["close"] != 999 for row in one_min["closed_bars"])
+    assert state["account"]["closed_trades"] == 0
+    assert "exit_reasons" in state["performance"]
+
+
+def test_fifty_question_tells_jev_to_weigh_full_context():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0))
+    instructions = question_specs(b.decision_state(START))["target_position"]["instructions"]
+    assert "1m/5m/15m/1h" in instructions
+    assert "account/PnL" in instructions
+    assert "Decide for yourself" in instructions
 
 
 
