@@ -166,12 +166,7 @@ class UIController:
                 self._paper_config = config
                 self._paper = make_paper_broker(config)
                 self._trader_history_seed = None
-                if (
-                    isinstance(self._paper, AutopilotBroker)
-                    and with_jev
-                    and config.autopilot_style == "fifty"
-                    and config.autopilot_fifty_oracle == "jev"
-                ):
+                if isinstance(self._paper, AutopilotBroker) and with_jev:
                     warmup_at = datetime.now(timezone.utc)
                     self._trader_history_seed = await self._read.fetch_trader_history(
                         instrument_id=instrument.id,
