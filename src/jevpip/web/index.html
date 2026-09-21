@@ -102,9 +102,9 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て判断。標準は10分先を見て15分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
             <div id="autopilot-controls">
-              <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
+              <div class="field" id="auto-horizon-field" style="display:none"><label class="label" for="auto-horizon">旧見通し時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
               <details id="auto-constraints"><summary>Jevを縛る・詳細設定</summary><div class="details-body">
                 <div class="pair"><div class="field"><label class="label" for="auto-ttl">判断の有効期間（秒）</label><input id="auto-ttl" type="number" value="5" min="0.1" max="60" step="0.1"></div><div class="field"><label class="label" for="auto-confirmations">増額・反転の連続一致回数</label><input id="auto-confirmations" type="number" value="2" min="1" max="5"></div></div>
@@ -739,7 +739,7 @@ function updateTradeSummary(){
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
-    box.textContent="Jevモード "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 見通し "+$("auto-horizon").selectedOptions[0].textContent+" / 判断間隔 "+$("jev-every").value+"秒 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
+    box.textContent="Jevモード "+style+" / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 判断間隔 "+$("jev-every").value+"秒 / 各判断で現在の最適ポジションを選択 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
     return;
   }
   const unit=i.move_unit_label;
@@ -1511,13 +1511,12 @@ function autopilotStyleChanged(applyDefaults=true){
     ?"固定数量で1ポジションずつ。決済後は設定時間待ってから次のUP / DOWNを判断。"
     :scalp
       ?"全部入りtrader contextを見て判断。標準60秒ごと。短い判断間隔ではJev API call・input tokenを多く使用します。"
-      :"全部入りtrader contextを見て判断。標準は10分先を見て15分ごとに再判断。";
-  $("auto-horizon-field").style.display=fifty?"none":"block";
+      :"全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。";
+  $("auto-horizon-field").style.display="none";
   $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
   $("auto-constraints").style.display=fifty?"none":"block";
   if(fifty)$("auto-fundamentals").checked=false;
   if(applyDefaults){
-    $("auto-horizon").value=(scalp||fifty)?"30":"600";
     if(fifty)$("fifty-reentry-seconds").value="60";
     $("jev-every").value=fifty?"1":scalp?"60":"900";
     $("jbt-cadence").value=fifty?"1":scalp?"60":"900";
