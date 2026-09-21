@@ -953,8 +953,8 @@ class AutopilotBroker(PaperBroker):
                 "up_boundary_value": fifty_target,
                 "down_boundary_value": -fifty_target,
                 "boundary_question": (
-                    f"+{fifty_target:g}{fifty_label} と "
-                    f"-{fifty_target:g}{fifty_label} のどちらに先に到達するか"
+                    f"+{fifty_target:g} {fifty_label} と "
+                    f"-{fifty_target:g} {fifty_label} のどちらに先に到達するか"
                 ),
                 "net_of_spread_fees_slippage": True,
             }
