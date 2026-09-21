@@ -5,16 +5,16 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 ## 始め方
 
 1. デモ自動売買で **Jevモード** タブを選ぶ。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
+2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔・10分horizon、**スキャルピング**は標準60秒間隔・30秒horizon。どちらも `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
-判断間隔と見通す時間は別。見通す時間は30秒・2分・10分・30分から選ぶ。デイトレの初期値は10分、スキャルピングは30秒。これらは最適化済みの推奨値でも強制決済時刻でもない。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
+判断間隔と見通す時間は別。見通す時間は30秒・2分・10分・30分から選ぶ。デイトレの見通し初期値は10分、スキャルピングは30秒。判断間隔の初期値はデイトレ15分、スキャルピング60秒。短い判断間隔ほどJev API callとinput token消費が増えるため、特にスキャルピングではtoken利用量に注意する。これらは最適化済みの推奨値でも強制決済時刻でもない。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
 
 ### デイトレ / スキャルピング / Fifty+
 
-- `daytrade`: 現行Jevおまかせのrolling market historyを維持し、最大30本の確定1分足を渡す。標準cadenceは300秒。
-- `scalp`: 直近40 tickの時刻・MID・spread・前tick比を `autopilot.recent_ticks` として渡し、確定1分足は最大5本に絞る。標準cadenceは1秒。
+- `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
+- `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
@@ -38,7 +38,7 @@ KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 100
 
 コードが `schema_version / decision_id / session_id / account_version / instrument_id / target_side / target_quantity / confidence / reason / horizon_seconds / basis_market_timestamp / requested_at / available_at / expires_at` を組み立てる。選択肢、確率集合・合計、confidence、有限数、数量刻み、銘柄、時刻順を検証する。confidenceは実測勝率ではない。
 
-stateは現在bid/ask、spread、残高/equity、確定/含み損益、positionの数量・平均建値・年齢、手数料/slippage、往復コスト・損益分岐の値幅、約定履歴、履歴長と最大tick間隔、選択したfeatures、任意の公式イベントcontextを含む。デイトレでは最大30本の確定1分足、スキャでは最大5本の確定1分足に加えて直近40 tickを渡す。Fifty+ではさらに `trader_context_v1` として1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdownを渡す。指標計算用には最大240本の確定barを保持する。起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。APIキー・credentialは渡さない。
+Jevの3スタイルは共通の `trader_context_v1` を使う。stateには現在bid/ask/mid/spread、直近40 tick、1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、残高/equity・確定/含み損益、position、手数料/slippage、往復コスト、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdown、constraints、選択したfeatures、任意の公式イベントcontextを含む。指標計算用には最大240本の確定barを保持する。live起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。どの情報を重視するかはJev自身へ任せ、テクニカル指標や過去損益を固定売買ルールにはしない。APIキー・credentialは渡さない。
 
 ## 約定・会計
 
