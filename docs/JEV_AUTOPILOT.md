@@ -79,6 +79,8 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ファンダONのhistorical replayは明示的に拒否する。現在のイベント情報を過去へ流用しない。liveの公式contextも、後日観測したrevisionを過去時点の判断に混ぜない。
 
+`trader_context_v1` のmulti-timeframe自体はreplayでもbroker内で構築するが、現時点ではlive開始時のようにPublic KLineを別途warmupしない。replay sourceにwindow前のraw tickがあればそこから準備できるが、source先頭から開始するrunでは初期の長期timeframeが不足する。この差を埋めるlook-ahead-safe pre-window warmupはFifty+比較実験の前に整える。
+
 `data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
 ## 検証と残る課題
