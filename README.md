@@ -126,7 +126,7 @@ Jev APIが売買判断を担当し、コード戦略や旧research filterを売�
 
 - **デイトレ**: `trader_context_v1` を利用、標準15分ごとに現在の最適total positionを再判断
 - **スキャルピング**: `trader_context_v1` を利用、標準60秒ごとに現在の最適total positionを再判断。短くするほどtoken消費が増える
-- **Fifty+**: 1ポジションずつ。決済後は標準60秒待ってからJevが次の `UP / DOWN` を二択で判断
+- **Fifty+**: 1ポジションずつ。決済後は標準60秒待ち、設定した対称NET勝負幅を実数で示してJevが `UP / DOWN` を二択で判断。5 pips設定なら「+5 pips / -5 pips のどちらへ先に到達するか」を予測する
 
 ### 戦略モード
 
