@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from statistics import fmean
 from typing import Any
 
@@ -9,18 +8,19 @@ from jevpip.backtest.kline import run_statistical_replay
 from jevpip.backtest.spiritual import SpiritualBacktestConfig, run_spiritual_backtest
 from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
 from jevpip.broker.comparison import compare_raw_file
+from jevpip.config import Settings
 from jevpip.instruments import get_instrument
 
 
 class ResearchService:
     """Historical/research operations that do not depend on live UI state."""
 
-    def __init__(self, data_dir: Path) -> None:
-        self.data_dir = data_dir
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
 
     def raw_tick_dates(self, instrument_id: str) -> list[str]:
         get_instrument(instrument_id)
-        directory = self.data_dir / "raw_ticks" / instrument_id
+        directory = self.settings.data_dir / "raw_ticks" / instrument_id
         if not directory.exists():
             return []
         return sorted(
@@ -44,7 +44,7 @@ class ResearchService:
         bar_seconds: int,
     ) -> dict[str, Any]:
         get_instrument(instrument_id)
-        path = self.data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
+        path = self.settings.data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
         if not path.is_file():
             raise ValueError(f"raw tick data がありません: {instrument_id} / {date}")
         results = await asyncio.to_thread(
@@ -116,7 +116,7 @@ class ResearchService:
             for ch in profile_name
         )[:64] or "custom"
         get_instrument(instrument_id)
-        output = self.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
+        output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
         rows = await asyncio.to_thread(
             run_statistical_replay,
             date,
