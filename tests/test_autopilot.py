@@ -18,6 +18,7 @@ from jevpip.broker.strategies import coin_flip_signal, moon_phase_signal, tarot_
 from jevpip.jev.autopilot import REASONS, attach_target, question_specs
 from jevpip.jev_replay import run_jev_historical_replay
 from jevpip.signals import SignalPolicy
+from jevpip.trader_context import TIMEFRAME_SPECS
 from jevpip.web.app import PaperDemoInput
 from jevpip.web.schemas import ObserverStartRequest
 from jevpip.async_work import joined_thread
@@ -864,6 +865,126 @@ def test_fifty_replay_falls_back_to_historical_1m(tmp_path, monkeypatch):
     assert "GMO historical 1分足" in result["data_source_note"]
     assert result["summary"]["calls"] == fake.calls
     assert fake.calls > 0
+
+
+def test_fifty_replay_executes_at_response_time_before_sparse_next_tick(tmp_path, monkeypatch):
+    path = tmp_path/"raw_ticks"/"USD_JPY"/"2026-09-20.jsonl"
+    path.parent.mkdir(parents=True)
+    rows = [
+        tick(0, 99, 101),
+        tick(10, 106, 108),
+        tick(20, 106, 108),
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows)+"\n")
+    times = iter([0.0, 0.1])
+    monkeypatch.setattr("jevpip.jev_replay.time.perf_counter", lambda: next(times))
+
+    class Fake:
+        calls = 0
+        def decide(self, state, horizon, **kwargs):
+            self.calls += 1
+            return answer(state, "UP")
+
+    fake = Fake()
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=20,
+        cadence_seconds=60,
+        profile={"quote": True},
+        signal_policy=SignalPolicy(),
+        paper_config=broker(
+            autopilot_style="fifty",
+            autopilot_fifty_oracle="jev",
+            autopilot_fifty_target_units=5,
+            autopilot_max_spread=10,
+            autopilot_fifty_reentry_seconds=60,
+            fee_rate=0,
+            slippage_units=0,
+        ).config,
+        jev_client=fake,
+        acknowledged_token_use=True,
+    )
+
+    saved = [json.loads(line) for line in open(result["output"])]
+    trades = [row for row in saved if row.get("kind") == "paper_trade"]
+    assert fake.calls == 1
+    assert [row["action"] for row in trades[:2]] == ["OPEN", "CLOSE"]
+    assert trades[0]["timestamp"] == (START + timedelta(seconds=0.1)).isoformat()
+    assert trades[1]["reason"] == "fifty_take_profit"
+    assert not any("rejected:expired" in json.dumps(row) for row in saved)
+
+
+def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch):
+    path = tmp_path/"raw_ticks"/"USD_JPY"/"2026-09-20.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text("\n".join(json.dumps(tick(i, 99, 101)) for i in range(2))+"\n")
+    times = iter([0.0, 0.1])
+    monkeypatch.setattr("jevpip.jev_replay.time.perf_counter", lambda: next(times))
+
+    timeframes = {}
+    for interval, spec in TIMEFRAME_SPECS.items():
+        seconds = spec["seconds"]
+        bars = []
+        for index in range(205):
+            end = START - timedelta(seconds=seconds*(204-index))
+            opened = end - timedelta(seconds=seconds)
+            value = 100 + index
+            bars.append({
+                "open_time": opened.isoformat(),
+                "end_time": end.isoformat(),
+                "open": value,
+                "high": value + 1,
+                "low": value - 1,
+                "close": value,
+            })
+        timeframes[interval] = bars
+    seed = {
+        "source": "test_history",
+        "as_of": START.isoformat(),
+        "timeframes": timeframes,
+        "used_dates": {},
+        "errors": {},
+    }
+
+    class Fake:
+        calls = 0
+        def decide(self, state, horizon, **kwargs):
+            self.calls += 1
+            context = state["autopilot"]
+            assert context["trader_history"]["source"] == "test_history"
+            assert context["timeframes"]["1hour"]["closed_bars_available"] == 205
+            assert context["timeframes"]["1hour"]["indicators"]["sma_200"] is not None
+            assert all(
+                datetime.fromisoformat(row["end_time"]) <= START
+                for row in context["timeframes"]["1hour"]["closed_bars"]
+            )
+            return answer(state, "UP")
+
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=1,
+        cadence_seconds=60,
+        profile={"quote": True},
+        signal_policy=SignalPolicy(),
+        paper_config=broker(
+            autopilot_style="fifty",
+            autopilot_fifty_oracle="jev",
+            autopilot_fifty_target_units=5,
+            autopilot_max_spread=10,
+            fee_rate=0,
+            slippage_units=0,
+        ).config,
+        jev_client=Fake(),
+        acknowledged_token_use=True,
+        trader_history_seed=seed,
+    )
+    assert result["summary"]["calls"] == 1
 
 
 def test_replay_uses_same_policy_and_preserves_full_diagnostics(tmp_path, monkeypatch):
