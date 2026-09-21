@@ -914,18 +914,30 @@ class AutopilotBroker(PaperBroker):
             "target_changes": snapshot.get("target_changes"),
         }
         if self.config.autopilot_style == "fifty":
+            fifty_target = (
+                self.config.autopilot_fifty_target_jpy
+                if self.instrument.market_kind == "crypto_spot"
+                else self.config.autopilot_fifty_target_units
+            )
+            fifty_label = (
+                "円"
+                if self.instrument.market_kind == "crypto_spot"
+                else self.config.move_unit_label
+            )
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
                 "oracle": self.config.autopilot_fifty_oracle,
                 "entry_gate": fifty_entry_gate,
                 "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
-                "target_value": (
-                    self.config.autopilot_fifty_target_jpy
-                    if self.instrument.market_kind == "crypto_spot"
-                    else self.config.autopilot_fifty_target_units
+                "target_value": fifty_target,
+                "target_label": fifty_label,
+                "up_boundary_value": fifty_target,
+                "down_boundary_value": -fifty_target,
+                "boundary_question": (
+                    f"+{fifty_target:g}{fifty_label} と "
+                    f"-{fifty_target:g}{fifty_label} のどちらに先に到達するか"
                 ),
-                "target_label": "円" if self.instrument.market_kind == "crypto_spot" else self.config.move_unit_label,
                 "net_of_spread_fees_slippage": True,
             }
         return {"autopilot": autopilot_state}
