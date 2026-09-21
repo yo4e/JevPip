@@ -76,7 +76,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div class="field"><label class="label" for="mode">取引モード</label><select id="mode"><option value="observe">観測のみ</option><option value="paper" selected>デモ自動売買</option></select></div>
       <div id="jev-access-observe-slot">
         <div class="jev-access" id="jev-access">
-        <label class="toggle"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small><span id="jev-access-note">トークンを消費します。</span></small></span></label>
+        <label class="toggle" id="jev-toggle-row"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small><span id="jev-access-note">トークンを消費します。</span></small></span></label>
         <details class="cadence-details" id="cadence-settings"><summary>判断間隔を変更</summary><div class="field" style="margin:8px 0 0"><label class="label" for="jev-every">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒</div></div></details>
         </div>
       </div>
@@ -502,16 +502,82 @@ function applySignal(name,p=state.config.signal_policies[name]){if(!p)return;$("
 function signalPolicy(){return{min_direction_probability:Number($("s-dir").value),min_direction_margin:Number($("s-margin").value),max_noise_probability:Number($("s-noise").value),max_reversal_probability:Number($("s-rev").value),min_trend_strength:Number($("s-trend").value),max_spread_pips:Number($("s-spread").value)}}
 function paperConfig(){
   if($("mode").value!=="paper")return null;
-  const brain=$("paper-mode").value,fifty=brain==="jev"&&$("auto-style").value==="fifty";
-  const strategy=brain==="spiritual"?$("spiritual-strategy").value:$("paper-strategy").value;
-  return{...autopilotConfig(),autopilot_enabled:brain==="jev",initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),paper_leverage:Number($("paper-leverage").value||1),strategy,strategy_enabled:brain!=="jev",momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}
+  const brain=$("paper-mode").value;
+  const spiritual=brain==="spiritual";
+  const jev=brain==="jev";
+  const fifty=spiritual||(jev&&$("auto-style").value==="fifty");
+  return{
+    ...autopilotConfig(),
+    autopilot_enabled:jev||spiritual,
+    autopilot_style:spiritual?"fifty":$("auto-style").value,
+    autopilot_fifty_oracle:spiritual?$("spiritual-strategy").value:"jev",
+    initial_balance:Number($("paper-balance").value),
+    size:Number($("paper-size").value),
+    paper_leverage:Number($("paper-leverage").value||1),
+    strategy:$("paper-strategy").value,
+    strategy_enabled:brain==="strategy",
+    momentum_window_seconds:Number($("p-window").value),
+    momentum_trigger_units:Number($("p-trigger").value),
+    max_spread_units:Number($("p-spread").value),
+    take_profit_units:Number($("p-tp").value),
+    stop_loss_units:Number($("p-sl").value),
+    max_hold_seconds:Number($("p-hold").value),
+    cooldown_seconds:Number($("p-cool").value),
+    jev_signal_max_age_seconds:3,
+    slippage_units:Number($("p-slip").value||0),
+    rsi_period:Number($("p-rsi-period").value||14),
+    rsi_oversold:Number($("p-rsi-low").value||30),
+    rsi_overbought:Number($("p-rsi-high").value||70),
+    ma_fast_period:Number($("p-ma-fast").value||5),
+    ma_slow_period:Number($("p-ma-slow").value||20),
+    ma_min_gap_units:Number($("p-ma-gap").value||0),
+    deterministic_supervisor_enabled:brain==="strategy"&&$("paper-supervisor").checked,
+    max_market_age_seconds:Number($("p-stale").value||5),
+    strategy_bar_seconds:Number($("p-bar-seconds").value||0)
+  }
 }
 
 function jevReplayPaperConfig(){const fifty=$("autopilot").checked&&$("auto-style").value==="fifty";return{...autopilotConfig(),initial_balance:Number($("paper-balance").value),size:Number($("paper-size").value),paper_leverage:Number($("paper-leverage").value||1),strategy:$("paper-strategy").value,strategy_enabled:false,momentum_window_seconds:Number($("p-window").value),momentum_trigger_units:Number($("p-trigger").value),max_spread_units:Number($("p-spread").value),take_profit_units:Number($("p-tp").value),stop_loss_units:Number($("p-sl").value),max_hold_seconds:Number($("p-hold").value),cooldown_seconds:Number($("p-cool").value),jev_signal_max_age_seconds:3,slippage_units:Number($("p-slip").value||0),rsi_period:Number($("p-rsi-period").value||14),rsi_oversold:Number($("p-rsi-low").value||30),rsi_overbought:Number($("p-rsi-high").value||70),ma_fast_period:Number($("p-ma-fast").value||5),ma_slow_period:Number($("p-ma-slow").value||20),ma_min_gap_units:Number($("p-ma-gap").value||0),deterministic_supervisor_enabled:fifty?false:$("paper-supervisor").checked,max_market_age_seconds:Number($("p-stale").value||5),strategy_bar_seconds:Number($("p-bar-seconds").value||0)}}
 
-function modeChanged(){const paper=$("mode").value==="paper";if(paper&&$("autopilot").checked)$("with-jev").checked=true;const access=$("jev-access"),slot=$(paper?"jev-access-paper-slot":"jev-access-observe-slot");if(access&&slot&&access.parentElement!==slot)slot.appendChild(access);$("paper-basic").style.display=paper?"block":"none";$("paper-advanced").style.display=paper?"block":"none";updateTradeSummary();autopilotChanged();updateJevAccess();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper(active?state.lastStatus.paper:null)}}
-function strategyChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
-function strategyEnabledChanged(){$("paper-strategy").disabled=Boolean(state.lastStatus?.running)||$("autopilot").checked||!$("paper-strategy-enabled").checked;updateTradeSummary();updateStrategyBacktestSummary()}
+const spiritualOracles=new Set(["moon_phase","zodiac_polarity"]);
+function setPaperDecisionMode(mode,applyDefaults=true){
+  if(!["jev","strategy","spiritual"].includes(mode))mode="jev";
+  $("paper-mode").value=mode;
+  const jev=mode==="jev",strategy=mode==="strategy",spiritual=mode==="spiritual";
+  $("autopilot").checked=jev||spiritual;
+  $("paper-strategy-enabled").checked=strategy;
+  $("with-jev").checked=jev;
+  $("jev-mode-panel").style.display=jev?"block":"none";
+  $("strategy-mode-panel").style.display=strategy?"block":"none";
+  $("spiritual-mode-panel").style.display=spiritual?"block":"none";
+  $("paper-risk-settings").style.display=(jev||spiritual)?"block":"none";
+  const fifty=spiritual||(jev&&$("auto-style").value==="fifty");
+  $("fifty-shared-controls").style.display=fifty?"block":"none";
+  $("fifty-controls").style.display=fifty?"block":"none";
+  document.querySelectorAll("[data-paper-mode]").forEach(btn=>{
+    const active=btn.dataset.paperMode===mode;
+    btn.classList.toggle("active",active);
+    btn.setAttribute("aria-selected",active?"true":"false");
+  });
+  if(applyDefaults&&strategy)applyStrategyPreset($("paper-strategy").value);
+  if(applyDefaults&&spiritual)$("fifty-reentry-seconds").value="60";
+  updateFiftyTargetUi();
+  updateTradeSummary();
+  updateJevAccess();
+}
+function applyStrategyPreset(value){
+  if(value==="rsi_mean_reversion"){
+    $("p-bar-seconds").value="60";$("p-rsi-period").value="14";$("p-rsi-low").value="30";$("p-rsi-high").value="70";
+  }else if(value==="ma_trend"){
+    $("p-bar-seconds").value="60";$("p-ma-fast").value="5";$("p-ma-slow").value="20";$("p-ma-gap").value=".2";
+  }else{
+    $("p-bar-seconds").value="0";$("p-window").value="5";$("p-trigger").value=instrumentSpec()?.default_momentum_trigger??.6;
+  }
+  updateTradeSummary();updateStrategyBacktestSummary();
+}
+function modeChanged(){const paper=$("mode").value==="paper";const access=$("jev-access"),slot=$(paper?"jev-access-paper-slot":"jev-access-observe-slot");if(access&&slot&&access.parentElement!==slot)slot.appendChild(access);$("paper-basic").style.display=paper?"block":"none";$("paper-advanced").style.display=paper&&$("paper-mode").value==="strategy"?"block":"none";if(paper)setPaperDecisionMode($("paper-mode").value||"jev",false);else updateJevAccess();updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper(active?state.lastStatus.paper:null)}}
+function strategyChanged(){applyStrategyPreset($("paper-strategy").value)}
+function strategyEnabledChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
 const paperFields={
   "paper-size":"size","paper-balance":"initial_balance","paper-leverage":"paper_leverage","p-window":"momentum_window_seconds",
   "p-trigger":"momentum_trigger_units","p-spread":"max_spread_units","p-tp":"take_profit_units",
@@ -533,7 +599,10 @@ function restoreSession(s){
   $("mode").value=s.paper?"paper":"observe";
   const cfg=s.paper?.config||{};
   if(s.paper){
-    $("autopilot").checked=Boolean(s.paper.autopilot_enabled);
+    const oracle=cfg.autopilot_fifty_oracle||"jev";
+    const restoredMode=s.paper.autopilot_enabled?(oracle==="jev"?"jev":"spiritual"):"strategy";
+    $("paper-mode").value=restoredMode;
+    $("autopilot").checked=restoredMode!=="strategy";
     $("auto-style").value=cfg.autopilot_style||"daytrade";
     autopilotStyleChanged(false);
     for(const [id,key] of Object.entries(paperFields))if(cfg[key]!=null)$(id).value=cfg[key];
@@ -544,9 +613,10 @@ function restoreSession(s){
       $("auto-"+key+"-on").checked=value!=null;
       if(value!=null)$("auto-"+key).value=value;
     }
-    $("paper-strategy-enabled").checked=Boolean(s.paper.strategy_enabled);
+    $("paper-strategy-enabled").checked=restoredMode==="strategy";
     $("paper-supervisor").checked=Boolean(cfg.deterministic_supervisor_enabled);
     $("paper-strategy").value=cfg.strategy||s.paper.strategy||"momentum";
+    if(restoredMode==="spiritual")$("spiritual-strategy").value=oracle;
   }
   const session=s.session_config||{};
   for(const [id,name] of [["profile",s.profile_name],["signal-policy",s.signal_policy_name]]){
@@ -558,20 +628,23 @@ function restoreSession(s){
   if(session.profile)applyProfile($("profile").value,session.profile);
   if(session.signal_policy)applySignal($("signal-policy").value,session.signal_policy);
   if(session.jev_every_seconds!=null)$("jev-every").value=session.jev_every_seconds;
-  modeChanged();autopilotChanged();
   $("with-jev").checked=Boolean(s.with_jev);
+  modeChanged();
+  if(s.paper)setPaperDecisionMode($("paper-mode").value,false);
   updateTradeSummary();updateBacktestNote();updateStrategyBacktestSummary();
   return changed;
 }
 function syncSessionControls(s,activeInstrument){
   const locked=Boolean(!state.ready||state.pendingSession||s.running);
   document.querySelectorAll(".side input, .side select").forEach(el=>el.disabled=locked);
-  const auto=$("mode").value==="paper"&&$("autopilot").checked;
-  $("with-jev").disabled=locked||auto;
+  const auto=$("mode").value==="paper"&&$("paper-mode").value!=="strategy";
+  $("with-jev").disabled=locked||$("mode").value==="paper";
+  document.querySelectorAll("[data-paper-mode]").forEach(btn=>btn.disabled=locked);
   for(const id of ["paper-strategy-enabled","paper-supervisor","p-tp","p-sl","p-hold","p-cool","p-spread"]){
     $(id).disabled=locked||auto;
   }
-  $("paper-strategy").disabled=locked||auto||!$("paper-strategy-enabled").checked;
+  $("paper-strategy").disabled=locked||$("paper-mode").value!=="strategy";
+  $("spiritual-strategy").disabled=locked||$("paper-mode").value!=="spiritual";
   $("session-lock-note").style.display=locked&&state.ready?"block":"none";
   $("start").disabled=locked;
   $("stop").disabled=!s.running||Boolean(state.pendingSession);
@@ -582,12 +655,15 @@ function syncSessionControls(s,activeInstrument){
   updateJevAccess();
 }
 function updateJevAccess(){
-  const auto=$("mode").value==="paper"&&$("autopilot").checked;
-  $("auto-style-field").style.display=auto?"block":"none";
-  $("cadence-settings").style.display=auto&&$("auto-style").value==="fifty"?"none":"block";
+  const paper=$("mode").value==="paper",jevMode=paper&&$("paper-mode").value==="jev";
+  if(paper)$("with-jev").checked=jevMode;
+  $("jev-access").style.display=!paper||jevMode?"block":"none";
+  $("jev-toggle-row").style.display=paper?"none":"flex";
+  $("auto-style-field").style.display=jevMode?"block":"none";
+  $("cadence-settings").style.display=jevMode&&$("auto-style").value==="fifty"?"none":"block";
   $("jev-access-note").textContent=!$("with-jev").checked?"APIを呼ばずに動作します。"
     :!state.config?.typesafe_api_key_configured?"キー未設定。「設定」から登録してください。"
-    :auto?"おまかせには必須です。トークンを消費します。":"判断を記録します。トークンを消費します。";
+    :jevMode?"Jevモード。トークンを消費します。":"判断を記録します。トークンを消費します。";
 }
 function updateTradeSummary(){
   const box=$("trade-summary");if(!box)return;
@@ -721,8 +797,10 @@ async function instrumentChanged(){applyInstrumentDefaults();updateBacktestNote(
 
 async function start(){
   if(!state.ready||state.pendingSession||state.lastStatus?.running)return;
-  if($("with-jev").checked&&!state.config?.typesafe_api_key_configured){toast("Jevキー未設定です。「設定」から登録してください。",true);openSettings();return;}
-  const payload={instrument_id:$("instrument").value,profile_name:$("profile").value+" / UI",profile:features(),with_jev:$("with-jev").checked,jev_every_seconds:Number($("jev-every").value||1),signal_policy_name:$("signal-policy").value+" / UI",signal_policy:signalPolicy(),paper_demo:paperConfig()};
+  const paperMode=$("mode").value==="paper"?$("paper-mode").value:null;
+  const useJev=$("mode").value==="paper"?paperMode==="jev":$("with-jev").checked;
+  if(useJev&&!state.config?.typesafe_api_key_configured){toast("Jevキー未設定です。「設定」から登録してください。",true);openSettings();return;}
+  const payload={instrument_id:$("instrument").value,paper_decision_mode:paperMode,profile_name:$("profile").value+" / UI",profile:features(),with_jev:useJev,jev_every_seconds:Number($("jev-every").value||1),signal_policy_name:$("signal-policy").value+" / UI",signal_policy:signalPolicy(),paper_demo:paperConfig()};
   state.pendingSession="start";syncSessionControls(state.lastStatus||{},true);$("status").textContent="開始中…";
   try{await api("/api/observer/start",{method:"POST",body:JSON.stringify(payload)});toast(payload.paper_demo?"デモ取引を開始しました。":"観測を開始しました。");}
   catch(e){toast(e.message,true)}
