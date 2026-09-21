@@ -47,8 +47,8 @@ Jevおまかせはprimary paper workflowとして実装済みです。
 - 同時開始 / 重複API callを抑止
 
 スタイル:
-- **デイトレ**: `trader_context_v1` を利用。標準900秒（15分）ごとに10分先を再評価
-- **スキャルピング**: `trader_context_v1` を利用。標準60秒ごとに30秒先を再評価。短く設定するほどtoken消費が増える
+- **デイトレ**: `trader_context_v1` を利用。標準900秒（15分）ごとに現在の最適total positionを再判断
+- **スキャルピング**: `trader_context_v1` を利用。標準60秒ごとに現在の最適total positionを再判断。短く設定するほどtoken消費が増える
 - **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。対称のnet TP/SLと決済後待機を使う
 
 3スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
