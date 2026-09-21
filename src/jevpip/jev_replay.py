@@ -632,12 +632,19 @@ def run_jev_historical_replay(
         if tick.market_timestamp > end_at:
             break
 
-        buffer.append(tick)
         if tick.market_timestamp < start_at:
-            if isinstance(broker, AutopilotBroker):
-                broker.warm_history(tick.as_json_dict())
+            # A live Jev session starts with closed historical KLines but no
+            # pre-start raw tick tape. When a live-style trader-history seed is
+            # available, keep the replay's short rolling context empty until
+            # in-window ticks actually arrive. Direct/library callers without
+            # a seed retain the older raw-history warmup behavior.
+            if trader_history_seed is None:
+                buffer.append(tick)
+                if isinstance(broker, AutopilotBroker):
+                    broker.warm_history(tick.as_json_dict())
             continue
 
+        buffer.append(tick)
         if (
             isinstance(broker, AutopilotBroker)
             and trader_history_seed is not None
