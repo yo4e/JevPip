@@ -73,7 +73,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ## Historical Jev BT
 
-右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
+右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60/300/900秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
 
 受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。window前のraw tickは過去チャートの準備だけに使用する。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
 
@@ -89,4 +89,4 @@ unit testsは模擬応答だけで会計、独立cash ledgerとの照合、部�
 
 収益性を調べる際は、短い接続確認の後、別日・別区間を残して比較する。従来Jev、code-only、No Tradeも同条件で残し、net PnL / PF / DDだけでなく手数料、売買総額、保有額、変更回数、calls / tokens / API費用、tickの欠落を見る。疎なraw tickでは1秒判断・約定を検証できない。
 
-暫定部分は固定数量候補と見通し候補、current `jev-latest`、単純全量約定、historical fundamentals未対応、比較runの手動実行。保存ログは現行モデルの再問い合わせ結果であり、過去モデルの再現でも完全再現可能なbenchmarkでもない。raw source fileやAPI modelは固定・同梱していない。実測performanceや取引ログをpublic repositoryへcommitしない方針を維持する。
+暫定部分は固定数量候補、current `jev-latest`、単純全量約定、historical fundamentals未対応、比較runの手動実行。`autopilot_horizon_seconds` は旧session/configとの互換用fieldとして残るが、現在のJev Autopilot質問には固定予測horizonを課していない。保存ログは現行モデルの再問い合わせ結果であり、過去モデルの再現でも完全再現可能なbenchmarkでもない。raw source fileやAPI modelは固定・同梱していない。実測performanceや取引ログをpublic repositoryへcommitしない方針を維持する。

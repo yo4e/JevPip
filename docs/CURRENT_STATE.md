@@ -171,13 +171,13 @@ external context foundationも実装済み:
 - boundedなJev context state変換
 - source / reuse調査: `docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md`
 
-Jev schemaには含めない:
+旧Jev supervisor / research schemaでは、モデルが**任意の注文内容を生成する形**にはしない:
 
 - arbitrary BUY / SELL order
-- quantity
-- TP / SL
-- leverage
+- arbitrary quantity / TP / SL / leverage command
 - arbitrary command / code
+
+現在のJev Autopilotでは、口座・cost・paper leverage等を観測contextとして見せる一方、実際に選べる数量や方向はコード側が作ったallowlist候補に限定する。
 
 実装済み:
 
