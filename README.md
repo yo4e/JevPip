@@ -9,6 +9,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 - code-based paper trading
 - 排他的な3つのpaper判断モード（Jev / 戦略 / スピリチュアル実験）
 - strategy backtest
+- spiritual Fifty+ backtest
 - raw tick replay comparison
 - optionalなJev研究レイヤー
 
@@ -196,7 +197,7 @@ paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision trace�
 
 supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
-## 5つの検証機能
+## 6つの検証機能
 
 ### 1. 戦略BT
 
@@ -243,7 +244,28 @@ BTC historical KLineにはBID / ASKがないため、`bid = ask = close` の近�
 
 > 戦略BTは1分足の**close点だけ**でTP / SL等を評価します。1分の途中の値動き順序は復元しないため、tick-level execution backtestではありません。
 
-### 2. 戦略比較
+### 2. スピBT 🌙
+
+UIの「スピBT」タブから、**月相Fifty+ / 太陽星座Fifty+** をhistorical 1分足で再生します。戦略BTとは別機能です。
+
+Jev APIは使いません。liveのスピリチュアルモードと同じFifty+エンジンを使い、次を共用します。
+
+- 月相 / 太陽星座の二択方向ルール
+- 対称のネット損益勝負幅
+- 決済後の再判断待機
+- 最大spread
+- 往復コストgate
+- 最大DD停止
+- FX paper leverage
+- fee / slippage / paper accounting
+
+結果にはnet PnL、PF、max DD、勝率、決済数、fee、LONG / SHORT entry数、No Trade / Buy & Hold baseline、約定履歴を表示します。
+
+FXはhistorical BID / ASK closeを使います。BTCはhistorical KLineにBID / ASKがないため、`bid = ask = close` の近似でfee / slippageを反映します。
+
+> スピBTも1分足の**close点だけ**でFifty+のTP / SLを評価します。1分の途中でどちらの境界へ先に触れたかは復元できないため、tick-level replayではありません。
+
+### 3. 戦略比較
 
 保存済みraw tickを、同じsize / cost modelで比較します。
 
@@ -274,7 +296,7 @@ uv run jevpip compare \
   --bar-seconds 60
 ```
 
-### 3. 統計リプレイ
+### 4. 統計リプレイ
 
 historical 1分足をFeature pipelineへ流し、次の1分の値動きを集計する研究機能です。
 
@@ -288,7 +310,7 @@ CLI:
 uv run jevpip backtest --date 20260918 --profile technical
 ```
 
-### 4. A/B/C/D experiment
+### 5. A/B/C/D experiment
 
 Jev + code strategy + 安全監督をすべてONにしたsource run（C-run）のdecision traceを、Jevへ再問い合わせせず再生します。
 
@@ -327,7 +349,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 `--json` でmachine-readableな結果を出せます。Jev performanceの実測結果はpublic repoへcommitしません。
 
 
-### 5. Jev historical replay
+### 6. Jev historical replay
 
 通常の1分足バックテストとは分離して、**保存済みraw tickに現在のJevを再実行する研究リプレイ**をUIの「Jev BT」タブから実行できます。
 
