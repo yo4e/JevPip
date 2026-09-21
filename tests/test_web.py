@@ -59,7 +59,13 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "ドローダウン・レバレッジ" in response.text
         assert "資金・損失上限" not in response.text
         assert response.text.index("ドローダウン・レバレッジ") < response.text.index("動作・コストの詳細")
-        assert '$("paper-risk-settings").style.display=enabled?"block":"none";' in response.text
+        assert 'data-paper-mode="jev"' in response.text
+        assert 'data-paper-mode="strategy"' in response.text
+        assert 'data-paper-mode="spiritual"' in response.text
+        assert "スピリチュアルモード" in response.text
+        assert "方向を決めるもの" in response.text
+        assert "太陽星座の極性" in response.text
+        assert "Jev APIも通常戦略も使いません" in response.text
         assert 'id="paper-max-spread"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
         assert "GMO Public RESTの停止中プレビュー" in response.text
@@ -74,6 +80,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert response.text.count('id="account-refresh"') == 1
         assert "従来モード Jev監督" in response.text
         assert "月相" in response.text
+        assert 'id="spiritual-strategy"' in response.text
+        assert 'id="paper-mode"' in response.text
         assert "過去日付を自由に選べます" in response.text
         assert "terminal-resizer" in response.text
         assert "https://ko-fi.com/yo4e" in response.text
