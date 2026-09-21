@@ -1159,6 +1159,18 @@ def test_cancelled_replay_stops_after_inflight_call(tmp_path, monkeypatch):
             return answer(state, "KEEP")
     monkeypatch.setattr("jevpip.jev.client.JevClient", Fake)
     ui = UIController(Settings(data_dir=tmp_path, typesafe_api_key="test-only"))
+
+    async def fake_trader_history(*, instrument_id, as_of):
+        return {
+            "source": "test_history",
+            "as_of": as_of.isoformat(),
+            "timeframes": {interval: [] for interval in TIMEFRAME_SPECS},
+            "used_dates": {},
+            "errors": {},
+        }
+
+    monkeypatch.setattr(ui._read, "fetch_trader_history", fake_trader_history)
+
     async def run():
         task = asyncio.create_task(ui.run_jev_replay(instrument_id="USD_JPY", date="2026-09-20",
             start_time=None, duration_seconds=19, cadence_seconds=1, profile={}, signal_policy=SignalPolicy(),
