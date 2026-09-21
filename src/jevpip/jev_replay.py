@@ -654,7 +654,7 @@ def run_jev_historical_replay(
         try:
             answer = jev_client.decide(
                 state,
-                f"{config.autopilot_horizon_seconds}s" if config.autopilot_enabled else "5s",
+                "5s",
                 instrument_label=tick.display_symbol,
             )
         except Exception as exc:
