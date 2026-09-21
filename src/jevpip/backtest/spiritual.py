@@ -9,7 +9,7 @@ from jevpip.broker.comparison import build_baselines
 from jevpip.broker.paper import PaperConfig
 from jevpip.instruments import get_instrument
 
-SpiritualOracle = Literal["moon_phase", "zodiac_polarity", "tarot"]
+SpiritualOracle = Literal["moon_phase", "zodiac_polarity", "tarot", "coin_flip"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +80,7 @@ def run_spiritual_backtest(
     config: SpiritualBacktestConfig,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    if config.oracle not in {"moon_phase", "zodiac_polarity", "tarot"}:
+    if config.oracle not in {"moon_phase", "zodiac_polarity", "tarot", "coin_flip"}:
         raise ValueError("unsupported spiritual oracle")
     if config.reentry_seconds < 0:
         raise ValueError("reentry_seconds must be >= 0")

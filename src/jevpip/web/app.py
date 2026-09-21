@@ -69,7 +69,7 @@ class PaperDemoInput(BaseModel):
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
     autopilot_fifty_target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
     autopilot_fifty_reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
-    autopilot_fifty_oracle: Literal["jev", "moon_phase", "zodiac_polarity", "tarot"] = "jev"
+    autopilot_fifty_oracle: Literal["jev", "moon_phase", "zodiac_polarity", "tarot", "coin_flip"] = "jev"
     autopilot_ttl_seconds: float = Field(default=5, gt=0, le=60)
     autopilot_confirmations: int = Field(default=2, ge=1, le=5)
     autopilot_max_quantity: float | None = Field(default=None, gt=0, le=100000000)
@@ -206,7 +206,7 @@ class StrategyBacktestRequest(BaseModel):
 class SpiritualBacktestRequest(BaseModel):
     instrument_id: str = Field(default="USD_JPY", min_length=1, max_length=32)
     date: str = Field(pattern=r"^\d{8}$")
-    oracle: Literal["moon_phase", "zodiac_polarity", "tarot"] = "moon_phase"
+    oracle: Literal["moon_phase", "zodiac_polarity", "tarot", "coin_flip"] = "moon_phase"
     initial_balance: float = Field(default=100000, gt=0, le=1000000000)
     size: float = Field(gt=0, le=100000000)
     paper_leverage: float = Field(default=25.0, ge=1, le=25)
@@ -394,9 +394,9 @@ async def start_observer(request: ObserverStartRequest) -> dict[str, Any]:
                 or not cfg.autopilot_enabled
                 or cfg.autopilot_style != "fifty"
                 or cfg.strategy_enabled
-                or oracle not in {"moon_phase", "zodiac_polarity", "tarot"}
+                or oracle not in {"moon_phase", "zodiac_polarity", "tarot", "coin_flip"}
             ):
-                raise ValueError("スピリチュアルモードはFifty+骨格で、月相/星座/タロットの二択だけを使います。")
+                raise ValueError("スピリチュアルモードはFifty+骨格で、月相/星座/タロット/コイントスの二択だけを使います。")
         await controller.start_observer(
             instrument_id=request.instrument_id,
             profile_name=request.profile_name,

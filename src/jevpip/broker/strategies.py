@@ -230,3 +230,18 @@ def tarot_signal() -> StrategyDecision:
             "semantics": "experimental_spiritual_baseline",
         },
     )
+
+
+
+def coin_flip_signal() -> StrategyDecision:
+    """Pure random UP/DOWN control for Fifty+ experiments."""
+    heads = bool(secrets.randbits(1))
+    signal: Signal = "LONG" if heads else "SHORT"
+    return StrategyDecision(
+        signal,
+        "coin_flip",
+        {
+            "side": "heads" if heads else "tails",
+            "semantics": "random_control_baseline",
+        },
+    )
