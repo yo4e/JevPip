@@ -315,7 +315,7 @@ strategy PnL backtestではない。
 
 実装済み:
 
-- 保存済みraw tick専用のJev historical replay
+- Jev historical replayは保存済みraw tickを優先し、未保存日はGMO historical 1分足へfallback
 - current Jev modelを過去時点までのstateで再実行
 - 30秒〜1日の検証window
 - 1 / 2 / 5 / 10 / 30 / 60秒 cadence
@@ -331,7 +331,9 @@ strategy PnL backtestではない。
 
 制約:
 
-- historical 1min KLineはJev replayに使わない
+- raw tickがある日は高解像度raw replayを優先する
+- raw tickがない日の1分足fallbackはintraminute path / 細かいspread変化 / 秒単位entryを再現しない
+- BTC historical fallbackは `bid = ask = close` 近似
 - current modelによるreplayで、historical model再現ではない
 - 初版はofficial event contextを注入しない
 - 1日 × 1秒のような10,000 calls超過設定は拒否
