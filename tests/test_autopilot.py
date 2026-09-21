@@ -318,6 +318,8 @@ def test_fifty_question_states_exact_configured_net_boundaries():
     assert fifty["target_value"] == 5
     assert fifty["up_boundary_value"] == 5
     assert fifty["down_boundary_value"] == -5
+    assert state["autopilot"]["targets"]["UP"]["directional_boundary_label"] == "+5 pips"
+    assert state["autopilot"]["targets"]["DOWN"]["directional_boundary_label"] == "-5 pips"
     assert "+5 pips" in fifty["boundary_question"]
     assert "-5 pips" in fifty["boundary_question"]
     assert "+5 pips" in instructions
