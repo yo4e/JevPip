@@ -372,6 +372,11 @@ def preview_jev_replay(
         **asdict(plan),
         "source_path": None if plan.source_path is None else str(plan.source_path),
         "source_note": source_note,
+        "replay_fidelity": (
+            "raw_tick"
+            if plan.source_kind == "raw_ticks"
+            else "approximate_1m_smoke_test"
+        ),
         "max_calls_limit": MAX_JEV_REPLAY_CALLS,
         "within_call_limit": plan.planned_max_calls <= MAX_JEV_REPLAY_CALLS,
         "token_estimate": {
@@ -592,12 +597,23 @@ def run_jev_historical_replay(
         f"{instrument_id}-{cadence_seconds}s-{uuid4().hex[:8]}"
     )
     output = data_dir / "jev_replays" / instrument_id / f"{run_id}.jsonl"
+    history_meta = (
+        None
+        if trader_history_seed is None
+        else {
+            "source": trader_history_seed.get("source"),
+            "as_of": trader_history_seed.get("as_of"),
+            "used_dates": trader_history_seed.get("used_dates", {}),
+            "errors": trader_history_seed.get("errors", {}),
+        }
+    )
     append_jsonl(output, {"kind": "jev_replay_config", "schema_version": 1,
                           "config": asdict(config), "profile": profile,
                           "signal_policy": asdict(signal_policy), "cadence_seconds": cadence_seconds,
                           "source_kind": source_kind,
                           "replay_mode": replay_mode,
                           "source_path": None if source_path is None else str(source_path),
+                          "trader_history": history_meta,
                           "plan": {**asdict(plan), "source_path": None if plan.source_path is None else str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
     next_request_at = start_at
@@ -788,6 +804,12 @@ def run_jev_historical_replay(
         "data_source": source_kind,
         "replay_mode": replay_mode,
         "source_path": None if source_path is None else str(source_path),
+        "trader_history": history_meta,
+        "replay_fidelity": (
+            "raw_tick"
+            if source_kind == "raw_ticks"
+            else "approximate_1m_smoke_test"
+        ),
         "data_source_note": (
             "保存済みraw tickを使用しました。Fifty+の到達順序・注文時刻比較の本命データです。"
             if source_kind == "raw_ticks"
