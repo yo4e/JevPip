@@ -12,6 +12,7 @@ import pytest
 
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.broker.paper import PaperBroker, PaperConfig
+from jevpip.broker.strategies import moon_phase_signal, zodiac_polarity_signal
 from jevpip.jev.autopilot import REASONS, attach_target, question_specs
 from jevpip.jev_replay import run_jev_historical_replay
 from jevpip.signals import SignalPolicy
@@ -98,6 +99,7 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
     assert defaults.paper_leverage == 25
     assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
     assert defaults.autopilot_fifty_reentry_seconds == pytest.approx(60)
+    assert defaults.autopilot_fifty_oracle == "jev"
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     with pytest.raises(ValueError):
@@ -106,6 +108,8 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
         PaperDemoInput(paper_leverage=25.1)
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_fifty_reentry_seconds=3600.1)
+    with pytest.raises(ValueError):
+        PaperDemoInput(autopilot_fifty_oracle="crystal_ball")
 
 
 def test_fx_fifty_plus_uses_margin_capacity_and_crypto_stays_one_x():
@@ -194,6 +198,80 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
     assert _should_request_jev(ready) is True
 
+
+
+def test_spiritual_oracles_are_binary_and_do_not_request_jev():
+    moon = moon_phase_signal(at=START)
+    zodiac = zodiac_polarity_signal(at=START)
+    assert moon.signal in {"LONG", "SHORT"}
+    assert zodiac.signal == "SHORT"  # 2026-09-20 is Virgo in this deterministic calendar rule
+
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="moon_phase",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    opened = b.on_tick(tick(0))
+    assert opened and opened[0]["action"] == "OPEN"
+    assert b.position is not None
+    snapshot = b.snapshot()
+    assert snapshot["strategy"] == "spiritual_fifty"
+    assert snapshot["fifty_oracle"] == "moon_phase"
+    assert snapshot["spiritual_decision"]["signal"] == b.position.side
+    assert _should_request_jev(b.decision_state(START)) is False
+
+
+def test_spiritual_fifty_reuses_close_wait_and_reenters_without_jev():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="zodiac_polarity",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=60,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    opened = b.on_tick(tick(0))
+    assert opened and b.position is not None
+    assert b.position.side == "SHORT"
+
+    closed = b.on_tick(tick(2, bid=92, ask=94))
+    assert closed and closed[0]["action"] == "CLOSE"
+    assert closed[0]["reason"] == "fifty_take_profit"
+    assert b.position is None
+
+    assert b.on_tick(tick(30, bid=92, ask=94)) == []
+    waiting = b.snapshot()["fifty_entry_gate"]
+    assert waiting["reason"] == "post_close_wait"
+
+    reopened = b.on_tick(tick(62, bid=92, ask=94))
+    assert reopened and reopened[0]["action"] == "OPEN"
+    assert b.position is not None
+    assert b.position.side == "SHORT"
+
+
+def test_spiritual_fifty_respects_spread_gate_before_opening():
+    b = broker(
+        initial_balance=100000,
+        size=1000,
+        price_unit=0.01,
+        paper_leverage=25,
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="moon_phase",
+        autopilot_fifty_target_units=20,
+        autopilot_max_spread=1.5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    assert b.on_tick(tick(0, bid=157.000, ask=157.020)) == []
+    assert b.position is None
+    assert b.snapshot()["fifty_entry_gate"]["reason"] == "spread_above_limit"
+
+    opened = b.on_tick(tick(1, bid=157.000, ask=157.010))
+    assert opened and opened[0]["action"] == "OPEN"
 
 
 def test_fifty_plus_waits_when_round_trip_cost_already_exceeds_target():
