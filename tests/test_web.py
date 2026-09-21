@@ -81,7 +81,14 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert response.text.count('id="auto-live-executions"') == 1
         assert "外国為替FX 実口座（参照専用）" in response.text
         assert response.text.count('id="account-refresh"') == 1
-        assert "従来モード Jev監督" in response.text
+        assert "研究・従来設定" not in response.text
+        assert "戦略の詳細設定・研究" in response.text
+        assert "比較研究用の旧設定" in response.text
+        assert "比較研究用 Jev監督" in response.text
+        assert 'id="strategy-research-settings"' in response.text
+        assert 'id="legacy-research-settings"' in response.text
+        assert response.text.index('id="strategy-mode-panel"') < response.text.index('id="strategy-research-settings"') < response.text.index('id="spiritual-mode-panel"')
+        assert '$("strategy-mode-panel").style.display=strategy?"block":"none";' in response.text
         assert "月相" in response.text
         assert 'id="spiritual-strategy"' in response.text
         assert 'id="paper-mode"' in response.text
