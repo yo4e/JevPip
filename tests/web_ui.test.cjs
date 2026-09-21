@@ -81,20 +81,21 @@ test('starting and running lock every start-time input, even before instrument r
 
 test('Jev style defaults use 15-minute daytrade and 60-second scalp cadence',()=>{
   const {context:c,$}=runtime();
+  const apply=()=>vm.runInContext('autopilotStyleChanged(true)',c);
   $('auto-style').value='daytrade';
-  c.autopilotStyleChanged(true);
+  apply();
   assert.equal($('jev-every').value,'900');
   assert.equal($('jbt-cadence').value,'900');
   assert.ok($('auto-style-note').textContent.includes('15分'));
 
   $('auto-style').value='scalp';
-  c.autopilotStyleChanged(true);
+  apply();
   assert.equal($('jev-every').value,'60');
   assert.equal($('jbt-cadence').value,'60');
   assert.ok($('auto-style-note').textContent.includes('token'));
 
   $('auto-style').value='fifty';
-  c.autopilotStyleChanged(true);
+  apply();
   assert.equal($('jev-every').value,'1');
 });
 
