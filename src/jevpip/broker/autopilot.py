@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import asdict, replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_DOWN
 from typing import Any
 from uuid import uuid4
@@ -18,6 +18,7 @@ from jevpip.broker.strategies import (
 )
 from jevpip.instruments import get_instrument
 from jevpip.jev.autopilot import REASONS, finite_decimal
+from jevpip.trader_context import TIMEFRAME_SPECS, build_timeframe_view, market_clock
 
 ZERO = Decimal("0")
 
@@ -104,6 +105,17 @@ class AutopilotBroker(PaperBroker):
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
         self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
+        self._timeframe_bars: dict[str, deque[dict[str, Any]]] = {
+            interval: deque(maxlen=256)
+            for interval in TIMEFRAME_SPECS
+        }
+        self._timeframe_current: dict[str, dict[str, Any]] = {}
+        self._trader_history_meta: dict[str, Any] = {
+            "source": "live_ticks_only",
+            "as_of": None,
+            "used_dates": {},
+            "errors": {},
+        }
         self._entry_mid = ZERO
         self._entry_spread_cost = ZERO
         self._market_realized = ZERO
@@ -656,6 +668,104 @@ class AutopilotBroker(PaperBroker):
             "target_units": None if target_units is None else float(target_units),
         }
 
+    def seed_trader_history(
+        self,
+        payload: dict[str, Any],
+        *,
+        as_of: datetime,
+    ) -> None:
+        """Seed closed OHLC context known at *as_of* for live Fifty+ decisions."""
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must be timezone-aware")
+        timeframes = payload.get("timeframes")
+        if not isinstance(timeframes, dict):
+            raise ValueError("missing timeframe history")
+        for interval in TIMEFRAME_SPECS:
+            target = self._timeframe_bars[interval]
+            target.clear()
+            rows = timeframes.get(interval, [])
+            if not isinstance(rows, list):
+                continue
+            for raw in rows:
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    opened = self._dt(str(raw["open_time"]))
+                    ended = self._dt(str(raw["end_time"]))
+                    if ended > as_of:
+                        continue
+                    row = {
+                        "open_time": opened.astimezone(timezone.utc).isoformat(),
+                        "end_time": ended.astimezone(timezone.utc).isoformat(),
+                        "open": float(raw["open"]),
+                        "high": float(raw["high"]),
+                        "low": float(raw["low"]),
+                        "close": float(raw["close"]),
+                    }
+                except (KeyError, TypeError, ValueError):
+                    continue
+                target.append(row)
+        self._timeframe_current.clear()
+        self._trader_history_meta = {
+            "source": payload.get("source", "unknown"),
+            "as_of": payload.get("as_of", as_of.isoformat()),
+            "used_dates": payload.get("used_dates", {}),
+            "errors": payload.get("errors", {}),
+        }
+
+    def _update_timeframes(self, at: datetime, mid: Decimal) -> None:
+        for interval, spec in TIMEFRAME_SPECS.items():
+            seconds = spec["seconds"]
+            bucket = int(at.timestamp()) // seconds * seconds
+            opened = datetime.fromtimestamp(bucket, tz=timezone.utc)
+            ended = opened + timedelta(seconds=seconds)
+            current = self._timeframe_current.get(interval)
+            if current is None or current["open_time"] != opened.isoformat():
+                if current is not None:
+                    current_end = self._dt(str(current["end_time"]))
+                    if current_end <= at:
+                        self._timeframe_bars[interval].append(current)
+                value = float(mid)
+                self._timeframe_current[interval] = {
+                    "open_time": opened.isoformat(),
+                    "end_time": ended.isoformat(),
+                    "open": value,
+                    "high": value,
+                    "low": value,
+                    "close": value,
+                    "ticks": 1,
+                }
+                continue
+            value = float(mid)
+            current["high"] = max(float(current["high"]), value)
+            current["low"] = min(float(current["low"]), value)
+            current["close"] = value
+            current["ticks"] = int(current.get("ticks", 0)) + 1
+
+    def _trader_timeframes(self, as_of: datetime) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for interval in TIMEFRAME_SPECS:
+            closed = [
+                row
+                for row in self._timeframe_bars[interval]
+                if self._dt(str(row["end_time"])) <= as_of
+            ]
+            current = self._timeframe_current.get(interval)
+            if current is not None:
+                opened = self._dt(str(current["open_time"]))
+                ended = self._dt(str(current["end_time"]))
+                if ended <= as_of:
+                    closed = [*closed, current]
+                    current = None
+                elif not opened <= as_of:
+                    current = None
+            result[interval] = build_timeframe_view(
+                interval,
+                closed,
+                current_bar=None if current is None else dict(current),
+            )
+        return result
+
     def _remember_market(self, at: datetime, bid: Decimal, ask: Decimal) -> None:
         mid = (bid + ask) / 2
         previous_mid = None
@@ -674,6 +784,7 @@ class AutopilotBroker(PaperBroker):
                 else float((mid-previous_mid)/self.price_unit)
             ),
         })
+        self._update_timeframes(at, mid)
 
     def warm_history(self, event: dict[str, Any]) -> None:
         """Seed only past chart observations before a replay's trading window."""
@@ -741,8 +852,38 @@ class AutopilotBroker(PaperBroker):
             "account_version": self.account_version, "as_of": as_of.isoformat(),
             "horizon_seconds": self.config.autopilot_horizon_seconds, "ttl_seconds": self.config.autopilot_ttl_seconds,
             "paper_leverage": float(self.paper_leverage), "risk_halted": self._halted,
-            "targets": targets, "quote": {"bid": str(bid), "ask": str(ask), "spread": str(ask-bid)},
-            "account": {key: snapshot[key] for key in ("balance", "equity", "realized_pnl", "unrealized_pnl")},
+            "targets": targets,
+            "quote": {
+                "bid": str(bid),
+                "ask": str(ask),
+                "mid": str((bid + ask) / 2),
+                "spread": str(ask - bid),
+                "spread_units": float((ask - bid) / self.price_unit),
+            },
+            "account": {
+                key: snapshot[key]
+                for key in (
+                    "initial_balance",
+                    "balance",
+                    "equity",
+                    "realized_pnl",
+                    "gross_realized_pnl",
+                    "unrealized_pnl",
+                    "unrealized_gross_pnl",
+                    "fees_paid",
+                    "slippage_cost",
+                    "closed_trades",
+                    "wins",
+                    "losses",
+                    "win_rate",
+                    "profit_factor",
+                    "average_trade_pnl",
+                    "average_win_pnl",
+                    "average_loss_pnl",
+                    "max_drawdown",
+                    "max_drawdown_pct",
+                )
+            },
             "position": position, "costs": {
                 "fee_per_execution": self.config.fee_rate, "slippage_per_unit": str(self.slippage_price),
                 "estimated_round_trip_cost_per_unit": str(self._round_trip_cost(bid, ask)),
@@ -754,7 +895,7 @@ class AutopilotBroker(PaperBroker):
                 "short_is_synthetic": self.config.short_is_synthetic,
             },
             "constraints": {k: v for k, v in asdict(self.config).items() if k.startswith("autopilot_")},
-            "recent_executions": list(self._executions)[:8],
+            "recent_executions": list(self._executions)[:50],
             "closed_1m_bars": list(bars.values())[-bar_limit:],
             "history_seconds": 0 if not history else (as_of-history[0][0]).total_seconds(),
             "max_tick_gap_seconds": self._max_gap,
@@ -762,11 +903,18 @@ class AutopilotBroker(PaperBroker):
         if self.config.autopilot_style in {"scalp", "fifty"}:
             autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
         if self.config.autopilot_style == "fifty":
-            autopilot_state["quote"] = {"mid": str((bid+ask)/2)}
-            autopilot_state["recent_ticks"] = [
-                {"at": row["at"], "mid": row["mid"], "delta_units": row["delta_units"]}
-                for row in list(self._tick_tape)[-40:]
-            ]
+            autopilot_state["context_version"] = "trader_context_v1"
+            autopilot_state["clock"] = market_clock(as_of)
+            autopilot_state["timeframes"] = self._trader_timeframes(as_of)
+            autopilot_state["trader_history"] = dict(self._trader_history_meta)
+            autopilot_state["performance"] = {
+                "exit_reasons": snapshot["exit_reasons"],
+                "pnl_breakdown": snapshot.get("pnl_breakdown"),
+                "turnover_notional": snapshot.get("turnover_notional"),
+                "max_exposure": snapshot.get("max_exposure"),
+                "average_exposure": snapshot.get("average_exposure"),
+                "target_changes": snapshot.get("target_changes"),
+            }
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
@@ -781,11 +929,6 @@ class AutopilotBroker(PaperBroker):
                 "target_label": "円" if self.instrument.market_kind == "crypto_spot" else self.config.move_unit_label,
                 "net_of_spread_fees_slippage": True,
             }
-            # Fifty+ asks only which symmetric boundary is hit first. Account/cost
-            # fields are code-owned and omitted from the model context to keep the
-            # decision focused and token usage low.
-            for key in ("account", "costs", "constraints", "recent_executions"):
-                autopilot_state.pop(key, None)
         return {"autopilot": autopilot_state}
 
     def finalize(self, event: dict[str, Any], *, reason: str = "end_of_sample") -> dict[str, Any] | None:

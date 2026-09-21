@@ -77,6 +77,7 @@ class UIController:
         self._last_error: str | None = None
         self._paper: PaperBroker | None = None
         self._paper_config: PaperConfig | None = None
+        self._trader_history_seed: dict[str, Any] | None = None
         self._trace_run_id: str | None = None
         self._trace_run_config: dict[str, Any] | None = None
         self._last_decision_trace: dict[str, Any] | None = None
@@ -164,6 +165,22 @@ class UIController:
                 config = PaperConfig(**normalized)
                 self._paper_config = config
                 self._paper = make_paper_broker(config)
+                self._trader_history_seed = None
+                if (
+                    isinstance(self._paper, AutopilotBroker)
+                    and with_jev
+                    and config.autopilot_style == "fifty"
+                    and config.autopilot_fifty_oracle == "jev"
+                ):
+                    warmup_at = datetime.now(timezone.utc)
+                    self._trader_history_seed = await self._read.fetch_trader_history(
+                        instrument_id=instrument.id,
+                        as_of=warmup_at,
+                    )
+                    self._paper.seed_trader_history(
+                        self._trader_history_seed,
+                        as_of=warmup_at,
+                    )
                 if (
                     with_jev
                     and config.strategy_enabled
@@ -177,6 +194,7 @@ class UIController:
             else:
                 self._paper_config = None
                 self._paper = None
+                self._trader_history_seed = None
 
             self._status = "running"
             self._started_at = datetime.now(timezone.utc).isoformat()
@@ -409,6 +427,14 @@ class UIController:
         if self._paper_config is None:
             raise RuntimeError("デモ口座は有効になっていません。")
         self._paper = make_paper_broker(self._paper_config)
+        if (
+            isinstance(self._paper, AutopilotBroker)
+            and self._trader_history_seed is not None
+        ):
+            self._paper.seed_trader_history(
+                self._trader_history_seed,
+                as_of=datetime.now(timezone.utc),
+            )
         return self._paper.snapshot()
 
     def snapshot(self) -> dict[str, Any]:

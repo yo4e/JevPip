@@ -20,7 +20,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
 - Jevモードには銘柄別のspread上限を初期設定する。UIの「ドローダウン・レバレッジ」から調整でき、USD/JPYの初期値は1.5 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
-- Fifty+では方向選択に不要なaccount / cost / constraints / recent executionをJev stateから外し、直近tickと短い価格履歴を中心に渡す。コストを理由に棄権する選択肢はない。
+- Fifty+は `trader_context_v1` として、現在quote、直近tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account / PnL、cost / constraints、recent execution / performanceを広くJevへ渡す。どの情報を重視するかはJev自身へ任せる。コストを理由に棄権する選択肢は引き続きない。
 - デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
 
 UIではJevとの混在を避けるため、通常のMomentum / RSI / MAは **戦略モード** に分離した。戦略モードではJev APIを呼ばない。既存APIの `autopilot_enabled` は省略時OFFで、Strategy BT、raw comparison、A/B/C/D harnessは比較研究用として残る。
@@ -38,7 +38,7 @@ KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 100
 
 コードが `schema_version / decision_id / session_id / account_version / instrument_id / target_side / target_quantity / confidence / reason / horizon_seconds / basis_market_timestamp / requested_at / available_at / expires_at` を組み立てる。選択肢、確率集合・合計、confidence、有限数、数量刻み、銘柄、時刻順を検証する。confidenceは実測勝率ではない。
 
-stateは現在bid/ask、spread、残高/equity、確定/含み損益、positionの数量・平均建値・年齢、手数料/slippage、往復コスト・損益分岐の値幅、候補への移行費用、直近8約定、履歴長と最大tick間隔、選択したfeatures、任意の公式イベントcontextを含む。デイトレでは最大30本の確定1分足、スキャでは最大5本の確定1分足に加えて直近40 tickを渡す。起動直後の履歴不足や疎なtickを隠さない。APIキー・実口座情報は渡さない。
+stateは現在bid/ask、spread、残高/equity、確定/含み損益、positionの数量・平均建値・年齢、手数料/slippage、往復コスト・損益分岐の値幅、約定履歴、履歴長と最大tick間隔、選択したfeatures、任意の公式イベントcontextを含む。デイトレでは最大30本の確定1分足、スキャでは最大5本の確定1分足に加えて直近40 tickを渡す。Fifty+ではさらに `trader_context_v1` として1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdownを渡す。指標計算用には最大240本の確定barを保持する。起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。APIキー・credentialは渡さない。
 
 ## 約定・会計
 
@@ -78,6 +78,8 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。window前のraw tickは過去チャートの準備だけに使用する。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
 
 ファンダONのhistorical replayは明示的に拒否する。現在のイベント情報を過去へ流用しない。liveの公式contextも、後日観測したrevisionを過去時点の判断に混ぜない。
+
+`trader_context_v1` のmulti-timeframe自体はreplayでもbroker内で構築するが、現時点ではlive開始時のようにPublic KLineを別途warmupしない。replay sourceにwindow前のraw tickがあればそこから準備できるが、source先頭から開始するrunでは初期の長期timeframeが不足する。この差を埋めるlook-ahead-safe pre-window warmupはFifty+比較実験の前に整える。
 
 `data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
