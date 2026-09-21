@@ -56,6 +56,16 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
+        assert "ドローダウン・レバレッジ" in response.text
+        assert "資金・損失上限" not in response.text
+        assert response.text.index("ドローダウン・レバレッジ") < response.text.index("動作・コストの詳細")
+        assert 'data-paper-mode="jev"' in response.text
+        assert 'data-paper-mode="strategy"' in response.text
+        assert 'data-paper-mode="spiritual"' in response.text
+        assert "スピリチュアルモード" in response.text
+        assert "方向を決めるもの" in response.text
+        assert "太陽星座の極性" in response.text
+        assert "Jev APIも通常戦略も使いません" in response.text
         assert 'id="paper-max-spread"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
         assert "GMO Public RESTの停止中プレビュー" in response.text
@@ -70,6 +80,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert response.text.count('id="account-refresh"') == 1
         assert "従来モード Jev監督" in response.text
         assert "月相" in response.text
+        assert 'id="spiritual-strategy"' in response.text
+        assert 'id="paper-mode"' in response.text
         assert "過去日付を自由に選べます" in response.text
         assert "terminal-resizer" in response.text
         assert "https://ko-fi.com/yo4e" in response.text
@@ -1090,24 +1102,29 @@ def test_controller_jev_state_context_includes_minimal_paper_state():
     assert paper["position"]["age_seconds"] == 1.0
 
 
-def test_homepage_describes_jev_as_direction_gate():
+def test_homepage_separates_jev_from_code_strategy_decisions():
     with TestClient(app) as client:
         response = client.get("/")
     assert response.status_code == 200
-    assert "Jev方向一致時だけentry候補を通します" in response.text
-    assert "コード戦略OFF。Jev方向" in response.text
+    assert "Jevモード" in response.text
+    assert "コード戦略・研究フィルタは売買判断に混ぜません" in response.text
+    assert "戦略モード" in response.text
+    assert "Jev APIは呼ばず、選んだコード戦略だけで売買します" in response.text
 
 
 
-def test_homepage_has_independent_strategy_safety_and_jev_toggles():
+def test_homepage_has_mutually_exclusive_paper_decision_modes():
     with TestClient(app) as client:
         response = client.get("/")
     assert response.status_code == 200
-    assert 'id="paper-strategy-enabled"' in response.text
+    assert 'data-paper-mode="jev"' in response.text
+    assert 'data-paper-mode="strategy"' in response.text
+    assert 'data-paper-mode="spiritual"' in response.text
     assert 'id="paper-supervisor"' in response.text
     assert 'id="with-jev"' in response.text
-    assert "コード戦略OFF。Jev方向" in response.text
-    assert "コード戦略OFF / Jev OFF。新規entryは行いません。" in response.text
+    assert "paper_decision_mode:paperMode" in response.text
+    assert 'autopilot_fifty_oracle:spiritual?$("spiritual-strategy").value:"jev"' in response.text
+    assert "Jev APIも通常戦略も使いません" in response.text
     assert '<option value="jev">Jevシグナル</option>' not in response.text
     assert 'id="session-lock-note"' in response.text
     assert "syncSessionControls(s,activeInstrument)" in response.text

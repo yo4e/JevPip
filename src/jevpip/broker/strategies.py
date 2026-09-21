@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Sequence
 
-from jevpip.market.features import rsi
+from jevpip.market.features import moon_features, rsi
 
 Signal = Literal["LONG", "SHORT", "WAIT"]
 StrategyName = Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"]
@@ -126,5 +126,61 @@ def ma_trend_signal(
             "gap_units": round(float(gap_units), 6),
             "min_gap_units": float(threshold),
             "semantics": "tick_count",
+        },
+    )
+
+
+def moon_phase_signal(*, at: datetime) -> StrategyDecision:
+    """Deterministic lunar-cycle baseline; no predictive power is assumed."""
+    moon = moon_features(at)
+    phase = str(moon["phase"])
+    # Fifty+-style experiment: always choose a direction. The first half of the
+    # synodic cycle is UP/LONG, the second half is DOWN/SHORT.
+    signal: Signal = "LONG" if float(moon["age_days"]) < 14.7652944265 else "SHORT"
+    return StrategyDecision(
+        signal,
+        "moon_phase",
+        {
+            "phase": phase,
+            "age_days": float(moon["age_days"]),
+            "illumination": float(moon["illumination"]),
+            "semantics": "experimental_spiritual_baseline",
+        },
+    )
+
+
+_ZODIAC_STARTS = (
+    ((1, 20), "aquarius"),
+    ((2, 19), "pisces"),
+    ((3, 21), "aries"),
+    ((4, 20), "taurus"),
+    ((5, 21), "gemini"),
+    ((6, 22), "cancer"),
+    ((7, 23), "leo"),
+    ((8, 23), "virgo"),
+    ((9, 23), "libra"),
+    ((10, 24), "scorpio"),
+    ((11, 23), "sagittarius"),
+    ((12, 22), "capricorn"),
+)
+_POSITIVE_SIGNS = {"aries", "gemini", "leo", "libra", "sagittarius", "aquarius"}
+
+def zodiac_polarity_signal(*, at: datetime) -> StrategyDecision:
+    """Calendar sun-sign polarity baseline for reproducible astrology experiments."""
+    month, day = at.month, at.day
+    sign = "capricorn"
+    for (start_month, start_day), candidate in _ZODIAC_STARTS:
+        if (month, day) >= (start_month, start_day):
+            sign = candidate
+        else:
+            break
+    signal: Signal = "LONG" if sign in _POSITIVE_SIGNS else "SHORT"
+    return StrategyDecision(
+        signal,
+        "zodiac_polarity",
+        {
+            "sun_sign": sign,
+            "polarity": "positive" if signal == "LONG" else "negative",
+            "semantics": "experimental_spiritual_baseline",
         },
     )

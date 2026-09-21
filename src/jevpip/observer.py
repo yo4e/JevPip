@@ -43,6 +43,8 @@ def _should_request_jev(state: dict[str, Any]) -> bool:
         return False
     if policy.get("style") != "fifty":
         return True
+    if policy.get("fifty_oracle", "jev") != "jev":
+        return False
     # Fifty+ calls Jev only while flat. Once a direction is returned the
     # broker owns the position until the symmetric TP/SL closes it.
     return policy.get("position") is None and bool(policy.get("targets"))

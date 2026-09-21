@@ -1,11 +1,11 @@
-# Jevおまかせ（paper prototype）
+# Jevモード（paper prototype）
 
 Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、brokerが現在数量との差分だけを約定する。live paperと保存済みraw tickのJev BTで同じ質問・validator・brokerを使う。実注文機能は追加していない。
 
 ## 始め方
 
-1. デモ自動売買で「Jevおまかせ」をON（UI初期値）。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevおまかせスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
+1. デモ自動売買で **Jevモード** タブを選ぶ。TypeSafe APIキーを設定する。
+2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は1分足中心・標準300秒間隔・10分horizon、**スキャルピング**は直近tick中心・標準1秒間隔・30秒horizon。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
@@ -19,11 +19,13 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。判定はspread・手数料・slippage込みのネット損益で +X / -X とする。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
-- Jevおまかせには銘柄別のspread上限を初期設定する。UIの「資金・損失上限」から調整でき、USD/JPYの初期値は1.5 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
+- Jevモードには銘柄別のspread上限を初期設定する。UIの「ドローダウン・レバレッジ」から調整でき、USD/JPYの初期値は1.5 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
 - Fifty+では方向選択に不要なaccount / cost / constraints / recent executionをJev stateから外し、直近tickと短い価格履歴を中心に渡す。コストを理由に棄権する選択肢はない。
 - デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
 
-おまかせOFFで従来の方向判定・Momentum / RSI / MA・supervisorを使える。既存APIの `autopilot_enabled` は省略時OFF。Strategy BT、raw comparison、A/B/C/D harnessは従来モードの比較用として残る。
+UIではJevとの混在を避けるため、通常のMomentum / RSI / MAは **戦略モード** に分離した。戦略モードではJev APIを呼ばない。既存APIの `autopilot_enabled` は省略時OFFで、Strategy BT、raw comparison、A/B/C/D harnessは比較研究用として残る。
+
+**スピリチュアルモード** はJevモードとは別タブだが、実行エンジンとしてFifty+の骨格を再利用する。 `autopilot_fifty_oracle` を `moon_phase` または `zodiac_polarity` にし、Jev APIを呼ばずにUP / DOWNだけを決定論的ルールから得る。spread / 往復コスト / 決済後待機 / 最大DD / レバレッジ / 会計はJev Fifty+と共通。詳細は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 
 ## モデルとコードの契約
 
