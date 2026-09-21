@@ -14,7 +14,7 @@ function runtime(){
   };
   $('instrument').value='USD_JPY';$('chart-interval').value='1min';$('mode').value='paper';
   const state={ready:true,config:{typesafe_api_key_configured:true},syncedSession:null};
-  const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
+  const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},setPaperDecisionMode(mode){$('paper-mode').value=mode;state.restoredPaperMode=mode;},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
   vm.runInContext(source('function chartPrice(', 'window.addEventListener("resize"'),context);
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
@@ -92,6 +92,16 @@ test('reload restores the running BTC paper settings, including zero-valued sett
   assert.equal($('jev-every').value,2);
   assert.equal(state.restoredSignal.min_direction_probability,.75);
   assert.equal(c.restoreSession(snapshot),false);
+});
+
+test('reload infers spiritual mode from the Fifty+ oracle',()=>{
+  const {context:c,$,state}=runtime();
+  const snapshot={running:true,status:'running',started_at:'2026-09-20T01:00:00Z',instrument_id:'USD_JPY',profile_name:'minimal / UI',with_jev:false,signal_policy_name:null,session_config:{profile:{quote:true},signal_policy:{},jev_every_seconds:300},paper:{autopilot_enabled:true,strategy_enabled:false,config:{autopilot_style:'fifty',autopilot_fifty_oracle:'moon_phase',size:1000,initial_balance:100000,autopilot_fifty_target_units:10,autopilot_fifty_reentry_seconds:60}}};
+  assert.equal(c.restoreSession(snapshot),false);
+  assert.equal($('paper-mode').value,'spiritual');
+  assert.equal($('spiritual-strategy').value,'moon_phase');
+  assert.equal($('with-jev').checked,false);
+  assert.equal(state.restoredPaperMode,'spiritual');
 });
 
 test('reload restores observation mode and ignores stale settings during start preparation',()=>{
