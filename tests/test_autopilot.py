@@ -920,7 +920,13 @@ def test_fifty_replay_executes_at_response_time_before_sparse_next_tick(tmp_path
 def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch):
     path = tmp_path/"raw_ticks"/"USD_JPY"/"2026-09-20.jsonl"
     path.parent.mkdir(parents=True)
-    path.write_text("\n".join(json.dumps(tick(i, 99, 101)) for i in range(2))+"\n")
+    path.write_text(
+        "\n".join(
+            json.dumps(tick(i, 99, 101))
+            for i in (0, 5, 10, 11)
+        )+"\n"
+    )
+    replay_start = START + timedelta(seconds=10)
     times = iter([0.0, 0.1])
     monkeypatch.setattr("jevpip.jev_replay.time.perf_counter", lambda: next(times))
 
@@ -929,7 +935,7 @@ def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch)
         seconds = spec["seconds"]
         bars = []
         for index in range(205):
-            end = START - timedelta(seconds=seconds*(204-index))
+            end = replay_start - timedelta(seconds=seconds*(204-index))
             opened = end - timedelta(seconds=seconds)
             value = 100 + index
             bars.append({
@@ -943,7 +949,7 @@ def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch)
         timeframes[interval] = bars
     seed = {
         "source": "test_history",
-        "as_of": START.isoformat(),
+        "as_of": replay_start.isoformat(),
         "timeframes": timeframes,
         "used_dates": {},
         "errors": {},
@@ -958,16 +964,20 @@ def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch)
             assert context["timeframes"]["1hour"]["closed_bars_available"] == 205
             assert context["timeframes"]["1hour"]["indicators"]["sma_200"] is not None
             assert all(
-                datetime.fromisoformat(row["end_time"]) <= START
+                datetime.fromisoformat(row["end_time"]) <= replay_start
                 for row in context["timeframes"]["1hour"]["closed_bars"]
             )
+            # Pre-window raw ticks are not part of a live session's startup
+            # context. Only the first in-window tick should be visible here.
+            assert len(context["recent_ticks"]) == 1
+            assert context["recent_ticks"][0]["at"] == replay_start.isoformat()
             return answer(state, "UP")
 
     result = run_jev_historical_replay(
         tmp_path,
         instrument_id="USD_JPY",
         date="2026-09-20",
-        start_time="00:00:00",
+        start_time="00:00:10",
         duration_seconds=1,
         cadence_seconds=60,
         profile={"quote": True},
