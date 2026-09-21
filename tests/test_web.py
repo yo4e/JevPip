@@ -81,7 +81,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "最大DDで停止" in response.text
         assert 'id="fifty-cost-warning"' in response.text
         assert "スプレッド等の取引コストが高いため取引しません" in response.text
-        assert "デイトレ標準 300秒 / スキャ標準 1秒" in response.text
+        assert "デイトレ標準 900秒（15分） / スキャ標準 60秒" in response.text
+        assert "input token消費が増えます" in response.text
         assert 'id="sbt-executions"' in response.text
         assert "開くとコスト内訳" in response.text
         assert response.text.count('id="auto-live-executions"') == 1
