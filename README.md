@@ -199,7 +199,15 @@ paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision trace�
 
 supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
-## 6つの検証機能
+## 検証機能
+
+検証系は、実装順ではなく目的で3分類します。
+
+- **Performance backtests**: 戦略BT / スピBT / Jev BT。paper accountingでPnLを評価する
+- **Comparison experiments**: 戦略比較 / A/B/C/D。同じmarket path上で判断源や介入条件を比較する
+- **Statistical replay**: 統計リプレイ。売買PnLではなくfeatureと次の値動きを集計する
+
+今後の追加機能も、まずこの3分類と「data source / decision source / execution policy」の組み合わせで表現できないか確認します。詳細と、Jev Fifty+ vs random controlをどこへ置くかは [BACKTEST_RESEARCH.md](./docs/BACKTEST_RESEARCH.md) を参照してください。
 
 ### 1. 戦略BT
 

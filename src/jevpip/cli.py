@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 import webbrowser
 
-from jevpip.backtest.kline import replay_kline
+from jevpip.backtest.kline import run_statistical_replay
 from jevpip.broker.comparison import compare_raw_file
 from jevpip.experiment import run_abcd_experiment_file
 from jevpip.instruments import INSTRUMENTS, get_instrument
@@ -53,7 +53,7 @@ def _parser() -> argparse.ArgumentParser:
     obs.add_argument("--jev-every", type=float, default=1.0, metavar="SECONDS")
     obs.add_argument("--max-ticks", type=int)
 
-    bt = sub.add_parser("backtest", help="対円FXのGMO公式BID/ASK 1分足リプレイ")
+    bt = sub.add_parser("backtest", help="統計リプレイ（互換コマンド名: backtest）")
     bt.add_argument("--instrument", default="USD_JPY", choices=sorted(INSTRUMENTS))
     bt.add_argument("--date", required=True, help="YYYYMMDD (GMO FX KLine availabilityに従う)")
     bt.add_argument("--profile", default="technical")
@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("backtest は現在、対円FXペアのみ対応しています")
         profile = load_profile(args.profile, args.feature_config)
         output = args.output or settings.data_dir / "backtests" / f"{args.date}-{args.instrument}-{args.profile}.jsonl"
-        rows = replay_kline(
+        rows = run_statistical_replay(
             args.date,
             profile,
             output=output,
