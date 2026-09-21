@@ -302,7 +302,7 @@ def test_fifty_trader_context_keeps_past_performance_and_filters_future_bars():
     assert "exit_reasons" in state["performance"]
 
 
-def test_fifty_question_tells_jev_to_weigh_full_context():
+def test_fifty_question_states_exact_configured_net_boundaries():
     b = broker(
         autopilot_style="fifty",
         autopilot_horizon_seconds=30,
@@ -311,7 +311,18 @@ def test_fifty_question_tells_jev_to_weigh_full_context():
         slippage_units=0,
     )
     b.on_tick(tick(0))
-    instructions = question_specs(b.decision_state(START))["target_position"]["instructions"]
+    state = b.decision_state(START)
+    fifty = state["autopilot"]["fifty_plus"]
+    instructions = question_specs(state)["target_position"]["instructions"]
+
+    assert fifty["target_value"] == 5
+    assert fifty["up_boundary_value"] == 5
+    assert fifty["down_boundary_value"] == -5
+    assert "+5 pips" in fifty["boundary_question"]
+    assert "-5 pips" in fifty["boundary_question"]
+    assert "+5 pips" in instructions
+    assert "-5 pips" in instructions
+    assert "spread, fees, and slippage" in instructions
     assert "1m/5m/15m/1h" in instructions
     assert "account/PnL" in instructions
     assert "Decide for yourself" in instructions
