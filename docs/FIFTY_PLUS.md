@@ -75,6 +75,29 @@ Fifty+ではJevに次を判断させません。
 
 この分離により、Jev版では結果を「AIの方向判定が50%を超えたか」という比較的明快な問いへ寄せています。
 
+### Jevへ見せる trader context
+
+方向の選び方そのものはJevへ固定ルールとして教えません。その代わり、一般的な短期トレーダーが参照できる程度の情報を広く渡し、**どの情報を重視し、どれをノイズとして無視するかもJev自身へ任せます**。
+
+live Jev Fifty+では、判断時点で利用可能な範囲から主に次を渡します。
+
+- 現在のbid / ask / mid / spread
+- 直近40 tick
+- 1分 / 5分 / 15分 / 1時間のmulti-timeframe OHLC
+- 各時間足のSMA20 / SMA50 / SMA200、RSI14、ATR14
+- 直近20本の高値・安値とrange内の現在位置
+- UTC / 東京 / ロンドン / ニューヨークの現在時刻と曜日
+- 現在position
+- balance / equity、確定・含み損益、fees / slippage
+- closed trades、wins / losses、win rate、profit factor、平均損益、最大DD
+- recent executions、exit reason集計、PnL breakdown
+- broker側のcost model / constraints
+- 「公式イベントを見る」がONなら、既存の公式event context
+
+multi-timeframe履歴は起動時にPublic historical KLineからwarmupし、その後はlive tickで更新します。SMA200等の計算用には最大240本の確定barを保持しますが、Jevへ生のOHLCとして渡す本数は1分60本、5分48本、15分32本、1時間24本です。
+
+未確定の将来bar、判断時点より後でしか知り得ない値、API keyなどのcredentialは渡しません。テクニカル指標や過去損益は**観測情報**であり、「MAが上ならLONG」「連敗したら反転」のような固定ルールはコード側から課しません。
+
 ### スピリチュアル方向源
 
 スピリチュアルモードは、Fifty+のentry / exit timingを新しく発明せず、**方向だけを別のルールへ差し替える比較実験**です。
@@ -211,17 +234,13 @@ Fifty+で特に見たいのは次です。
 
 損益だけでなく、**方向判定そのものの統計**を見ることが重要です。
 
-## Fifty+ と派生版
+## Fifty+ と情報量
 
-Fifty+には、過去にADX、DI、ローソク足、時間帯、経済イベント回避などを加えた派生版もあります。
+Fifty+の核は引き続き「JevがUP / DOWNだけを選び、executionはコード側が固定する」ことです。
 
-JevPipの初期実装では、まずそれらを入れず、
+初期実装では方向判定を純化するためJevへ渡す市場情報も強く絞っていました。しかし、1分足数本だけでは通常のトレーダーが得る相場の文脈より狭すぎるため、現在はmulti-timeframe・基本テクニカル・口座実績まで含む `trader_context_v1` を標準とします。
 
-> AIにUP / DOWNだけを選ばせたとき、50:50の基準を超えられるか
-
-というFifty+の核を優先して実装しています。
-
-将来フィルタを追加する場合も、まずこの単純版をbaselineとして残し、どの条件が本当に優位性へ寄与したか比較できる形を目指します。
+ここで増やしたのは**情報**であって**売買ルール**ではありません。将来ablationを行う場合は、情報の一部を外した条件と比較し、どのcontextが方向判定へ寄与したかを検証します。
 
 ## 注意
 
