@@ -12,6 +12,7 @@ from jevpip.broker.paper import PaperBroker, PaperConfig, PaperPosition
 from jevpip.broker.strategies import (
     StrategyDecision,
     moon_phase_signal,
+    tarot_signal,
     zodiac_polarity_signal,
 )
 from jevpip.instruments import get_instrument
@@ -62,6 +63,7 @@ class AutopilotBroker(PaperBroker):
             "jev",
             "moon_phase",
             "zodiac_polarity",
+            "tarot",
         }:
             raise ValueError("unsupported Fifty+ direction oracle")
         if (
@@ -530,8 +532,10 @@ class AutopilotBroker(PaperBroker):
                 else:
                     if self.config.autopilot_fifty_oracle == "moon_phase":
                         decision = moon_phase_signal(at=at)
-                    else:
+                    elif self.config.autopilot_fifty_oracle == "zodiac_polarity":
                         decision = zodiac_polarity_signal(at=at)
+                    else:
+                        decision = tarot_signal(at=at, key=self.instrument.id)
                     if decision.signal not in {"LONG", "SHORT"}:
                         raise ValueError("spiritual oracle must always choose LONG or SHORT")
                     quantity = (
