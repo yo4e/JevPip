@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-import random
+import secrets
 from decimal import Decimal
 from typing import Literal, Sequence
 
@@ -214,10 +214,10 @@ _TAROT_MAJOR_ARCANA = (
 )
 
 
-def tarot_signal(*, rng: random.Random) -> StrategyDecision:
+def tarot_signal() -> StrategyDecision:
     """Random one-card Major Arcana baseline for Fifty+ experiments."""
-    card_index = rng.randrange(len(_TAROT_MAJOR_ARCANA))
-    upright = bool(rng.getrandbits(1))
+    card_index = secrets.randbelow(len(_TAROT_MAJOR_ARCANA))
+    upright = bool(secrets.randbits(1))
     signal: Signal = "LONG" if upright else "SHORT"
     return StrategyDecision(
         signal,
@@ -226,7 +226,7 @@ def tarot_signal(*, rng: random.Random) -> StrategyDecision:
             "card": _TAROT_MAJOR_ARCANA[card_index],
             "card_index": card_index,
             "orientation": "upright" if upright else "reversed",
-            "shuffle": "seeded_random_major_arcana",
+            "shuffle": "system_random_major_arcana",
             "semantics": "experimental_spiritual_baseline",
         },
     )
