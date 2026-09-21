@@ -73,13 +73,13 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ## Historical Jev BT
 
-右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60/300/900秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
+右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60/300/900秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。保存済みraw tickをFifty+比較の本命とし、raw tickがない場合のGMO historical 1分足fallbackは概算/smoke testとして扱う。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
 
-受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。window前のraw tickは過去チャートの準備だけに使用する。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
+受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。Fifty+はliveと同様、応答の `available_at` に達したら、その時点までに受信済みの最新fresh quoteを使って即時適用する。次のtickをentry価格として先取りしない。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
 
 ファンダONのhistorical replayは明示的に拒否する。現在のイベント情報を過去へ流用しない。liveの公式contextも、後日観測したrevisionを過去時点の判断に混ぜない。
 
-`trader_context_v1` のmulti-timeframe自体はreplayでもbroker内で構築するが、現時点ではlive開始時のようにPublic KLineを別途warmupしない。replay sourceにwindow前のraw tickがあればそこから準備できるが、source先頭から開始するrunでは初期の長期timeframeが不足する。この差を埋めるlook-ahead-safe pre-window warmupはFifty+比較実験の前に整える。
+Jev BT開始時もliveと同じ `fetch_trader_history(as_of=start_at)` → `seed_trader_history()` を使い、開始時点までに確定済みのPublic KLineだけで `trader_context_v1` の1m / 5m / 15m / 1hをwarmupする。window前のraw tickは短いrolling/tick contextにも使うが、multi-timeframe seedはliveと同じclosed-bar historyを正とする。判断開始後はreplay tickで更新し、開始時刻より後に閉じるbarを先取りしない。
 
 `data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
