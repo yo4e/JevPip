@@ -959,8 +959,8 @@ function renderDecision(d,sup,paper=null){
       const a=sup.advice;
       const strategy=a.strategy?(" / 戦略 "+a.strategy):"";
       const expires=sup.expires_at?(" / 期限 "+new Date(sup.expires_at).toLocaleTimeString("ja-JP")):"";
-      supBox.textContent=`従来モード Jev監督: ${a.state}${strategy} / confidence ${pct(a.confidence)}${expires}`;
-    }else{supBox.textContent="従来モード Jev監督: 待機中"}
+      supBox.textContent=`比較研究用 Jev監督: ${a.state}${strategy} / confidence ${pct(a.confidence)}${expires}`;
+    }else{supBox.textContent="比較研究用 Jev監督: 待機中"}
     if(sup?.error)supBox.textContent+=" / "+sup.error;
   }
   if(!d?.jev){
