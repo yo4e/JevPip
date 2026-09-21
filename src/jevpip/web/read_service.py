@@ -4,11 +4,13 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import time
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from jevpip.config import Settings
 from jevpip.instruments import get_instrument
+from jevpip.trader_context import INDICATOR_HISTORY_BARS, TIMEFRAME_SPECS
 
 
 class ReadOnlyDataService:
@@ -133,6 +135,122 @@ class ReadOnlyDataService:
                 }
                 for item in rows
             ],
+        }
+
+    async def fetch_trader_history(
+        self,
+        *,
+        instrument_id: str,
+        as_of: datetime,
+    ) -> dict[str, Any]:
+        """Load closed multi-timeframe candles available at *as_of*.
+
+        The returned payload intentionally excludes any candle whose close time
+        is after the decision timestamp. This keeps live warmup useful without
+        leaking an incomplete/future candle into Jev's state.
+        """
+        instrument = get_instrument(instrument_id)
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must be timezone-aware")
+        as_of_utc = as_of.astimezone(timezone.utc)
+        local_day = as_of_utc.astimezone(ZoneInfo("Asia/Tokyo")).date()
+
+        async def load(interval: str) -> tuple[list[dict[str, Any]], list[str]]:
+            seconds = TIMEFRAME_SPECS[interval]["seconds"]
+            by_open_time: dict[int, Any] = {}
+            used_dates: list[str] = []
+            empty_streak = 0
+            for days_back in range(20):
+                candidate_date = (
+                    local_day - timedelta(days=days_back)
+                ).strftime("%Y%m%d")
+                try:
+                    rows = await asyncio.to_thread(
+                        self._fetch_history,
+                        instrument.id,
+                        candidate_date,
+                        interval,
+                    )
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 404:
+                        raise
+                    rows = []
+
+                accepted = 0
+                for item in rows:
+                    opened_at = datetime.fromtimestamp(
+                        item.open_time_ms / 1000,
+                        tz=timezone.utc,
+                    )
+                    closes_at = opened_at + timedelta(seconds=seconds)
+                    if closes_at > as_of_utc:
+                        continue
+                    by_open_time[item.open_time_ms] = item
+                    accepted += 1
+
+                if accepted:
+                    used_dates.append(candidate_date)
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+
+                if len(by_open_time) >= INDICATOR_HISTORY_BARS:
+                    break
+                if instrument.market_kind == "crypto_spot" and empty_streak >= 2:
+                    break
+
+            rows = sorted(
+                by_open_time.values(),
+                key=lambda item: item.open_time_ms,
+            )[-INDICATOR_HISTORY_BARS:]
+            return (
+                [
+                    {
+                        "open_time": datetime.fromtimestamp(
+                            item.open_time_ms / 1000,
+                            tz=timezone.utc,
+                        ).isoformat(),
+                        "end_time": (
+                            datetime.fromtimestamp(
+                                item.open_time_ms / 1000,
+                                tz=timezone.utc,
+                            )
+                            + timedelta(seconds=seconds)
+                        ).isoformat(),
+                        "open": float(item.open),
+                        "high": float(item.high),
+                        "low": float(item.low),
+                        "close": float(item.close),
+                    }
+                    for item in rows
+                ],
+                sorted(used_dates),
+            )
+
+        intervals = tuple(TIMEFRAME_SPECS)
+        loaded = await asyncio.gather(
+            *(load(interval) for interval in intervals),
+            return_exceptions=True,
+        )
+        timeframes: dict[str, list[dict[str, Any]]] = {}
+        used_dates: dict[str, list[str]] = {}
+        errors: dict[str, str] = {}
+        for interval, result in zip(intervals, loaded):
+            if isinstance(result, BaseException):
+                timeframes[interval] = []
+                used_dates[interval] = []
+                errors[interval] = f"{type(result).__name__}: {result}"
+                continue
+            bars, dates = result
+            timeframes[interval] = bars
+            used_dates[interval] = dates
+
+        return {
+            "source": "gmo_public_history",
+            "as_of": as_of_utc.isoformat(),
+            "timeframes": timeframes,
+            "used_dates": used_dates,
+            "errors": errors,
         }
 
     async def fetch_real_account(self, *, force: bool = False) -> dict[str, Any]:
