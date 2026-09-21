@@ -4,7 +4,6 @@ import asyncio
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from statistics import fmean
 from threading import Event
 import time
 from typing import Any
@@ -12,10 +11,6 @@ from uuid import uuid4
 
 import httpx
 
-from jevpip.backtest.kline import run_statistical_replay
-from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backtest
-from jevpip.backtest.spiritual import SpiritualBacktestConfig, run_spiritual_backtest
-from jevpip.broker.comparison import compare_raw_file
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.async_work import joined_thread
@@ -41,6 +36,7 @@ from jevpip.jev_replay import (
 )
 from jevpip.observer import observe
 from jevpip.signals import SignalPolicy
+from jevpip.web.research_service import ResearchService, summarize_statistical_replay
 
 
 class UIController:
@@ -50,6 +46,7 @@ class UIController:
         self._jev_replay_running = False
         self._observer_starting = False
         self.settings = settings or Settings()
+        self._research = ResearchService(self.settings)
         self._task: asyncio.Task[None] | None = None
         self._context_task: asyncio.Task[None] | None = None
         self._events: deque[dict[str, Any]] = deque(maxlen=120)
@@ -953,18 +950,7 @@ class UIController:
         }
 
     def raw_tick_dates(self, instrument_id: str) -> list[str]:
-        get_instrument(instrument_id)
-        directory = self.settings.data_dir / "raw_ticks" / instrument_id
-        if not directory.exists():
-            return []
-        return sorted(
-            (
-                path.stem
-                for path in directory.glob("*.jsonl")
-                if path.is_file()
-            ),
-            reverse=True,
-        )
+        return self._research.raw_tick_dates(instrument_id)
 
     async def compare_raw_date(
         self,
@@ -977,28 +963,15 @@ class UIController:
         supervisor: bool,
         bar_seconds: int,
     ) -> dict[str, Any]:
-        get_instrument(instrument_id)
-        path = self.settings.data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
-        if not path.is_file():
-            raise ValueError(f"raw tick data がありません: {instrument_id} / {date}")
-        results = await asyncio.to_thread(
-            compare_raw_file,
-            path,
+        return await self._research.compare_raw_date(
             instrument_id=instrument_id,
+            date=date,
             strategies=strategies,
             initial_balance=initial_balance,
             size=size,
             supervisor=supervisor,
             bar_seconds=bar_seconds,
         )
-        return {
-            "instrument_id": instrument_id,
-            "date": date,
-            "source": str(path),
-            "bar_seconds": bar_seconds,
-            "supervisor": supervisor,
-            "results": results,
-        }
 
     async def fetch_real_account(self, *, force: bool = False) -> dict[str, Any]:
         if not self.settings.gmo_private_read_configured:
@@ -1113,16 +1086,12 @@ class UIController:
         config: dict[str, Any],
         limit: int | None,
     ) -> dict[str, Any]:
-        get_instrument(instrument_id)
-        parsed = StrategyBacktestConfig(**config)
-        result = await asyncio.to_thread(
-            run_strategy_backtest,
+        return await self._research.run_strategy_backtest(
             date=date,
             instrument_id=instrument_id,
-            config=parsed,
+            config=config,
             limit=limit,
         )
-        return result
 
     async def run_spiritual_backtest(
         self,
@@ -1132,13 +1101,10 @@ class UIController:
         config: dict[str, Any],
         limit: int | None,
     ) -> dict[str, Any]:
-        get_instrument(instrument_id)
-        parsed = SpiritualBacktestConfig(**config)
-        return await asyncio.to_thread(
-            run_spiritual_backtest,
+        return await self._research.run_spiritual_backtest(
             date=date,
             instrument_id=instrument_id,
-            config=parsed,
+            config=config,
             limit=limit,
         )
 
@@ -1151,26 +1117,13 @@ class UIController:
         profile: dict[str, Any],
         limit: int | None,
     ) -> dict[str, Any]:
-        """Run the feature/outcome replay. This is not a trading PnL backtest."""
-        slug = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in profile_name)[:64] or "custom"
-        get_instrument(instrument_id)
-        output = self.settings.data_dir / "backtests" / f"{date}-{instrument_id}-{slug}.jsonl"
-        rows = await asyncio.to_thread(
-            run_statistical_replay,
-            date,
-            profile,
-            output,
-            limit,
-            instrument_id,
+        return await self._research.run_statistical_replay(
+            date=date,
+            instrument_id=instrument_id,
+            profile_name=profile_name,
+            profile=profile,
+            limit=limit,
         )
-        return {
-            "analysis_kind": "statistical_replay",
-            "date": date,
-            "instrument_id": instrument_id,
-            "profile_name": profile_name,
-            "output": str(output),
-            "summary": summarize_statistical_replay(rows),
-        }
 
     async def run_backtest(
         self,
@@ -1189,66 +1142,6 @@ class UIController:
             profile=profile,
             limit=limit,
         )
-
-
-def summarize_statistical_replay(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    outcomes = [row["outcome_1m"] for row in rows if row.get("outcome_1m") is not None]
-    mode = rows[0].get("replay_mode") if rows else None
-    if not outcomes:
-        return {
-            "rows": len(rows),
-            "outcomes": 0,
-            "mode": mode,
-            "mean_change_units": None,
-            "max_change_units": None,
-            "min_change_units": None,
-            "mean_long_edge_units": None,
-            "mean_short_edge_units": None,
-            "long_positive_ratio": None,
-            "short_positive_ratio": None,
-            "up_ratio": None,
-            "down_ratio": None,
-        }
-
-    changes = [float(item["delta_units"]) for item in outcomes]
-
-    def mean_nullable(key: str) -> float | None:
-        values = [float(item[key]) for item in outcomes if item.get(key) is not None]
-        return None if not values else round(fmean(values), 6)
-
-    long_values = [
-        float(item["long_edge_units"])
-        for item in outcomes
-        if item.get("long_edge_units") is not None
-    ]
-    short_values = [
-        float(item["short_edge_units"])
-        for item in outcomes
-        if item.get("short_edge_units") is not None
-    ]
-
-    return {
-        "rows": len(rows),
-        "outcomes": len(outcomes),
-        "mode": mode,
-        "mean_change_units": round(fmean(changes), 6),
-        "max_change_units": round(max(changes), 6),
-        "min_change_units": round(min(changes), 6),
-        "mean_long_edge_units": mean_nullable("long_edge_units"),
-        "mean_short_edge_units": mean_nullable("short_edge_units"),
-        "long_positive_ratio": (
-            None
-            if not long_values
-            else round(sum(value > 0 for value in long_values) / len(long_values), 6)
-        ),
-        "short_positive_ratio": (
-            None
-            if not short_values
-            else round(sum(value > 0 for value in short_values) / len(short_values), 6)
-        ),
-        "up_ratio": round(sum(value > 0 for value in changes) / len(changes), 6),
-        "down_ratio": round(sum(value < 0 for value in changes) / len(changes), 6),
-    }
 
 
 
