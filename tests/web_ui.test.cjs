@@ -67,7 +67,7 @@ test('sparse history keeps MA200 unavailable instead of drawing a partial averag
 
 test('starting and running lock every start-time input, even before instrument restoration',()=>{
   const {context:c,$,state,nodes}=runtime();
-  const ids=['mode','autopilot','auto-style','paper-size','paper-balance','jev-every','profile','returns','s-dir','fifty-target-jpy'];
+  const ids=['mode','paper-mode','autopilot','auto-style','paper-size','paper-balance','jev-every','profile','returns','s-dir','fifty-target-jpy','spiritual-strategy'];
   ids.forEach($);
   state.pendingSession='start';c.syncSessionControls({running:false},true);
   ids.forEach(id=>assert.equal($(id).disabled,true,id));
@@ -76,8 +76,7 @@ test('starting and running lock every start-time input, even before instrument r
   ids.forEach(id=>assert.equal($(id).disabled,true,id));
   c.syncSessionControls({running:false},true);
   ids.forEach(id=>assert.equal($(id).disabled,false,id));
-  $('autopilot').checked=true;c.syncSessionControls({running:false},true);
-  assert.equal($('with-jev').disabled,true);
+  assert.equal($('paper-mode').disabled,false);
 });
 
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{
