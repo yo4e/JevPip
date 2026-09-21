@@ -8,14 +8,7 @@ from typing import Literal, Sequence
 from jevpip.market.features import moon_features, rsi
 
 Signal = Literal["LONG", "SHORT", "WAIT"]
-StrategyName = Literal[
-    "momentum",
-    "rsi_mean_reversion",
-    "ma_trend",
-    "moon_phase",
-    "zodiac_polarity",
-    "jev",
-]
+StrategyName = Literal["momentum", "rsi_mean_reversion", "ma_trend", "jev"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,12 +134,9 @@ def moon_phase_signal(*, at: datetime) -> StrategyDecision:
     """Deterministic lunar-cycle baseline; no predictive power is assumed."""
     moon = moon_features(at)
     phase = str(moon["phase"])
-    if phase in {"waxing_crescent", "first_quarter", "waxing_gibbous"}:
-        signal: Signal = "LONG"
-    elif phase in {"waning_gibbous", "last_quarter", "waning_crescent"}:
-        signal = "SHORT"
-    else:
-        signal = "WAIT"
+    # Fifty+-style experiment: always choose a direction. The first half of the
+    # synodic cycle is UP/LONG, the second half is DOWN/SHORT.
+    signal: Signal = "LONG" if float(moon["age_days"]) < 14.7652944265 else "SHORT"
     return StrategyDecision(
         signal,
         "moon_phase",
