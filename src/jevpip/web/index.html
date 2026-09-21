@@ -77,7 +77,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       <div id="jev-access-observe-slot">
         <div class="jev-access" id="jev-access">
         <label class="toggle" id="jev-toggle-row"><input id="with-jev" type="checkbox" checked><span>Jev APIを使う<small><span id="jev-access-note">トークンを消費します。</span></small></span></label>
-        <details class="cadence-details" id="cadence-settings"><summary>判断間隔を変更</summary><div class="field" style="margin:8px 0 0"><label class="label" for="jev-every">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="300" min=".25" max="600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 300秒 / スキャ標準 1秒</div></div></details>
+        <details class="cadence-details" id="cadence-settings"><summary>判断間隔を変更</summary><div class="field" style="margin:8px 0 0"><label class="label" for="jev-every">Jev判断間隔（秒）</label><input id="jev-every" type="number" value="900" min=".25" max="3600" step=".25"><div class="muted" style="font-size:9px;margin-top:3px">デイトレ標準 900秒（15分） / スキャ標準 60秒。短い判断間隔ほどJev API call・input token消費が増えます。</div></div></details>
         </div>
       </div>
       <div class="notice" id="session-lock-note" style="display:none;margin-top:8px">設定を変更するには、先に停止してください。</div>
@@ -102,7 +102,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">1分足中心。標準は10分先を見て5分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て判断。標準は10分先を見て15分ごとに再判断。</div></div>
             <div id="autopilot-controls">
               <div class="field" id="auto-horizon-field"><label class="label" for="auto-horizon">見通す時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -383,7 +383,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
       </div>
       <div class="mode-grid">
         <div class="field"><label class="label" for="jbt-duration">検証時間</label><select id="jbt-duration"><option value="30">30秒</option><option value="60" selected>1分</option><option value="300">5分</option><option value="900">15分</option><option value="3600">1時間</option><option value="21600">6時間</option><option value="86400">1日</option></select></div>
-        <div class="field"><label class="label" for="jbt-cadence">Jev判断間隔</label><select id="jbt-cadence"><option value="1">1秒</option><option value="2">2秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option><option value="60">60秒</option><option value="300" selected>5分</option></select></div>
+        <div class="field"><label class="label" for="jbt-cadence">Jev判断間隔</label><select id="jbt-cadence"><option value="1">1秒</option><option value="2">2秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="30">30秒</option><option value="60">60秒</option><option value="300">5分</option><option value="900" selected>15分</option></select></div>
       </div>
       <div class="notice" id="jbt-estimate">「消費見積り」を押すと、raw tickから最大Jev call数を計算します。直近usage実績があればtoken目安も表示します。</div>
       <div class="actions" style="margin-top:8px"><button class="btn" id="jbt-preview">消費見積り</button><button class="btn primary" id="jbt-run" disabled>警告を確認してJev BT開始</button></div>
@@ -1510,8 +1510,8 @@ function autopilotStyleChanged(applyDefaults=true){
   $("auto-style-note").textContent=fifty
     ?"固定数量で1ポジションずつ。決済後は設定時間待ってから次のUP / DOWNを判断。"
     :scalp
-      ?"直近tick中心。標準は30秒先を見て1秒ごとに再判断。"
-      :"1分足中心。標準は10分先を見て5分ごとに再判断。";
+      ?"全部入りtrader contextを見て判断。標準60秒ごと。短い判断間隔ではJev API call・input tokenを多く使用します。"
+      :"全部入りtrader contextを見て判断。標準は10分先を見て15分ごとに再判断。";
   $("auto-horizon-field").style.display=fifty?"none":"block";
   $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
   $("auto-constraints").style.display=fifty?"none":"block";
@@ -1519,8 +1519,8 @@ function autopilotStyleChanged(applyDefaults=true){
   if(applyDefaults){
     $("auto-horizon").value=(scalp||fifty)?"30":"600";
     if(fifty)$("fifty-reentry-seconds").value="60";
-    $("jev-every").value=(scalp||fifty)?"1":"300";
-    $("jbt-cadence").value=(scalp||fifty)?"1":"300";
+    $("jev-every").value=fifty?"1":scalp?"60":"900";
+    $("jbt-cadence").value=fifty?"1":scalp?"60":"900";
     state.jevReplayPreview=null;
     $("jbt-run").disabled=true;
   }
