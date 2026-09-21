@@ -125,8 +125,11 @@ class UIController:
                 normalized = dict(paper_config)
                 normalized["instrument_id"] = instrument.id
                 if normalized.get("autopilot_enabled"):
-                    if not with_jev:
-                        raise ValueError("JevおまかせにはJevをONにしてください。")
+                    oracle = normalized.get("autopilot_fifty_oracle", "jev")
+                    if oracle == "jev" and not with_jev:
+                        raise ValueError("JevモードにはJevをONにしてください。")
+                    if oracle != "jev" and with_jev:
+                        raise ValueError("スピリチュアルFifty+ではJevを同時に使えません。")
                     normalized["strategy_enabled"] = False
                 normalized["price_unit"] = float(instrument.price_unit)
                 normalized["move_unit_label"] = instrument.move_unit_label
@@ -691,8 +694,13 @@ class UIController:
         )
 
     def _update_event_supervisor(self, as_of: datetime, instrument_id: str) -> None:
-        if isinstance(self._paper, AutopilotBroker):
-            self._event_supervisor = SupervisorDecision("NORMAL", "jev_owns_event_judgment", True)
+        if (
+            isinstance(self._paper, AutopilotBroker)
+            and self._paper.config.autopilot_fifty_oracle == "jev"
+        ):
+            self._event_supervisor = SupervisorDecision(
+                "NORMAL", "jev_owns_event_judgment", True
+            )
             return
         if (
             self._paper_config is not None
