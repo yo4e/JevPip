@@ -29,7 +29,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "RSI/MA入力" in response.text
         assert "戦略BT" in response.text
         assert "スピBT" in response.text
-        assert "Fifty+ × 月相 / 星座" in response.text
+        assert "Fifty+ × 月 / 星 / タロット" in response.text
         assert 'id="spbt-run"' in response.text
         assert "統計リプレイ" in response.text
         assert "historical 1分足" in response.text
