@@ -12,7 +12,7 @@ import pytest
 
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.broker.paper import PaperBroker, PaperConfig
-from jevpip.broker.strategies import moon_phase_signal, zodiac_polarity_signal
+from jevpip.broker.strategies import moon_phase_signal, tarot_signal, zodiac_polarity_signal
 from jevpip.jev.autopilot import REASONS, attach_target, question_specs
 from jevpip.jev_replay import run_jev_historical_replay
 from jevpip.signals import SignalPolicy
@@ -102,6 +102,7 @@ def test_paper_demo_accepts_styles_and_five_minute_live_cadence_contract():
     assert defaults.autopilot_fifty_oracle == "jev"
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
+    assert PaperDemoInput(autopilot_style="fifty", autopilot_fifty_oracle="tarot").autopilot_fifty_oracle == "tarot"
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
     with pytest.raises(ValueError):
@@ -203,8 +204,12 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
 def test_spiritual_oracles_are_binary_and_do_not_request_jev():
     moon = moon_phase_signal(at=START)
     zodiac = zodiac_polarity_signal(at=START)
+    tarot = tarot_signal()
     assert moon.signal in {"LONG", "SHORT"}
     assert zodiac.signal == "SHORT"  # 2026-09-20 is Virgo in this deterministic calendar rule
+    assert tarot.signal in {"LONG", "SHORT"}
+    assert tarot.metrics["orientation"] in {"upright", "reversed"}
+    assert isinstance(tarot.metrics["card"], str)
 
     b = broker(
         autopilot_style="fifty",
@@ -221,6 +226,24 @@ def test_spiritual_oracles_are_binary_and_do_not_request_jev():
     assert snapshot["strategy"] == "spiritual_fifty"
     assert snapshot["fifty_oracle"] == "moon_phase"
     assert snapshot["spiritual_decision"]["signal"] == b.position.side
+    assert _should_request_jev(b.decision_state(START)) is False
+
+
+def test_tarot_fifty_opens_without_calling_jev():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="tarot",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    opened = b.on_tick(tick(0))
+    assert opened and opened[0]["action"] == "OPEN"
+    snapshot = b.snapshot()
+    assert snapshot["fifty_oracle"] == "tarot"
+    assert snapshot["spiritual_decision"]["metrics"]["card"]
+    assert snapshot["spiritual_decision"]["metrics"]["orientation"] in {"upright", "reversed"}
     assert _should_request_jev(b.decision_state(START)) is False
 
 

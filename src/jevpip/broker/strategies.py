@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import secrets
 from decimal import Decimal
 from typing import Literal, Sequence
 
@@ -181,6 +182,51 @@ def zodiac_polarity_signal(*, at: datetime) -> StrategyDecision:
         {
             "sun_sign": sign,
             "polarity": "positive" if signal == "LONG" else "negative",
+            "semantics": "experimental_spiritual_baseline",
+        },
+    )
+
+
+
+_TAROT_MAJOR_ARCANA = (
+    "The Fool",
+    "The Magician",
+    "The High Priestess",
+    "The Empress",
+    "The Emperor",
+    "The Hierophant",
+    "The Lovers",
+    "The Chariot",
+    "Strength",
+    "The Hermit",
+    "Wheel of Fortune",
+    "Justice",
+    "The Hanged Man",
+    "Death",
+    "Temperance",
+    "The Devil",
+    "The Tower",
+    "The Star",
+    "The Moon",
+    "The Sun",
+    "Judgement",
+    "The World",
+)
+
+
+def tarot_signal() -> StrategyDecision:
+    """Random one-card Major Arcana baseline for Fifty+ experiments."""
+    card_index = secrets.randbelow(len(_TAROT_MAJOR_ARCANA))
+    upright = bool(secrets.randbits(1))
+    signal: Signal = "LONG" if upright else "SHORT"
+    return StrategyDecision(
+        signal,
+        "tarot",
+        {
+            "card": _TAROT_MAJOR_ARCANA[card_index],
+            "card_index": card_index,
+            "orientation": "upright" if upright else "reversed",
+            "shuffle": "system_random_major_arcana",
             "semantics": "experimental_spiritual_baseline",
         },
     )

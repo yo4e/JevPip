@@ -9,6 +9,7 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 - code-based paper trading
 - 排他的な3つのpaper判断モード（Jev / 戦略 / スピリチュアル実験）
 - strategy backtest
+- spiritual Fifty+ backtest
 - raw tick replay comparison
 - optionalなJev研究レイヤー
 
@@ -20,7 +21,7 @@ paper取引の判断系は、UI上で **Jevモード / 戦略モード / スピ�
 
 - **Jevモード**: Jev APIだけが売買判断を担当。デイトレ / スキャルピング / Fifty+を選ぶ
 - **戦略モード**: Jev APIを呼ばず、Momentum / RSI逆張り / MAトレンドのコード戦略を使う
-- **スピリチュアルモード**: Jev APIと通常戦略を使わず、Fifty+の売買骨格に月相または太陽星座の決定論的な方向ルールを接続する実験用baseline
+- **スピリチュアルモード**: Jev APIと通常戦略を使わず、Fifty+の売買骨格に月相・太陽星座・ランダムタロットの方向ルールを接続する実験用baseline
 
 Jevモードのデイトレは1分足中心で標準5分ごとに10分先を再評価し、スキャルピングは直近raw/live tick中心で標準1秒ごとに30秒先を再評価します。Fifty+は1ポジションずつ持ち、決済後は標準60秒待って次の方向を決めます。FXはpips、BTCは円損益で対称の勝負幅を指定できます。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
@@ -137,8 +138,9 @@ Fifty+のentry / exit骨格、安全弁、会計をそのまま使い、次の�
 
 - **月相**: 朔望月の前半をLONG、後半をSHORTとする単純な二択baseline
 - **太陽星座の極性**: 固定カレンダーの12星座を陽/陰へ分け、LONG / SHORTへ対応させるbaseline
+- **タロット1枚引き**: ラウンドごとに大アルカナをランダムに1枚引き、正位置をLONG、逆位置をSHORTへ対応させるジョーク寄りbaseline
 
-これは予測力や収益性を前提とするものではありません。外部APIを使わず再現可能な、比較・対照実験用のルールです。
+これは予測力や収益性を前提とするものではありません。月相・星座は決定論的、タロットは実行ごとにランダムです。
 
 Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
@@ -196,7 +198,7 @@ paper modeのlive tickごとに、A/B/C/D比較の土台となるdecision trace�
 
 supervisorにentryを止められたtickでも元のcode candidateを残します。これにより、次のexperiment harnessでblocked candidateのcounterfactualを同じmarket path / cost model上で評価できます。
 
-## 5つの検証機能
+## 6つの検証機能
 
 ### 1. 戦略BT
 
@@ -243,7 +245,28 @@ BTC historical KLineにはBID / ASKがないため、`bid = ask = close` の近�
 
 > 戦略BTは1分足の**close点だけ**でTP / SL等を評価します。1分の途中の値動き順序は復元しないため、tick-level execution backtestではありません。
 
-### 2. 戦略比較
+### 2. スピBT 🌙
+
+UIの「スピBT」タブから、**月相Fifty+ / 太陽星座Fifty+ / タロットFifty+** をhistorical 1分足で再生します。戦略BTとは別機能です。タロットは毎回ランダムなので、同じ条件でも結果が変わります。
+
+Jev APIは使いません。liveのスピリチュアルモードと同じFifty+エンジンを使い、次を共用します。
+
+- 月相 / 太陽星座の二択方向ルール
+- 対称のネット損益勝負幅
+- 決済後の再判断待機
+- 最大spread
+- 往復コストgate
+- 最大DD停止
+- FX paper leverage
+- fee / slippage / paper accounting
+
+結果にはnet PnL、PF、max DD、勝率、決済数、fee、LONG / SHORT entry数、No Trade / Buy & Hold baseline、約定履歴を表示します。
+
+FXはhistorical BID / ASK closeを使います。BTCはhistorical KLineにBID / ASKがないため、`bid = ask = close` の近似でfee / slippageを反映します。
+
+> スピBTも1分足の**close点だけ**でFifty+のTP / SLを評価します。1分の途中でどちらの境界へ先に触れたかは復元できないため、tick-level replayではありません。
+
+### 3. 戦略比較
 
 保存済みraw tickを、同じsize / cost modelで比較します。
 
@@ -274,7 +297,7 @@ uv run jevpip compare \
   --bar-seconds 60
 ```
 
-### 3. 統計リプレイ
+### 4. 統計リプレイ
 
 historical 1分足をFeature pipelineへ流し、次の1分の値動きを集計する研究機能です。
 
@@ -288,7 +311,7 @@ CLI:
 uv run jevpip backtest --date 20260918 --profile technical
 ```
 
-### 4. A/B/C/D experiment
+### 5. A/B/C/D experiment
 
 Jev + code strategy + 安全監督をすべてONにしたsource run（C-run）のdecision traceを、Jevへ再問い合わせせず再生します。
 
@@ -327,7 +350,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 `--json` でmachine-readableな結果を出せます。Jev performanceの実測結果はpublic repoへcommitしません。
 
 
-### 5. Jev historical replay
+### 6. Jev historical replay
 
 通常の1分足バックテストとは分離して、**保存済みraw tickに現在のJevを再実行する研究リプレイ**をUIの「Jev BT」タブから実行できます。
 
@@ -355,9 +378,11 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 
 runtime結果は `data/jev_replays/<instrument>/` へ保存し、Gitでは無視します。performance実測値をpublic repoへcommitしない方針は他のJev実験と同じです。
 
-## 従来モードについて
+## 比較研究用の互換機能
 
-Jevおまかせ以前の code strategy / Jev direction gate / Jev supervisor / A/B/C/D experiment は、**比較・研究用として維持**しています。通常利用では右側の「研究・従来設定」に畳んであります。
+Jevおまかせ以前の code strategy / Jev direction gate / Jev supervisor / A/B/C/D experiment は、**比較・研究用として内部互換を維持**しています。
+
+通常UIでは独立した「研究・従来設定」は置かず、戦略モードの **「戦略の詳細設定・研究」** の中へ集約しています。Jevモードとスピリチュアルモードでは表示しません。Momentum / RSI / MAの実運用設定を先に置き、旧Feature / Signal Policy / Jev supervisorなどはさらに「比較研究用の旧設定」へ畳んでいます。
 
 古い `strategy="jev"` 設定も互換入口として内部では受け付けますが、新しいUIでは独立strategyとして表示しません。詳細な契約・閾値・position managementは [CURRENT_STATE.md](./docs/CURRENT_STATE.md) と [DESIGN.md](./DESIGN.md) を参照してください。
 
