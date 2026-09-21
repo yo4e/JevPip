@@ -28,6 +28,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "MAトレンド" in response.text
         assert "RSI/MA入力" in response.text
         assert "戦略BT" in response.text
+        assert "スピBT" in response.text
+        assert "Fifty+ × 月相 / 星座" in response.text
+        assert 'id="spbt-run"' in response.text
         assert "統計リプレイ" in response.text
         assert "historical 1分足" in response.text
         assert "保存済みraw tick" in response.text
@@ -481,6 +484,93 @@ def test_strategy_backtest_api(monkeypatch):
         payload = response.json()
         assert payload["summary"]["net_pnl"] == 12.0
         assert payload["baselines"]["buy_and_hold"]["net_pnl"] == 7.0
+
+
+def test_spiritual_backtest_api(monkeypatch):
+    from jevpip.web.app import controller
+
+    async def fake_spiritual_backtest(**kwargs):
+        assert kwargs["instrument_id"] == "USD_JPY"
+        assert kwargs["date"] == "20260920"
+        assert kwargs["config"]["oracle"] == "moon_phase"
+        assert kwargs["config"]["target_units"] == 10
+        assert kwargs["config"]["reentry_seconds"] == 60
+        return {
+            "instrument_id": "USD_JPY",
+            "date": "20260920",
+            "replay_mode": "fx_bid_ask_close",
+            "input_semantics": "historical_1m_close_fifty_plus",
+            "oracle": "moon_phase",
+            "rows": 100,
+            "config": kwargs["config"],
+            "summary": {
+                "net_pnl": 9.0,
+                "equity": 100009.0,
+                "realized_pnl": 9.0,
+                "gross_realized_pnl": 15.0,
+                "fees_paid": 6.0,
+                "slippage_cost": 0.0,
+                "profit_factor": 1.2,
+                "max_drawdown": 4.0,
+                "max_drawdown_pct": 0.00004,
+                "closed_trades": 3,
+                "wins": 2,
+                "win_rate": 2 / 3,
+                "average_trade_pnl": 3.0,
+                "average_win_pnl": 6.0,
+                "average_loss_pnl": -3.0,
+                "exit_reasons": {"fifty_take_profit": {"count": 2, "net_pnl": 12.0}},
+                "risk_halted": False,
+                "long_entries": 2,
+                "short_entries": 1,
+            },
+            "baselines": {
+                "no_trade": {"net_pnl": 0.0},
+                "buy_and_hold": {"net_pnl": 7.0},
+            },
+            "trades": [],
+            "generated_events": 6,
+        }
+
+    monkeypatch.setattr(controller, "run_spiritual_backtest", fake_spiritual_backtest)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/spiritual-backtest",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "20260920",
+                "oracle": "moon_phase",
+                "initial_balance": 100000,
+                "size": 1000,
+                "paper_leverage": 25,
+                "target_units": 10,
+                "target_jpy": 500,
+                "reentry_seconds": 60,
+                "max_spread_units": 1.5,
+                "max_drawdown_pct": 0.20,
+                "slippage_units": 0,
+                "limit": 100,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["oracle"] == "moon_phase"
+        assert payload["summary"]["net_pnl"] == 9.0
+
+
+def test_spiritual_backtest_rejects_unknown_oracle():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/spiritual-backtest",
+            json={
+                "instrument_id": "USD_JPY",
+                "date": "20260920",
+                "oracle": "mercury_retrograde",
+                "initial_balance": 100000,
+                "size": 1000,
+            },
+        )
+        assert response.status_code == 422
 
 
 def test_strategy_backtest_rejects_jev():
