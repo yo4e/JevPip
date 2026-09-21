@@ -10,6 +10,8 @@ from decimal import Decimal
 
 import pytest
 
+import jevpip.jev_replay as replay
+
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.strategies import moon_phase_signal, tarot_signal, zodiac_polarity_signal
@@ -647,6 +649,73 @@ def test_state_costs_history_and_typed_questions():
     event["jev"]["answers"]["target_position"]["confidence"] = float("nan")
     attach_target(event, state)
     assert "target_error" in event
+
+
+def test_fifty_replay_falls_back_to_historical_1m(tmp_path, monkeypatch):
+    ticks = []
+    for minute, (bid, ask) in enumerate(
+        [(99, 101), (100, 102), (101, 103), (102, 104)],
+        start=1,
+    ):
+        at = START + timedelta(minutes=minute)
+        ticks.append(
+            replay._tick_from_row(
+                {
+                    "instrument_id": "USD_JPY",
+                    "symbol": "USD_JPY",
+                    "display_symbol": "USD/JPY",
+                    "bid": str(bid),
+                    "ask": str(ask),
+                    "market_timestamp": at.isoformat(),
+                    "received_at": at.isoformat(),
+                    "price_unit": "1",
+                    "move_unit_label": "pips",
+                    "status": "HISTORICAL",
+                }
+            )
+        )
+    monkeypatch.setattr(
+        replay,
+        "load_historical_ticks",
+        lambda date, *, instrument_id, limit=None: (ticks, "fx_bid_ask_close"),
+    )
+    times = iter(i / 100 for i in range(100))
+    monkeypatch.setattr("jevpip.jev_replay.time.perf_counter", lambda: next(times))
+
+    class Fake:
+        calls = 0
+
+        def decide(self, state, horizon, **kwargs):
+            assert state["autopilot"]["style"] == "fifty"
+            self.calls += 1
+            return answer(state, "UP")
+
+    fake = Fake()
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-19",
+        start_time=None,
+        duration_seconds=180,
+        cadence_seconds=60,
+        profile={"quote": True},
+        signal_policy=SignalPolicy(),
+        paper_config=broker(
+            autopilot_style="fifty",
+            autopilot_fifty_oracle="jev",
+            autopilot_fifty_target_units=100,
+            autopilot_max_spread=10,
+            fee_rate=0,
+            slippage_units=0,
+        ).config,
+        jev_client=fake,
+        acknowledged_token_use=True,
+    )
+
+    assert result["data_source"] == "gmo_historical_1m"
+    assert "GMO historical 1分足" in result["data_source_note"]
+    assert result["summary"]["calls"] == fake.calls
+    assert fake.calls > 0
 
 
 def test_replay_uses_same_policy_and_preserves_full_diagnostics(tmp_path, monkeypatch):

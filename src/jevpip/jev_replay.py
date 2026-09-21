@@ -11,6 +11,7 @@ from statistics import fmean, median
 from typing import Any, Iterable
 from uuid import uuid4
 
+from jevpip.backtest.kline import load_historical_ticks
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.jev.autopilot import attach_target
@@ -34,7 +35,9 @@ ALLOWED_CADENCE_SECONDS = (1, 2, 5, 10, 30, 60, 300)
 class JevReplayPlan:
     instrument_id: str
     date: str
-    source_path: Path
+    source_kind: str
+    source_path: Path | None
+    replay_mode: str
     available_start: str
     available_end: str
     selected_start: str
@@ -98,12 +101,44 @@ def read_raw_market_ticks(path: Path) -> list[MarketTick]:
     return ticks
 
 
+def _load_replay_source(
+    data_dir: Path,
+    *,
+    instrument_id: str,
+    date: str,
+) -> tuple[list[MarketTick], str, Path | None, str]:
+    """Prefer locally recorded raw ticks; fall back to GMO historical 1m data."""
+    path = data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
+    if path.exists():
+        ticks = read_raw_market_ticks(path)
+        if not ticks:
+            raise ValueError("raw tick file is empty")
+        if any(tick.instrument_id != instrument_id for tick in ticks):
+            raise ValueError("raw tick file contains a different instrument")
+        return ticks, "raw_ticks", path, "raw_tick"
+
+    historical_date = date.replace("-", "")
+    ticks, replay_mode = load_historical_ticks(
+        historical_date,
+        instrument_id=instrument_id,
+    )
+    if not ticks:
+        raise ValueError(
+            "保存済みraw tickもGMO historical 1分足も見つかりません。"
+        )
+    # Historical KLine is a finite replay source, not a live-market status.
+    # Treat each close point as executable while preserving the approximation
+    # explicitly through source_kind/replay_mode.
+    ticks = [replace(tick, status="OPEN") for tick in ticks]
+    return ticks, "gmo_historical_1m", None, replay_mode
+
+
 def _resolve_start(
     ticks: list[MarketTick],
     start_time: str | None,
 ) -> datetime:
     if not ticks:
-        raise ValueError("raw tick file is empty")
+        raise ValueError("replay source is empty")
     first = ticks[0].market_timestamp
     if not start_time:
         return first
@@ -156,20 +191,16 @@ def plan_jev_replay(
     if duration_seconds < 1 or duration_seconds > 86_400:
         raise ValueError("duration_seconds must be between 1 and 86400")
 
-    path = data_dir / "raw_ticks" / instrument_id / f"{date}.jsonl"
-    if not path.exists():
-        raise ValueError(f"raw tick data not found: {path}")
-
-    ticks = read_raw_market_ticks(path)
-    if not ticks:
-        raise ValueError("raw tick file is empty")
-    if any(tick.instrument_id != instrument_id for tick in ticks):
-        raise ValueError("raw tick file contains a different instrument")
+    ticks, source_kind, source_path, replay_mode = _load_replay_source(
+        data_dir,
+        instrument_id=instrument_id,
+        date=date,
+    )
 
     start_at = _resolve_start(ticks, start_time)
     available_end = ticks[-1].market_timestamp
     if start_at > available_end:
-        raise ValueError("start_time is after the available raw tick range")
+        raise ValueError("start_time is after the available replay range")
 
     requested_end = start_at + timedelta(seconds=duration_seconds)
     end_at = min(requested_end, available_end)
@@ -179,7 +210,7 @@ def plan_jev_replay(
         if start_at <= tick.market_timestamp <= end_at
     ]
     if not selected_ticks:
-        raise ValueError("selected window contains no raw ticks")
+        raise ValueError("selected window contains no market points")
 
     basis = _scheduled_basis_ticks(
         selected_ticks,
@@ -192,7 +223,9 @@ def plan_jev_replay(
     return JevReplayPlan(
         instrument_id=instrument_id,
         date=date,
-        source_path=path,
+        source_kind=source_kind,
+        source_path=source_path,
+        replay_mode=replay_mode,
         available_start=ticks[0].market_timestamp.isoformat(),
         available_end=available_end.isoformat(),
         selected_start=start_at.isoformat(),
@@ -326,9 +359,15 @@ def preview_jev_replay(
         if estimated_input is None or estimated_output is None
         else estimated_input + estimated_output
     )
+    source_note = (
+        "保存済みraw tickを使用します。"
+        if plan.source_kind == "raw_ticks"
+        else "保存済みtickがないためGMO historical 1分足を使用します。"
+    )
     return {
         **asdict(plan),
-        "source_path": str(plan.source_path),
+        "source_path": None if plan.source_path is None else str(plan.source_path),
+        "source_note": source_note,
         "max_calls_limit": MAX_JEV_REPLAY_CALLS,
         "within_call_limit": plan.planned_max_calls <= MAX_JEV_REPLAY_CALLS,
         "token_estimate": {
@@ -504,8 +543,14 @@ def run_jev_historical_replay(
             "Shorten the duration or increase cadence_seconds."
         )
 
-    all_ticks = read_raw_market_ticks(plan.source_path)
-    if paper_config.autopilot_enabled:
+    all_ticks, source_kind, source_path, replay_mode = _load_replay_source(
+        data_dir,
+        instrument_id=instrument_id,
+        date=date,
+    )
+    if source_kind != plan.source_kind:
+        raise ValueError("Jev BTのデータソースが見積り中に変化しました。再実行してください。")
+    if paper_config.autopilot_enabled and source_kind == "raw_ticks":
         max_clock_skew = paper_config.max_market_age_seconds
         future_skews = [
             (tick.market_timestamp - tick.received_at).total_seconds()
@@ -544,7 +589,10 @@ def run_jev_historical_replay(
     append_jsonl(output, {"kind": "jev_replay_config", "schema_version": 1,
                           "config": asdict(config), "profile": profile,
                           "signal_policy": asdict(signal_policy), "cadence_seconds": cadence_seconds,
-                          "source_path": str(plan.source_path), "plan": {**asdict(plan), "source_path": str(plan.source_path)}})
+                          "source_kind": source_kind,
+                          "replay_mode": replay_mode,
+                          "source_path": None if source_path is None else str(source_path),
+                          "plan": {**asdict(plan), "source_path": None if plan.source_path is None else str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
     next_request_at = start_at
     cadence = timedelta(seconds=cadence_seconds)
@@ -693,13 +741,27 @@ def run_jev_historical_replay(
         "duration_seconds": plan.duration_seconds,
         "cadence_seconds": cadence_seconds,
         "selected_ticks": selected_ticks,
+        "data_source": source_kind,
+        "replay_mode": replay_mode,
+        "source_path": None if source_path is None else str(source_path),
+        "data_source_note": (
+            "保存済みraw tickを使用しました。"
+            if source_kind == "raw_ticks"
+            else "保存済みtickがないためGMO historical 1分足で計算しています。"
+            "1分内の値動き順序、細かいspread変化、秒単位のentry timingは再現できないため誤差があります。"
+        ),
         "output": str(output),
         "summary": summary,
         "limitations": [
             "This is a historical replay using the current Jev model, not a recreation "
             "of the model as it existed at the historical time.",
-            "Only information built from raw ticks up to each basis timestamp is sent. "
-            "Official-event context is not injected in this first replay version.",
+            (
+                "Only information built from raw ticks up to each basis timestamp is sent."
+                if source_kind == "raw_ticks"
+                else "GMO historical 1-minute close points are used because no saved raw "
+                "ticks are available; intra-minute path and sub-minute execution are unavailable."
+            ),
+            "Official-event context is not injected in this replay.",
             "Actual API latency is mapped onto historical market time; while one Jev "
             "decision is pending, another call is not started.",
         ],
