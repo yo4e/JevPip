@@ -312,12 +312,40 @@ def test_fifty_question_compares_independent_long_and_short_net_races():
         slippage_units=0,
     )
     b.on_tick(tick(0))
+    b.seed_fifty_outcome_history(
+        [{
+            "kind": "fifty_directional_outcome",
+            "complete": True,
+            "decision_id": "past-1",
+            "choice": "UP",
+            "chosen_side": "LONG",
+            "entry_at": (START - timedelta(minutes=2)).isoformat(),
+            "prediction": {"confidence": 0.7},
+            "races": {},
+            "outcomes": {
+                "LONG": {
+                    "status": "take_profit_first",
+                    "resolved_at": (START - timedelta(seconds=30)).isoformat(),
+                    "duration_seconds": 90,
+                },
+                "SHORT": {
+                    "status": "stop_loss_first",
+                    "resolved_at": (START - timedelta(seconds=20)).isoformat(),
+                    "duration_seconds": 100,
+                },
+            },
+        }],
+        as_of=START,
+    )
     state = b.decision_state(START)
     fifty = state["autopilot"]["fifty_plus"]
     instructions = question_specs(state)["target_position"]["instructions"]
 
     assert fifty["target_value"] == 5
     assert fifty["directional_win_probabilities_are_not_complements"] is True
+    assert fifty["outcome_history"]["sample_count"] == 1
+    assert fifty["outcome_history"]["future_results_excluded"] is True
+    assert fifty["outcome_history"]["recent"][0]["choice"] == "UP"
     assert set(fifty["directional_races"]) == {"UP", "DOWN"}
     up = state["autopilot"]["targets"]["UP"]["directional_race"]
     down = state["autopilot"]["targets"]["DOWN"]["directional_race"]
@@ -333,6 +361,7 @@ def test_fifty_question_compares_independent_long_and_short_net_races():
     assert "LONG losing does NOT imply SHORT would have won" in instructions
     assert "not complements" in instructions
     assert "Choice probabilities are relative choice preferences" in instructions
+    assert "past completed answer keys" in instructions
     assert "1m/5m/15m/1h" in instructions
     assert "account/PnL" in instructions
     assert "Decide for yourself" in instructions
