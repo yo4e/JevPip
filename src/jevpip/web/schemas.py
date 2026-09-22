@@ -140,6 +140,7 @@ class JevReplayPreviewRequest(BaseModel):
     start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}:\d{2}$")
     duration_seconds: int = Field(default=60, ge=1, le=86400)
     cadence_seconds: Literal[1, 2, 5, 10, 30, 60, 300, 900] = 1
+    event_driven: bool = False
 
 
 class JevReplayRunRequest(JevReplayPreviewRequest):
