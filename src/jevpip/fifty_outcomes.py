@@ -166,6 +166,8 @@ def new_outcome_record(
     races: dict[str, Any],
     entry_at: datetime,
     source_kind: str,
+    prediction: dict[str, Any] | None = None,
+    context_version: str | None = None,
 ) -> dict[str, Any]:
     return {
         "kind": "fifty_directional_outcome",
@@ -178,6 +180,8 @@ def new_outcome_record(
         "available_at": decision.get("available_at"),
         "entry_at": entry_at.isoformat(),
         "source_kind": source_kind,
+        "context_version": context_version,
+        "prediction": prediction or {},
         "races": races,
         "outcomes": {
             "LONG": {"status": "pending"},
