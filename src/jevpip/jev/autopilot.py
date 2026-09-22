@@ -15,6 +15,7 @@ REASONS = {
     "REDUCE_RISK": "Reduce or exit existing exposure based on future risk.",
     "KEEP_THESIS": "The existing position thesis remains valid; avoid turnover.",
     "FIFTY_PLUS": "Fifty+ forced-direction round; code owns the symmetric exit.",
+    "EVENT_PLAN": "Event-driven Jev plan selected from code-generated bounded actions.",
 }
 
 
@@ -33,6 +34,37 @@ def finite_decimal(value: object, name: str, *, positive: bool = False) -> Decim
 def question_specs(state: dict[str, Any]) -> dict[str, Any]:
     policy = state["autopilot"]
     style = policy.get("style", "daytrade")
+    if style == "event":
+        event_plan = policy["event_plan"]
+        return {
+            "event_trade_plan": {
+                "type": "choice",
+                "instructions": (
+                    "Choose the best bounded paper-trading plan now. The code generated every "
+                    "candidate from the current quote, multi-timeframe context, transaction "
+                    "costs, account equity, position, and hard risk envelope. Candidates may "
+                    "enter now, wait for a typed price cross, keep/close an existing position, "
+                    "or stay flat. For entry candidates, stop-loss and take-profit widths are "
+                    "NET-PnL paper OCO distances after the current cost model and include a "
+                    "stated risk/reward ratio. Do not assume you can invent a different price, "
+                    "quantity, stop, take-profit, or command: choose exactly one supplied plan. "
+                    "Use all supplied trader context and trade only when the prospective setup "
+                    "justifies its costs and downside."
+                ),
+                "criteria": event_plan["trade_plans"],
+            },
+            "event_wake_plan": {
+                "type": "choice",
+                "instructions": (
+                    "Choose when the system should wake Jev for another review if no fill or "
+                    "position close wakes it first. Select exactly one supplied typed trigger. "
+                    "The code, not Jev, watches ticks and bars between calls. Prefer the event "
+                    "that would materially change the current thesis rather than a needlessly "
+                    "frequent timer."
+                ),
+                "criteria": event_plan["wake_plans"],
+            },
+        }
     if style == "fifty":
         fifty = policy["fifty_plus"]
         target_value = float(fifty["target_value"])
@@ -144,6 +176,51 @@ def decode_target(
     answers = answer.get("answers", {})
     if not isinstance(answers, dict):
         raise ValueError("missing target answers")
+    if policy.get("style") == "event":
+        event_plan = policy.get("event_plan")
+        if not isinstance(event_plan, dict):
+            raise ValueError("missing event plan state")
+        trade_plans = event_plan.get("trade_plans")
+        wake_plans = event_plan.get("wake_plans")
+        if not isinstance(trade_plans, dict) or not trade_plans:
+            raise ValueError("missing event trade plans")
+        if not isinstance(wake_plans, dict) or not wake_plans:
+            raise ValueError("missing event wake plans")
+        trade_choice, trade_confidence = _choice(
+            answers.get("event_trade_plan"), set(trade_plans)
+        )
+        wake_choice, wake_confidence = _choice(
+            answers.get("event_wake_plan"), set(wake_plans)
+        )
+        trade = dict(trade_plans[trade_choice])
+        wake = dict(wake_plans[wake_choice])
+        expires_at = min(
+            requested_at, datetime.fromisoformat(policy["as_of"])
+        ) + timedelta(seconds=policy["ttl_seconds"])
+        return {
+            "schema_version": 1,
+            "decision_id": uuid4().hex,
+            "session_id": policy["session_id"],
+            "account_version": policy["account_version"],
+            "instrument_id": policy["instrument_id"],
+            "target_side": trade.get("side", "FLAT"),
+            "target_quantity": trade.get("quantity", "0"),
+            "choice": trade_choice,
+            "confidence": trade_confidence,
+            "reason": "EVENT_PLAN",
+            "basis_market_timestamp": policy["as_of"],
+            "requested_at": requested_at.isoformat(),
+            "available_at": available_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "event_plan": {
+                "trade_choice": trade_choice,
+                "trade_confidence": trade_confidence,
+                "trade": trade,
+                "wake_choice": wake_choice,
+                "wake_confidence": wake_confidence,
+                "wake": wake,
+            },
+        }
     choice, confidence = _choice(answers.get("target_position"), set(policy["targets"]))
     if policy.get("style") == "fifty":
         factor = "FIFTY_PLUS"
