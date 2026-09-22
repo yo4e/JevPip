@@ -947,7 +947,8 @@ class AutopilotBroker(PaperBroker):
         if cfg.autopilot_style == "fifty":
             gate = self._fifty_entry_gate(bid, ask, as_of=at)
             if not gate["ready"]:
-                return str(gate["reason"] or "fifty_entry_gate")
+                reason = str(gate["reason"] or "fifty_entry_gate")
+                return "max_spread" if reason == "spread_above_limit" else reason
             return self._capacity_block(
                 side, quantity, bid, ask, optional_limits=False
             )
