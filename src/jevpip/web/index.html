@@ -1029,6 +1029,14 @@ function executionStatusSummary(paper){
     max_quantity:"最大数量",
     insufficient_margin:"証拠金不足"
   };
+  if(status.startsWith("event_plan:")){
+    const action=status.slice("event_plan:".length);
+    const eventLabels={wait:"待機中（JevがWAIT）",market:"MARKET約定待ち",price_cross:"価格cross待ち",hold:"HOLD中",close:"CLOSE約定待ち"};
+    return "実行: "+(eventLabels[action]||status);
+  }
+  if(status==="event_entry_filled")return "実行: entry約定";
+  if(status.startsWith("event_entry_blocked:"))return "実行: entry見送り（"+status.slice("event_entry_blocked:".length)+"）";
+  if(status.startsWith("event_wake:"))return "実行: 再判断条件成立（"+status.slice("event_wake:".length)+"）";
   if(status.startsWith("rejected:"))return "実行: "+status;
   return "実行: "+(labels[status]||status);
 }

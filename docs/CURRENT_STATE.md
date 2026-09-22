@@ -19,6 +19,17 @@ JevPipはローカルで動くmarket research terminalです。
 
 paper取引の通常UIは **Jevモード / 戦略モード / スピリチュアルモード** の3タブに分離し、同時に複数の判断系を発動させない構成です。JevモードはJev専用、戦略モードはコード戦略専用、スピリチュアルモードはFifty+骨格＋月相 / 星座 / タロット / コイントスの方向源です。コイントスはJev Fifty+のrandom controlとして使います。
 
+## 現在の研究優先順位
+
+現時点の主実験は **Fifty+ のdirection-source比較** です。Jev Fifty+とcoin flip random controlを、同じmarket path / cost model / paper OCO / spread gate / reentry waitで比較し、方向源以外をできるだけ固定します。
+
+- Fifty+自体やJevの収益性は未検証
+- coin flipはコスト込みでは損益0を保証しないため、単発runではなく複数seedの分布で比較する
+- raw tickを本命データにし、1分足fallbackはsmoke test扱い
+- おまかせ / デイトレ / スキャルピングは別のJev実験として維持するが、Fifty+比較の主指標へ混ぜない
+
+比較設計の詳細は [BACKTEST_RESEARCH.md](BACKTEST_RESEARCH.md) を参照。
+
 ## UI情報設計（Issue #21）
 
 UIは機能を削らず、判断系を混ぜない構成へ整理しています。
@@ -49,10 +60,10 @@ Jevおまかせはprimary paper workflowとして実装済みです。
 スタイル:
 - **デイトレ**: `trader_context_v1` を利用。標準900秒（15分）ごとに現在の最適total positionを再判断
 - **スキャルピング**: `trader_context_v1` を利用。標準60秒ごとに現在の最適total positionを再判断。短く設定するほどtoken消費が増える
-- **おまかせ戦略**: boundedなtrade / wake / expiryをJevが選ぶevent-driven mode。entry planはfillで消費し、protective OCOは独立して維持。価格cross / bar close / timeout / expiry / fill / closeだけで再判断する
-- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。LONG / SHORTそれぞれについて自身のnet TP-vs-SLを独立に評価させ、対称のNET ±Xをentry時のpaper OCOとして固定して決済後待機を使う
+- **おまかせ戦略**: boundedなtrade / wake / expiryをJevが選ぶevent-driven mode。entry planはfillで消費し、protective OCOは独立して維持。価格cross / 5分足3本 / 15分足1本 / 15・30分timeout / 15〜60分expiry / fill / closeだけで再判断し、1〜5分のidle pollingは行わない
+- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。LONG / SHORTそれぞれについて自身のnet TP-vs-SLを独立に評価させ、対称のNET ±Xをentry時のpaper OCOとして固定する。決済後の再判断待機は標準600秒（10分）。「公式イベントを見る」がONなら観測済みofficial contextも方向判断へ渡す
 
-4スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
+4スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を使う。おまかせ / Fifty+はTypeSafe送信時にraw tickを省き、各時間足を最新16本 + current bar + indicators、recent executionを10件へbounded化する。broker内部の履歴は保持する
 
 Fifty+にはspread上限、往復コストgate、最大DD停止、FX paper leverage等のcode-owned safetyを共通適用します。paper OCOは研究用の境界touch近似で、observed tickのovershootを余分なPnLへ変換しません。実注文のgap-through、stop-market slippage、価格改善、板厚は別物です。live開始時はPublic historical KLineでmulti-timeframeをwarmupし、未確定future barは除外します。詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md) と [FIFTY_PLUS.md](FIFTY_PLUS.md)。
 

@@ -17,6 +17,14 @@ JevPip は、**GMOの市場データを使うローカル・マーケットタ�
 
 > **現時点では実売買しません。** 現行スコープはpaper tradingとread-onlyな実口座参照です。GMO Private APIは口座・建玉のGET参照だけを使い、注文POST経路は実装していません。将来live tradingを検討する場合も、別途安全設計と明示的な実装判断を先に行います。
 
+## 現在の研究フォーカス
+
+現在の主実験は **Fifty+ の方向源比較** です。JevはUP / DOWNだけを選び、数量、NET ±Xのpaper OCO、spread / cost gate、再判断待機、最大DD、会計はコード側で共通化します。これにより、同じmarket path / cost modelで **Jev Fifty+ と coin flip random control** を比較しやすくしています。
+
+コイントスはコスト込みでは損益期待値0を保証する基準ではありません。spread、fee、slippage、entry timingの影響を同じ条件で受けさせ、単発runではなく複数seed・十分な試行数の分布で比較します。**Fifty+を含め、現時点で収益性は確認されていません。**
+
+おまかせ戦略 / デイトレ / スキャルピングは別のJev実験として残しますが、Fifty+のdirection-source比較とは混ぜて評価しません。検証方針は [BACKTEST_RESEARCH.md](./docs/BACKTEST_RESEARCH.md) を参照してください。
+
 paper取引の判断系は、UI上で **Jevモード / 戦略モード / スピリチュアルモード** の3つに分離しています。同時には動きません。
 
 - **Jevモード**: Jev APIだけが売買判断を担当。デイトレ / スキャルピング / おまかせ戦略 / Fifty+を選ぶ
@@ -127,7 +135,7 @@ Jev APIが売買判断を担当し、コード戦略や旧research filterを売�
 - **デイトレ**: `trader_context_v1` を利用、標準15分ごとに現在の最適total positionを再判断
 - **スキャルピング**: `trader_context_v1` を利用、標準60秒ごとに現在の最適total positionを再判断。短くするほどtoken消費が増える
 - **おまかせ戦略**: `trader_context_v1` を利用。boundedなtrade / wake / expiryをJevが選び、条件成立まではコードだけが監視するevent-driven mode。fill後のentry planは消費し、protective OCOは独立して維持する
-- **Fifty+**: 1ポジションずつ。決済後は標準60秒待ち、同じ開始条件から「LONGなら自身のnet +Xがnet -Xより先か」「SHORTなら自身のnet +Xがnet -Xより先か」を独立に評価し、TP先着がより見込める方を `UP / DOWN` で選ぶ。片側の敗北を反対側の勝利とはみなさない
+- **Fifty+**: 1ポジションずつ。決済後は標準600秒（10分）待ち、同じ開始条件から「LONGなら自身のnet +Xがnet -Xより先か」「SHORTなら自身のnet +Xがnet -Xより先か」を独立に評価し、TP先着がより見込める方を `UP / DOWN` で選ぶ。片側の敗北を反対側の勝利とはみなさない。「公式イベントを見る」がONなら観測済みofficial contextも判断へ加える
 
 ### 戦略モード
 
@@ -525,18 +533,3 @@ unit testは外部APIへ依存しないものを基本とし、live connectivity
 - [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
 - [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
 - [EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md](./docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md) : Jev supervisor向け公式event source / provenance / look-ahead設計
-
-## 現在の位置づけ
-
-JevPipは現在、
-
-1. **Market Terminal**
-2. **Paper Broker**
-3. **Observer / Feature Lab**
-4. **Backtester**
-
-を1つのローカルアプリへまとめた段階です。
-
-Jevおまかせのpaper prototype、Fifty+、従来モードのA/B/C/D experiment harnessまで実装済みです。Fifty+はLONG / SHORT双方の独立したNET TP-vs-SLを答え合わせし、完了済み履歴を次回以降のJevへcausalに返します。TP/SLはpaper OCOとして建玉時に固定され、tickのovershootを余分な損益へ変換しません。
-
-次はFifty+を十分な試行数・別期間で回し、同じmarket path / cost modelのcoin flip random controlと比較する段階です。単発の勝率ではなく、net PnL、PF、DD、spread / fee、ラウンド数、時間帯・銘柄偏り、random controlの分布を見る方針です。収益性は未検証です。

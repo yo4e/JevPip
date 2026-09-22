@@ -15,13 +15,13 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 
 - `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
-- `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補、wake候補、plan expiry候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout、expiry候補は5 / 15 / 30 / 60分。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
+- `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補、wake候補、plan expiry候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 5分足3本 / 15分足1本 / 15・30分timeout、expiry候補は15 / 30 / 60分。entry fillとposition closeは常に自動wake。1〜5分のidle polling候補は出さず、条件成立まではcode-onlyで監視する。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準600秒 / 10分）待ってから次の方向判断を要求する。「公式イベントを見る」がONなら、その時点で観測済みの公式event contextも方向判断へ渡す。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。実entry時にspread・手数料・slippage込みのNET ±Xをpaper OCOとして固定し、後続tickが境界を飛び越えても登録済み境界へ補間して決済する。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
 - Jevモードには銘柄別のspread上限を初期設定する。UIの「ドローダウン・レバレッジ」から調整でき、USD/JPYの初期値は1.0 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
-- Fifty+は `trader_context_v1` として、現在quote、直近tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account / PnL、cost / constraints、recent execution / performanceを広くJevへ渡す。どの情報を重視するかはJev自身へ任せる。コストを理由に棄権する選択肢は引き続きない。
+- Fifty+は `trader_context_v1` を使うが、TypeSafe payloadはtoken budgetのためboundedにする。raw tick tapeと重複legacy 1分足は送らず、1m / 5m / 15m / 1hを各最新16本 + current bar + indicators、recent executionを10件に絞る。現在quote、clock、account / PnL、cost / constraints、performanceに加え、Fifty+固有の勝負幅、LONG / SHORT directional race、outcome historyは保持する。「公式イベントを見る」がONなら観測済みofficial contextも渡す。どの情報を重視するかはJev自身へ任せ、コストを理由に棄権する選択肢は引き続きない。
 - デイトレとスキャは同じtarget-position broker、口座会計、cost model、optional risk constraintsを使う。スキャでも売買回数を強制せず、往復コストを上回る短期edgeが見込めない場合はFLAT/KEEPを許す。
 
 UIではJevとの混在を避けるため、通常のMomentum / RSI / MAは **戦略モード** に分離した。戦略モードではJev APIを呼ばない。既存APIの `autopilot_enabled` は省略時OFFで、Strategy BT、raw comparison、A/B/C/D harnessは比較研究用として残る。
