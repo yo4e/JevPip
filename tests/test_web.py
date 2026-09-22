@@ -119,6 +119,7 @@ def test_config_exposes_btc_profiles_and_safety_flags():
         assert payload["instruments"]["BTC"]["display_symbol"] == "BTC/JPY"
         assert payload["instruments"]["BTC"]["move_unit_label"] == "円"
         assert payload["instruments"]["USD_JPY"]["move_unit_label"] == "pips"
+        assert payload["instruments"]["USD_JPY"]["default_max_spread"] == 1.0
         assert payload["instruments"]["EUR_JPY"]["display_symbol"] == "EUR/JPY"
         assert payload["instruments"]["GBP_JPY"]["quote_currency"] == "JPY"
         assert "moon_only" in payload["profiles"]

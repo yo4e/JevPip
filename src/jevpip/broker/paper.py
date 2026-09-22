@@ -32,7 +32,7 @@ class PaperConfig:
     move_unit_label: str = "pips"
     momentum_window_seconds: float = 5.0
     momentum_trigger_units: float = 0.6
-    max_spread_units: float = 1.5
+    max_spread_units: float = 1.0
     take_profit_units: float = 1.0
     stop_loss_units: float = 1.0
     max_hold_seconds: float = 8.0

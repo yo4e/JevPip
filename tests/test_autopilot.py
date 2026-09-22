@@ -125,6 +125,7 @@ def test_paper_demo_accepts_styles_and_current_defaults():
     defaults = PaperDemoInput()
     assert defaults.paper_leverage == 25
     assert defaults.autopilot_max_drawdown_pct == pytest.approx(0.20)
+    assert defaults.max_spread_units == pytest.approx(1.0)
     assert defaults.autopilot_fifty_reentry_seconds == pytest.approx(60)
     assert defaults.autopilot_fifty_oracle == "jev"
     assert PaperDemoInput(autopilot_style="daytrade").autopilot_style == "daytrade"

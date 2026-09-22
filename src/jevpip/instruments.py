@@ -72,7 +72,7 @@ INSTRUMENTS: dict[str, Instrument] = {
     "USD_JPY": _jpy_fx(
         "USD_JPY",
         "USD/JPY",
-        max_spread="1.5",
+        max_spread="1.0",
         take_profit="1.0",
         stop_loss="1.0",
     ),

@@ -255,7 +255,8 @@ external context foundationも実装済み:
 
 - BOJ policy decision本体（固定公開時刻がないため未接続）
 - official post-release context
-- 実採取traceでのexperiment validation / metric interpretation\n- Jev historical replayへのlook-ahead-safe official event context
+- 実採取traceでのexperiment validation / metric interpretation
+- Jev historical replayへのlook-ahead-safe official event context
 
 ## 検証機能
 
@@ -344,7 +345,9 @@ strategy PnL backtestではありません。
 - replay開始時もPublic historical KLineを `start_at` 時点まででwarmupし、1m / 5m / 15m / 1h contextをliveと揃える
 - pending decision中の重複call抑止
 - Fifty+の実entryごとにLONG / SHORT双方の独立TP-vs-SL結果をraw pathで答え合わせし、TP先着率・決着時間・両方向SL・未決着を保存
+- Fifty+の実決済はentry時に固定したNET ±Xのpaper OCOで行い、tick overshootを余分な損益にしない
 - 完了済みのFifty+答え合わせを `fifty_plus.outcome_history` として次回Jevへ渡す。直近20件 + aggregate + confidence band、再起動時最大500件seed、判断時点より未来の決着は除外
+- USD/JPYの初期spread上限は1.0 pips。上限超過中はFifty+ entry / Jev callを抑止
 - Jev direct paper entry + bounded HOLD/CLOSE
 - preview時の最大call数計算
 - recent reported usageからtoken消費目安
@@ -409,9 +412,9 @@ BTC現物paperと暗号資産FX paperの分離。
 
 ### Fifty+ comparison experiment
 
-次の検証ではJev Fifty+とcoin flipを、同じmarket path・quantity・勝負幅・fee / slippage・spread gate・DD ruleで比較する。
+次の検証ではJev Fifty+とcoin flipを、同じmarket path・quantity・勝負幅・fee / slippage・spread gate・DD rule・paper OCO semanticsで比較する。
 
-単発のcoin flip結果ではなく、複数seed / 複数期間でrandom controlの分布を見る設計を優先する。
+単発のcoin flip結果ではなく、複数seed / 複数期間でrandom controlの分布を見る設計を優先する。raw tickを本命データとし、historical 1分足fallbackはsmoke testに限定する。Jevの実latencyを含む比較と、方向選択だけを固定機会で比較する分析は意味が異なるため、混同しない。
 
 ## 次の大きなテーマ
 
@@ -450,11 +453,15 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 4. docs/FIFTY_PLUS.md
 5. 必要な場合だけ DESIGN.md の該当Section
 
-主要な完了Issue:
+主要な完了Issue / milestone:
 - #4: technical strategy / supervisor / A-B-C-D
 - #17: Jevおまかせ
 - #21: UI情報設計
 - #22: daytrade / scalp / Fifty+
+- #51: Fifty+ Jev BTのlive context / response timing parity
+- #52: LONG / SHORT独立のNET TP-vs-SL答え合わせとJevへの履歴feedback
+- PR #56: 戦略 / Fifty+ / optional autopilot TP/SLをpaper OCOへ統一
+- PR #57: USD/JPYの初期spread上限を1.0 pipsへ変更
 
 現在の主なopen work:
 - #3: live orderを将来検討する場合の運用制約

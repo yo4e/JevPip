@@ -80,6 +80,11 @@ Jev Fifty+がrandom controlを安定して上回るかを見る検証はここ�
 - fee / slippage
 - leverage / margin model
 - max drawdown rule
+- paper OCO / boundary-touch semantics
+
+raw tickをFifty+の本命データにする。historical 1分足fallbackはintraminuteのTP/SL到達順序を復元できないため、比較runnerのsmoke test用途に限定する。
+
+JevはAPI latencyの影響を受ける一方、coin flipはほぼ即時に決められる。この差を評価へ含める「execution-realistic比較」と、同じentry opportunityで方向選択だけを比較する「fixed-opportunity比較」は別の問いなので、結果を同じ指標として混ぜない。
 
 比較する方向源の例:
 
@@ -162,15 +167,19 @@ Jev Fifty+がrandom controlを安定して上回るかを見る検証はここ�
 
 レイアウト、タブ名、情報密度などの目視判断が必要になった段階でDesktop UIレビューへ回す。
 
-## 6. Compatibility policy
+## 6. Compatibility / interpretation policy
 
-今回の整理は既存の研究結果の意味を変えない。
+既存ログや過去BTの数値は、実行時点のpaper execution semanticsで得られたものとして扱い、現在の結果へ無条件に混ぜない。
 
-- broker accountingを変更しない
-- fee / slippage semanticsを変更しない
-- baseline計算を変更しない
-- historical data semanticsを変更しない
-- Jev API call semanticsを変更しない
-- 実注文を追加しない
+2026-09-22にTP/SL executionをthreshold-cross時の観測tick成行から、entry時に固定する**paper OCO / deterministic boundary-touch**へ変更した。これ以前のrunではtick overshootが設定TP/SLを超える損益として計上される場合があるため、Fifty+や戦略の厳密比較では再実行を優先する。
 
-古い名前やAPIは、容易に互換を保てるものはaliasとして残し、新規コードだけ正規名へ寄せる。
+現在の比較では次を固定・記録する。
+
+- fee / configured slippage semantics
+- spread gate
+- paper OCO / boundary-touch semantics
+- historical data source / resolution
+- Jev API call / latency semantics
+- baseline seed / random source
+
+実注文は追加しない。古い名前やAPIは、容易に互換を保てるものはaliasとして残し、新規コードだけ正規名へ寄せる。

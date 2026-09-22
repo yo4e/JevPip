@@ -83,7 +83,7 @@ class PaperDemoInput(BaseModel):
     strategy_enabled: bool = True
     momentum_window_seconds: float = Field(default=5.0, ge=1, le=60)
     momentum_trigger_units: float = Field(default=0.6, gt=0, le=100000000)
-    max_spread_units: float = Field(default=1.5, ge=0, le=100000000)
+    max_spread_units: float = Field(default=1.0, ge=0, le=100000000)
     take_profit_units: float = Field(default=1.0, gt=0, le=100000000)
     stop_loss_units: float = Field(default=1.0, gt=0, le=100000000)
     max_hold_seconds: float = Field(default=8.0, ge=1, le=600)
@@ -205,7 +205,7 @@ class SpiritualBacktestRequest(BaseModel):
     target_units: float = Field(default=10.0, gt=0, le=100000000)
     target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
     reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
-    max_spread_units: float = Field(default=1.5, ge=0, le=100000000)
+    max_spread_units: float = Field(default=1.0, ge=0, le=100000000)
     max_drawdown_pct: float = Field(default=0.20, gt=0, le=1)
     slippage_units: float = Field(default=0.0, ge=0, le=100000000)
     limit: int | None = Field(default=None, ge=2, le=10000)
