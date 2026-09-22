@@ -996,6 +996,42 @@ function eventPlanScheduleSummary(d){
   if(expiryDelay)parts.push("plan期限: "+expiryDelay+"後"+(expiryClock?"（"+expiryClock+"）":""));
   return parts.join(" / ");
 }
+function eventTradeSummary(d){
+  const plan=d?.target_decision?.event_plan,trade=plan?.trade||{};
+  const choice=plan?.trade_choice||d?.target_decision?.choice||"";
+  const action=trade.action||"";
+  if(!choice&&!action)return "";
+  if(action==="WAIT")return "Jev選択: WAIT";
+  if(action==="MARKET")return "Jev選択: MARKET "+(trade.side||"")+" "+(trade.quantity||"");
+  if(action==="PRICE_CROSS"){
+    const trigger=trade.entry_trigger||{},dir=trigger.type==="price_cross_above"?"以上":"以下";
+    return "Jev選択: PRICE_CROSS "+(trade.side||"")+" "+(trade.quantity||"")+" / MID "+(trigger.price||"-")+" "+dir;
+  }
+  if(action==="HOLD")return "Jev選択: HOLD";
+  if(action==="CLOSE")return "Jev選択: CLOSE";
+  return "Jev選択: "+(choice||action);
+}
+function executionStatusSummary(paper){
+  const status=paper?.target_status;
+  if(!status)return "";
+  const labels={
+    pending:"実行待ち",
+    executed:"約定",
+    hold:"変更なし",
+    confirming_target:"同一targetの再確認待ち",
+    max_spread:"spread上限で見送り",
+    external_supervisor:"公式イベント等のgateで見送り",
+    risk_halted:"リスク停止",
+    minimum_confidence:"confidence不足",
+    cooldown:"cooldown中",
+    max_position_change:"数量変更上限",
+    max_notional:"最大保有額",
+    max_quantity:"最大数量",
+    insufficient_margin:"証拠金不足"
+  };
+  if(status.startsWith("rejected:"))return "実行: "+status;
+  return "実行: "+(labels[status]||status);
+}
 function renderDecision(d,sup,paper=null){
   const supBox=$("jev-supervisor");
   if(supBox){
@@ -1037,8 +1073,9 @@ function renderDecision(d,sup,paper=null){
   }
   $("decision-panel-title").textContent="最新Jev判断";
   $("decision-empty").style.display="none";$("decision").style.display="block";
-  const a=d.jev.answers||{},fifty=d.state?.autopilot?.style==="fifty",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
-  const decisionText=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
+  const a=d.jev.answers||{},style=d.state?.autopilot?.style,fifty=style==="fifty",event=style==="event",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
+  const eventChoice=event?eventTradeSummary(d):"";
+  const decisionText=d.target_decision?(event?(eventChoice.replace(/^Jev選択: /,"")||"WAIT"):fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
   $("decision-signal").textContent=decisionText;
   $("session-target-state").textContent=decisionText;
   $("up").textContent=fifty?pct(pr.UP||0):(d.target_decision?"—":pct(pr.UP||0));
@@ -1048,9 +1085,10 @@ function renderDecision(d,sup,paper=null){
   const at=d.available_at||d.received_at||d.timestamp;
   $("decision-time").textContent=at?"判断時刻 "+new Date(at).toLocaleString("ja-JP"):"";
   $("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";
-  const eventSchedule=d.state?.autopilot?.style==="event"?eventPlanScheduleSummary(d):"";
+  const eventSchedule=event?eventPlanScheduleSummary(d):"";
+  const execution=executionStatusSummary(paper);
   const detail=d.target_error||(d.target_decision?(fifty?("Fifty+ 二択 / confidence "+pct(d.target_decision.confidence)):("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence))):signalGateSummary(d));
-  $("signal-detail").textContent=eventSchedule?(detail+" / "+eventSchedule):detail
+  $("signal-detail").textContent=[detail,eventChoice,eventSchedule,execution].filter(Boolean).join(" / ")
 }
 
 function chartPrice(p){
