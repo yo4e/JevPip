@@ -1705,9 +1705,14 @@ class AutopilotBroker(PaperBroker):
                 snapshot=snapshot,
                 timeframes=timeframe_state,
             )
+            retry_clock = (
+                self._last_received_at
+                if self._last_received_at is not None and self._last_received_at > as_of
+                else as_of
+            )
             retry_ready = (
                 self._event_retry_not_before is not None
-                and as_of >= self._event_retry_not_before
+                and retry_clock >= self._event_retry_not_before
                 and self._event_plan is None
                 and self._pending is None
                 and not self._halted
