@@ -51,8 +51,10 @@ class JevReplayPlan:
     selected_end: str
     duration_seconds: int
     cadence_seconds: int
+    event_driven: bool
     selected_ticks: int
     planned_max_calls: int
+    call_budget_basis: str
     max_tick_gap_seconds: float
     median_tick_interval_seconds: float
 
@@ -191,6 +193,7 @@ def plan_jev_replay(
     start_time: str | None,
     duration_seconds: int,
     cadence_seconds: int,
+    event_driven: bool = False,
 ) -> JevReplayPlan:
     if cadence_seconds not in ALLOWED_CADENCE_SECONDS:
         allowed = ", ".join(str(value) for value in ALLOWED_CADENCE_SECONDS)
@@ -225,6 +228,16 @@ def plan_jev_replay(
         end_at=end_at,
         cadence_seconds=cadence_seconds,
     )
+    planned_max_calls = (
+        min(len(selected_ticks), MAX_JEV_REPLAY_CALLS)
+        if event_driven
+        else len(basis)
+    )
+    call_budget_basis = (
+        "event_tick_upper_bound_capped"
+        if event_driven
+        else "fixed_cadence_schedule"
+    )
     gaps = [(right.market_timestamp-left.market_timestamp).total_seconds()
             for left, right in zip(selected_ticks, selected_ticks[1:])]
     return JevReplayPlan(
@@ -239,8 +252,10 @@ def plan_jev_replay(
         selected_end=end_at.isoformat(),
         duration_seconds=max(0, int((end_at - start_at).total_seconds())),
         cadence_seconds=cadence_seconds,
+        event_driven=event_driven,
         selected_ticks=len(selected_ticks),
-        planned_max_calls=len(basis),
+        planned_max_calls=planned_max_calls,
+        call_budget_basis=call_budget_basis,
         max_tick_gap_seconds=max(gaps, default=0.0),
         median_tick_interval_seconds=median(gaps) if gaps else 0.0,
     )
@@ -339,6 +354,7 @@ def preview_jev_replay(
     start_time: str | None,
     duration_seconds: int,
     cadence_seconds: int,
+    event_driven: bool = False,
 ) -> dict[str, Any]:
     plan = plan_jev_replay(
         data_dir,
@@ -347,6 +363,7 @@ def preview_jev_replay(
         start_time=start_time,
         duration_seconds=duration_seconds,
         cadence_seconds=cadence_seconds,
+        event_driven=event_driven,
     )
     average = recent_token_average(data_dir)
     avg_input = average["average_input_tokens"]
@@ -554,6 +571,10 @@ def run_jev_historical_replay(
         start_time=start_time,
         duration_seconds=duration_seconds,
         cadence_seconds=cadence_seconds,
+        event_driven=(
+            paper_config.autopilot_enabled
+            and paper_config.autopilot_style == "event"
+        ),
     )
     if plan.planned_max_calls > MAX_JEV_REPLAY_CALLS:
         raise ValueError(
@@ -721,6 +742,9 @@ def run_jev_historical_replay(
     usages: list[tuple[int, int]] = []
     latencies: list[float] = []
     selected_ticks = 0
+    call_budget_exhausted = False
+    call_budget_exhausted_at: datetime | None = None
+    last_processed_tick: MarketTick | None = None
     final_market_at = max(t.market_timestamp for t in all_ticks if start_at <= t.market_timestamp <= end_at)
 
     for tick in all_ticks:
@@ -793,6 +817,7 @@ def run_jev_historical_replay(
 
         update_fifty_outcomes(tick)
         generated = broker.on_tick(tick.as_json_dict(), allow_entry=(not config.autopilot_enabled or tick.market_timestamp < final_market_at))
+        last_processed_tick = tick
         for execution in generated:
             append_jsonl(output, execution)
         if config.autopilot_enabled and broker.last_decision_trace is not None:
@@ -811,14 +836,25 @@ def run_jev_historical_replay(
         if pending_decision is not None:
             skipped_by_latency += 1
             continue
-        if calls >= min(plan.planned_max_calls, MAX_JEV_REPLAY_CALLS):
-            continue  # the acknowledged preview is also a runtime spending cap
 
         state = build_features(tick, buffer, profile)
         state.update(broker.decision_state(tick.market_timestamp) if isinstance(broker, AutopilotBroker)
                      else _paper_context(broker, config, as_of=tick.market_timestamp))
         if not _should_request_jev(state):
             continue
+        if calls >= min(plan.planned_max_calls, MAX_JEV_REPLAY_CALLS):
+            call_budget_exhausted = True
+            call_budget_exhausted_at = tick.market_timestamp
+            append_jsonl(
+                output,
+                {
+                    "kind": "jev_replay_call_budget_exhausted",
+                    "at": tick.market_timestamp.isoformat(),
+                    "calls": calls,
+                    "call_budget": plan.planned_max_calls,
+                },
+            )
+            break
 
         requested_at = clock
         started = time.perf_counter()
@@ -868,7 +904,7 @@ def run_jev_historical_replay(
             else (requested_at if config.autopilot_enabled else available_at) + cadence
         )
 
-    last_tick = next(
+    last_tick = last_processed_tick or next(
         (
             tick
             for tick in reversed(all_ticks)
@@ -934,6 +970,9 @@ def run_jev_historical_replay(
         usages=usages,
         latencies=latencies,
     )
+    summary["call_budget_exhausted"] = call_budget_exhausted
+    summary["completed_full_window"] = not call_budget_exhausted
+    summary["effective_end"] = last_tick.market_timestamp.isoformat()
     if config.autopilot_enabled and config.autopilot_style == "fifty":
         summary["fifty_directional_outcomes"] = summarize_outcomes(
             completed_fifty_outcomes,
@@ -946,8 +985,16 @@ def run_jev_historical_replay(
         "date": date,
         "selected_start": plan.selected_start,
         "selected_end": plan.selected_end,
+        "effective_end": last_tick.market_timestamp.isoformat(),
+        "completed_full_window": not call_budget_exhausted,
+        "call_budget_exhausted": call_budget_exhausted,
+        "call_budget_exhausted_at": (
+            None if call_budget_exhausted_at is None else call_budget_exhausted_at.isoformat()
+        ),
         "duration_seconds": plan.duration_seconds,
         "cadence_seconds": cadence_seconds,
+        "event_driven": plan.event_driven,
+        "call_budget_basis": plan.call_budget_basis,
         "selected_ticks": selected_ticks,
         "data_source": source_kind,
         "replay_mode": replay_mode,
@@ -971,6 +1018,10 @@ def run_jev_historical_replay(
         "output": str(output),
         "summary": summary,
         "limitations": [
+            *(
+                ["Call budget was exhausted before the requested window ended; performance is a truncated replay and must not be treated as full-window strategy results."]
+                if call_budget_exhausted else []
+            ),
             "This is a historical replay using the current Jev model, not a recreation "
             "of the model as it existed at the historical time.",
             (
