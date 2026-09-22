@@ -49,7 +49,7 @@ MARKET entryはfresh quoteで直ちにpaper約定し、同時にprotective paper
 
 コードが `schema_version / decision_id / session_id / account_version / instrument_id / target_side / target_quantity / confidence / reason / basis_market_timestamp / requested_at / available_at / expires_at` を組み立てる。選択肢、確率集合・合計、confidence、有限数、数量刻み、銘柄、時刻順を検証する。confidenceは実測勝率ではない。
 
-Jevの4スタイルは共通の `trader_context_v1` を使う。stateには現在bid/ask/mid/spread、直近40 tick、1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、残高/equity・確定/含み損益、position、手数料/slippage、往復コスト、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdown、constraints、選択したfeatures、任意の公式イベントcontextを含む。指標計算用には最大240本の確定barを保持する。live起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。どの情報を重視するかはJev自身へ任せ、テクニカル指標や過去損益を固定売買ルールにはしない。APIキー・credentialは渡さない。
+Jevの4スタイルは共通の `trader_context_v1` をbroker内部で使う。内部stateには現在bid/ask/mid/spread、直近40 tick、1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、残高/equity・確定/含み損益、position、手数料/slippage、往復コスト、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdown、constraints、選択したfeatures、任意の公式イベントcontextを含む。指標計算用には最大240本の確定barを保持する。TypeSafeへ送る際は、おまかせ戦略とFifty+だけtoken budgetのためraw tickと重複1分足を省き、各1m / 5m / 15m / 1hを最新16本 + current bar + indicators（SMA / RSI / ATR / recent high-low等）、recent executionを10件に絞る。Fifty+固有の勝負幅、LONG/SHORT directional race、過去outcome aggregate / confidence band / recent outcomeは省略しない。live起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。どの情報を重視するかはJev自身へ任せ、テクニカル指標や過去損益を固定売買ルールにはしない。APIキー・credentialは渡さない。
 
 ## 約定・会計
 
