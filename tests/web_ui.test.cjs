@@ -20,6 +20,7 @@ function runtime(){
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
+  vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -58,6 +59,18 @@ for(const [interval,ms] of [['1min',60000],['5min',300000],['15min',900000],['1h
     assert.equal(c.chartTradeIndex(points,{timestamp:'invalid'},interval),-1);
   });
 }
+
+test('event decision summary shows timeout, bar-close, price-cross and expiry',()=>{
+  const {context:c}=runtime(),base={available_at:'2026-09-22T08:00:00+00:00'};
+  const wrap=(wake,expiry={seconds:3600})=>({...base,target_decision:{available_at:base.available_at,event_plan:{wake,expiry}}});
+  const timeout=c.eventPlanScheduleSummary(wrap({type:'timeout',seconds:1800}));
+  assert.match(timeout,/次回Jev: 30分後/);
+  assert.match(timeout,/fill・close時も即再判断/);
+  assert.match(timeout,/plan期限: 1時間後/);
+  assert.match(c.eventPlanScheduleSummary(wrap({type:'bar_close',timeframe:'5min',bars:3})),/次回Jev: 5分足を3本クローズ後/);
+  assert.match(c.eventPlanScheduleSummary(wrap({type:'price_cross_above',price:'150.123'})),/MIDが 150\.123 以上へcross/);
+  assert.match(c.eventPlanScheduleSummary(wrap({type:'price_cross_below',price:'149.876'})),/MIDが 149\.876 以下へcross/);
+});
 
 test('sparse history keeps MA200 unavailable instead of drawing a partial average',()=>{
   const {context:c}=runtime();

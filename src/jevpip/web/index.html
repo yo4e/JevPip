@@ -961,6 +961,41 @@ function signalGateSummary(d){
   if(quality.length)text+=" / 研究フィルタWAIT: "+quality.join(" / ");
   return text;
 }
+function eventDelayLabel(seconds){
+  const s=Number(seconds);
+  if(!Number.isFinite(s)||s<=0)return "";
+  if(s%3600===0)return (s/3600)+"時間";
+  if(s%60===0)return (s/60)+"分";
+  return s+"秒";
+}
+function eventFutureClock(base,seconds){
+  const s=Number(seconds),d=new Date(base||"");
+  if(!Number.isFinite(s)||Number.isNaN(d.getTime()))return "";
+  return new Date(d.getTime()+s*1000).toLocaleTimeString("ja-JP");
+}
+function eventPlanScheduleSummary(d){
+  const target=d?.target_decision,plan=target?.event_plan;
+  if(!plan)return "";
+  const wake=plan.wake||{},base=target.available_at||d.available_at||d.received_at||d.timestamp;
+  let next="";
+  if(wake.type==="timeout"){
+    const delay=eventDelayLabel(wake.seconds),clock=eventFutureClock(base,wake.seconds);
+    next=delay?(delay+"後"+(clock?"（"+clock+"）":"")):"timeout";
+  }else if(wake.type==="bar_close"){
+    const labels={"1min":"1分足","5min":"5分足","15min":"15分足","1hour":"1時間足"};
+    next=(labels[wake.timeframe]||wake.timeframe||"足")+"を"+Number(wake.bars||1)+"本クローズ後";
+  }else if(wake.type==="price_cross_above"){
+    next="MIDが "+wake.price+" 以上へcross";
+  }else if(wake.type==="price_cross_below"){
+    next="MIDが "+wake.price+" 以下へcross";
+  }
+  const expiry=plan.expiry||{},expiryDelay=eventDelayLabel(expiry.seconds),expiryClock=eventFutureClock(base,expiry.seconds);
+  const parts=[];
+  if(next)parts.push("次回Jev: "+next);
+  if(next)parts.push("fill・close時も即再判断");
+  if(expiryDelay)parts.push("plan期限: "+expiryDelay+"後"+(expiryClock?"（"+expiryClock+"）":""));
+  return parts.join(" / ");
+}
 function renderDecision(d,sup,paper=null){
   const supBox=$("jev-supervisor");
   if(supBox){
@@ -1013,7 +1048,9 @@ function renderDecision(d,sup,paper=null){
   const at=d.available_at||d.received_at||d.timestamp;
   $("decision-time").textContent=at?"判断時刻 "+new Date(at).toLocaleString("ja-JP"):"";
   $("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";
-  $("signal-detail").textContent=d.target_error||(d.target_decision?(fifty?("Fifty+ 二択 / confidence "+pct(d.target_decision.confidence)):("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence))):signalGateSummary(d))
+  const eventSchedule=d.state?.autopilot?.style==="event"?eventPlanScheduleSummary(d):"";
+  const detail=d.target_error||(d.target_decision?(fifty?("Fifty+ 二択 / confidence "+pct(d.target_decision.confidence)):("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence))):signalGateSummary(d));
+  $("signal-detail").textContent=eventSchedule?(detail+" / "+eventSchedule):detail
 }
 
 function chartPrice(p){
