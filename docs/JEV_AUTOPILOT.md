@@ -39,7 +39,7 @@ KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 100
 
 おまかせ戦略では別の3 Choiceを使う。
 
-- `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補は資金上限・最大数量/保有額・spread等を満たすものだけを渡す。
+- `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補生成時に資金上限・最大数量/保有額・hard risk envelopeを検証し、spread / stale / external supervisor等の実行時条件は約定直前にも再検証する。実行時gateで拒否された場合はtickごとに即再問い合わせせず、選択済みwakeまたはexpiryまでcode-only監視へ戻る。
 - `event_wake_plan`: 価格cross、1m/5m/15mの指定本数close、5/15/30分timeoutから、次にJevを起こす条件を選ぶ。任意文章、任意数式、任意コードは実行しない。
 - `event_expiry_plan`: wake条件とは独立したplanの最大寿命を5/15/30/60分から選ぶ。expiryが先に到来した場合は未約定entryを失効させ、古いplanで後から約定しない。
 
