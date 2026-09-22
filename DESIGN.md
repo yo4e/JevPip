@@ -691,7 +691,9 @@ UIや豪華なdashboardは後回し。
 
 の順に確認する。
 
-次の大きなテーマは、Jev supervisorへ渡すexternal contextの調査と、paper-only A/B/C experiment設計。
+このSectionの「次のテーマ」は初期handoffとしては完了済み。external context基盤とpaper-only A/B/C/D experimentは実装済みで、現在の優先テーマは `docs/CURRENT_STATE.md` を正とする。
+
+2026-09-22時点では、Fifty+のlive/replay parity、方向別NET TP-vs-SL答え合わせ、過去outcomeのcausal feedback、paper OCO境界実行まで整備済み。次は同一market path / cost modelでJev Fifty+と複数seedのcoin flip random controlを比較し、十分な試行数で再現性を見る。
 
 **Live order codeは引き続き未実装・対象外。**
 
