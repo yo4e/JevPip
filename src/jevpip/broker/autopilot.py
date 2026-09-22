@@ -236,6 +236,88 @@ class AutopilotBroker(PaperBroker):
             semantics="fifty_net_symmetric",
         )
 
+    def _set_optional_autopilot_oco(self) -> None:
+        """Register optional daytrade/scalp net TP/SL as resting paper legs."""
+        if self.config.autopilot_style == "fifty" or self.position is None:
+            return
+        tp_units = (
+            None
+            if self.config.autopilot_take_profit_units is None
+            else Decimal(str(self.config.autopilot_take_profit_units))
+        )
+        sl_units = (
+            None
+            if self.config.autopilot_stop_loss_units is None
+            else Decimal(str(self.config.autopilot_stop_loss_units))
+        )
+        if tp_units is None and sl_units is None:
+            self._oco_bracket = None
+            return
+
+        position = self.position
+        quantity = position.size
+        entry = position.entry_price
+        entry_fee_per_unit = position.entry_fee / quantity
+        fee = self.fee_rate
+        slip = self.slippage_price
+
+        if position.side == "LONG":
+            denom = Decimal("1") - fee
+            tp_quote = (
+                None
+                if tp_units is None
+                else (
+                    entry
+                    + entry_fee_per_unit
+                    + tp_units * self.price_unit
+                ) / denom + slip
+            )
+            sl_quote = (
+                None
+                if sl_units is None
+                else (
+                    entry
+                    + entry_fee_per_unit
+                    - sl_units * self.price_unit
+                ) / denom + slip
+            )
+            quote_side = "bid"
+        else:
+            denom = Decimal("1") + fee
+            tp_quote = (
+                None
+                if tp_units is None
+                else (
+                    entry
+                    - entry_fee_per_unit
+                    - tp_units * self.price_unit
+                ) / denom - slip
+            )
+            sl_quote = (
+                None
+                if sl_units is None
+                else (
+                    entry
+                    - entry_fee_per_unit
+                    + sl_units * self.price_unit
+                ) / denom - slip
+            )
+            quote_side = "ask"
+
+        self._oco_bracket = PaperOcoBracket(
+            side=position.side,
+            quote_side=quote_side,
+            take_profit_quote=tp_quote,
+            stop_loss_quote=sl_quote,
+            take_profit_reason=(
+                None if tp_quote is None else "net_take_profit"
+            ),
+            stop_loss_reason=(
+                None if sl_quote is None else "net_stop_loss"
+            ),
+            semantics="autopilot_net_optional",
+        )
+
     def _record(self, row: dict[str, Any], decision_id: str | None) -> dict[str, Any]:
         self.account_version += 1
         row.update(kind="paper_trade", decision_id=decision_id,
@@ -263,7 +345,7 @@ class AutopilotBroker(PaperBroker):
                     ask=ask,
                 )
             else:
-                self._oco_bracket = None
+                self._set_optional_autopilot_oco()
         else:
             size = old.size + quantity
             self._entry_mid = (self._entry_mid * old.size + mid * quantity) / size
@@ -272,6 +354,7 @@ class AutopilotBroker(PaperBroker):
             old.entry_fee += fee
             old.entry_slippage_cost += slip
             self._entry_spread_cost += spread
+            self._set_optional_autopilot_oco()
         self.fees_paid += fee
         self.slippage_cost += slip
         return self._record({
@@ -306,6 +389,7 @@ class AutopilotBroker(PaperBroker):
             self.position = replace(old, size=remaining, entry_fee=old.entry_fee-entry_fee,
                                     entry_slippage_cost=old.entry_slippage_cost-entry_slip)
             self._entry_spread_cost -= allocated_spread
+            self._set_optional_autopilot_oco()
         else:
             self._entry_mid = self._entry_spread_cost = ZERO
             if self.config.autopilot_style == "fifty":
@@ -351,10 +435,11 @@ class AutopilotBroker(PaperBroker):
                 if net_units <= -target_units:
                     return "fifty_stop_loss"
             return None
-        if cfg.autopilot_take_profit_units is not None and net_units >= Decimal(str(cfg.autopilot_take_profit_units)):
-            return "net_take_profit"
-        if cfg.autopilot_stop_loss_units is not None and net_units <= -Decimal(str(cfg.autopilot_stop_loss_units)):
-            return "net_stop_loss"
+        if self._oco_bracket is None:
+            if cfg.autopilot_take_profit_units is not None and net_units >= Decimal(str(cfg.autopilot_take_profit_units)):
+                return "net_take_profit"
+            if cfg.autopilot_stop_loss_units is not None and net_units <= -Decimal(str(cfg.autopilot_stop_loss_units)):
+                return "net_stop_loss"
         if cfg.autopilot_max_hold_seconds is not None and (at-self.position.opened_at).total_seconds() >= cfg.autopilot_max_hold_seconds:
             return "max_hold"
         return None
@@ -592,7 +677,6 @@ class AutopilotBroker(PaperBroker):
             oco_fill = (
                 self._oco_fill_quote(bid, ask)
                 if self.position is not None
-                and self.config.autopilot_style == "fifty"
                 else None
             )
             if oco_fill is not None and self.position is not None:
