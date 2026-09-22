@@ -1234,7 +1234,7 @@ function activeDecisionModeLabel(s){
     if(oracle==="zodiac_polarity")return "スピ: 星座 ♈";
     if(oracle==="tarot")return "スピ: タロット 🃏";
     if(oracle==="coin_flip")return "スピ: コイントス 🪙";
-    const style=cfg.autopilot_style==="scalp"?"スキャ":cfg.autopilot_style==="fifty"?"Fifty+":"デイトレ";
+    const style=cfg.autopilot_style==="event"?"おまかせ":cfg.autopilot_style==="scalp"?"スキャ":cfg.autopilot_style==="fifty"?"Fifty+":"デイトレ";
     return "Jev: "+style;
   }
   const labels={momentum:"モメンタム",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
@@ -1579,7 +1579,7 @@ function autopilotStyleChanged(applyDefaults=true){
   $("auto-constraints").style.display=fifty?"none":"block";
   if(fifty)$("auto-fundamentals").checked=false;
   if(applyDefaults){
-    if(fifty)$("fifty-reentry-seconds").value="60";
+    if(fifty)$("fifty-reentry-seconds").value="600";
     $("jev-every").value=(fifty||event)?"1":scalp?"60":"900";
     $("jbt-cadence").value=fifty?"1":event?"60":scalp?"60":"900";
     state.jevReplayPreview=null;
