@@ -41,6 +41,14 @@ def _should_request_jev(state: dict[str, Any]) -> bool:
         return True
     if policy.get("risk_halted"):
         return False
+    if policy.get("style") == "event":
+        event_plan = policy.get("event_plan")
+        return (
+            isinstance(event_plan, dict)
+            and event_plan.get("request_ready") is True
+            and bool(event_plan.get("trade_plans"))
+            and bool(event_plan.get("wake_plans"))
+        )
     if policy.get("style") != "fifty":
         return True
     if policy.get("fifty_oracle", "jev") != "jev":
@@ -215,8 +223,7 @@ async def observe(
 
             now = time.monotonic()
             task_running = jev_task is not None and not jev_task.done()
-            cadence_ready = now - (last_jev_started_at if autopilot_mode else last_jev_completed_at) >= jev_every_seconds
-            if jev_client is not None and not task_running and cadence_ready:
+            if jev_client is not None and not task_running:
                 jev_state = dict(features)
                 if jev_state_context_provider is not None:
                     context_state = jev_state_context_provider(
@@ -228,18 +235,30 @@ async def observe(
                     jev_state.update(context_state)
 
                 autopilot_mode = "autopilot" in jev_state
-                if not _should_request_jev(jev_state):
-                    continue
-                last_jev_started_at = now
-
-                jev_task = asyncio.create_task(
-                    run_jev_decision(
-                        tick=tick,
-                        features=features,
-                        jev_state=jev_state,
-                        day=day,
-                    )
+                policy = jev_state.get("autopilot")
+                event_driven = (
+                    isinstance(policy, dict)
+                    and policy.get("style") == "event"
                 )
+                cadence_ready = event_driven or (
+                    now
+                    - (
+                        last_jev_started_at
+                        if autopilot_mode
+                        else last_jev_completed_at
+                    )
+                    >= jev_every_seconds
+                )
+                if cadence_ready and _should_request_jev(jev_state):
+                    last_jev_started_at = now
+                    jev_task = asyncio.create_task(
+                        run_jev_decision(
+                            tick=tick,
+                            features=features,
+                            jev_state=jev_state,
+                            day=day,
+                        )
+                    )
 
             if max_ticks is not None and count >= max_ticks:
                 if jev_task is not None:
