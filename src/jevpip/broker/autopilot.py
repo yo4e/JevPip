@@ -22,6 +22,7 @@ from jevpip.fifty_outcomes import (
     outcome_completed_at,
 )
 from jevpip.event_plan import (
+    build_event_expiry_plans,
     build_event_reference_levels,
     build_event_risk_profiles,
     build_event_wake_plans,
@@ -117,6 +118,7 @@ class AutopilotBroker(PaperBroker):
         self._event_plan: dict[str, Any] | None = None
         self._event_request_ready = config.autopilot_style == "event"
         self._event_plan_started_at: datetime | None = None
+        self._event_plan_expires_at: datetime | None = None
         self._event_plan_bar_counts: dict[str, int] = {}
         self._event_last_trigger: str | None = "session_start" if config.autopilot_style == "event" else None
         self._halted = False
@@ -126,6 +128,9 @@ class AutopilotBroker(PaperBroker):
         self._timeframe_bars: dict[str, deque[dict[str, Any]]] = {
             interval: deque(maxlen=256)
             for interval in TIMEFRAME_SPECS
+        }
+        self._timeframe_closed_counts: dict[str, int] = {
+            interval: 0 for interval in TIMEFRAME_SPECS
         }
         self._timeframe_current: dict[str, dict[str, Any]] = {}
         self._trader_history_meta: dict[str, Any] = {
@@ -395,6 +400,9 @@ class AutopilotBroker(PaperBroker):
         oco = trade_plan.get("oco")
         if not isinstance(oco, dict):
             return "missing_protective_oco"
+        finite_decimal(
+            oco.get("take_profit_units"), "event take profit", positive=True
+        )
         stop_units = finite_decimal(
             oco.get("stop_loss_units"), "event stop loss", positive=True
         )
@@ -413,7 +421,8 @@ class AutopilotBroker(PaperBroker):
             raise ValueError("missing_event_plan")
         trade = payload.get("trade")
         wake = payload.get("wake")
-        if not isinstance(trade, dict) or not isinstance(wake, dict):
+        expiry = payload.get("expiry")
+        if not isinstance(trade, dict) or not isinstance(wake, dict) or not isinstance(expiry, dict):
             raise ValueError("invalid_event_plan")
         action = trade.get("action")
         if action not in {"WAIT", "MARKET", "PRICE_CROSS", "HOLD", "CLOSE"}:
@@ -466,13 +475,15 @@ class AutopilotBroker(PaperBroker):
             if type(seconds) not in {int, float} or not 1 <= float(seconds) <= 86400:
                 raise ValueError("invalid_timeout_wake")
 
+        expiry_seconds = expiry.get("seconds")
+        if type(expiry_seconds) not in {int, float} or not 60 <= float(expiry_seconds) <= 86400:
+            raise ValueError("invalid_plan_expiry")
+
         self._pending = dict(target) if action in {"MARKET", "CLOSE"} else None
         self._event_plan = dict(payload)
         self._event_plan_started_at = available_at
-        self._event_plan_bar_counts = {
-            interval: len(self._timeframe_bars[interval])
-            for interval in TIMEFRAME_SPECS
-        }
+        self._event_plan_expires_at = available_at + timedelta(seconds=float(expiry_seconds))
+        self._event_plan_bar_counts = dict(self._timeframe_closed_counts)
         self._event_request_ready = False
         self._event_last_trigger = None
         self._target_status = f"event_plan:{action.lower()}"
@@ -502,7 +513,7 @@ class AutopilotBroker(PaperBroker):
             timeframe = str(wake.get("timeframe"))
             bars = int(wake.get("bars", 0))
             baseline = self._event_plan_bar_counts.get(timeframe, 0)
-            if len(self._timeframe_bars[timeframe]) - baseline >= bars:
+            if self._timeframe_closed_counts.get(timeframe, 0) - baseline >= bars:
                 return f"bar_close:{timeframe}:{bars}"
             return None
         if wake_type == "timeout":
@@ -510,6 +521,24 @@ class AutopilotBroker(PaperBroker):
             if (at - self._event_plan_started_at).total_seconds() >= seconds:
                 return f"timeout:{int(seconds)}"
         return None
+
+    def _event_time_trigger(self, at: datetime) -> str | None:
+        """Return the earliest due time-based event before evaluating a new entry."""
+        if self._event_plan is None or self._event_plan_started_at is None:
+            return None
+        deadlines: list[tuple[datetime, str]] = []
+        if self._event_plan_expires_at is not None and self._event_plan_expires_at <= at:
+            deadlines.append((self._event_plan_expires_at, "plan_expired"))
+        wake = self._event_plan.get("wake")
+        if isinstance(wake, dict) and wake.get("type") == "timeout":
+            seconds = float(wake.get("seconds", 0))
+            wake_at = self._event_plan_started_at + timedelta(seconds=seconds)
+            if wake_at <= at:
+                deadlines.append((wake_at, f"timeout:{int(seconds)}"))
+        if not deadlines:
+            return None
+        deadlines.sort(key=lambda item: item[0])
+        return deadlines[0][1]
 
     def _event_price_entry(
         self,
@@ -519,7 +548,7 @@ class AutopilotBroker(PaperBroker):
         ask: Decimal,
         allow_entry: bool,
     ) -> list[dict[str, Any]]:
-        if self._event_plan is None:
+        if self._event_plan is None or self.position is not None:
             return []
         trade = self._event_plan.get("trade")
         if not isinstance(trade, dict) or trade.get("action") != "PRICE_CROSS":
@@ -548,7 +577,7 @@ class AutopilotBroker(PaperBroker):
             )
         if block is not None:
             self._target_status = f"event_entry_blocked:{block}"
-            self._event_request_ready = True
+            self._event_request_ready = False
             self._event_last_trigger = self._target_status
             return []
         row = self._add(
@@ -940,6 +969,9 @@ class AutopilotBroker(PaperBroker):
                 self._event_last_trigger = (
                     "position_closed" if self.position is None else "entry_filled"
                 )
+                self._event_plan = None
+                self._event_plan_started_at = None
+                self._event_plan_expires_at = None
         elif self._pending is None and self._target_status != "confirming_target":
             self._candidate, self._confirmations = None, 0
         self._update_drawdown()
@@ -975,13 +1007,13 @@ class AutopilotBroker(PaperBroker):
         ):
             self._pending = None
             self._target_status = "rejected:market_unavailable"
-            self._event_request_ready = True
+            self._event_request_ready = False
             return []
         age = (now - self._last_received_at).total_seconds()
         if age < 0 or age > self.config.max_market_age_seconds:
             self._pending = None
             self._target_status = "rejected:stale_quote"
-            self._event_request_ready = True
+            self._event_request_ready = False
             return []
         before = self.account_version
         trades = self._apply_pending_target(
@@ -1005,7 +1037,7 @@ class AutopilotBroker(PaperBroker):
             trades=trades,
         )
         if not trades:
-            self._event_request_ready = True
+            self._event_request_ready = False
             self._event_last_trigger = self._target_status
         return result
 
@@ -1118,21 +1150,32 @@ class AutopilotBroker(PaperBroker):
                     require_new_market=True,
                 ))
             elif self.config.autopilot_style == "event" and self._event_plan is not None:
-                trades.extend(
-                    self._event_price_entry(
-                        at=at,
-                        bid=bid,
-                        ask=ask,
-                        allow_entry=allow_entry,
+                time_reason = self._event_time_trigger(at)
+                if time_reason is not None:
+                    self._event_request_ready = True
+                    self._event_last_trigger = time_reason
+                    self._event_plan = None
+                    self._event_plan_started_at = None
+                    self._event_plan_expires_at = None
+                    self._target_status = f"event_wake:{time_reason}"
+                else:
+                    trades.extend(
+                        self._event_price_entry(
+                            at=at,
+                            bid=bid,
+                            ask=ask,
+                            allow_entry=allow_entry,
+                        )
                     )
-                )
-                if not trades and not self._event_request_ready:
-                    wake_reason = self._event_wake_fired(at)
-                    if wake_reason is not None:
-                        self._event_request_ready = True
-                        self._event_last_trigger = wake_reason
-                        self._event_plan = None
-                        self._target_status = f"event_wake:{wake_reason}"
+                    if not trades and not self._event_request_ready:
+                        wake_reason = self._event_wake_fired(at)
+                        if wake_reason is not None:
+                            self._event_request_ready = True
+                            self._event_last_trigger = wake_reason
+                            self._event_plan = None
+                            self._event_plan_started_at = None
+                            self._event_plan_expires_at = None
+                            self._target_status = f"event_wake:{wake_reason}"
             elif (
                 self.position is None
                 and self.config.autopilot_style == "fifty"
@@ -1354,6 +1397,7 @@ class AutopilotBroker(PaperBroker):
         for interval in TIMEFRAME_SPECS:
             target = self._timeframe_bars[interval]
             target.clear()
+            self._timeframe_closed_counts[interval] = 0
             rows = timeframes.get(interval, [])
             if not isinstance(rows, list):
                 continue
@@ -1376,6 +1420,7 @@ class AutopilotBroker(PaperBroker):
                 except (KeyError, TypeError, ValueError):
                     continue
                 target.append(row)
+                self._timeframe_closed_counts[interval] += 1
         self._timeframe_current.clear()
         self._trader_history_meta = {
             "source": payload.get("source", "unknown"),
@@ -1396,6 +1441,7 @@ class AutopilotBroker(PaperBroker):
                     current_end = self._dt(str(current["end_time"]))
                     if current_end <= at:
                         self._timeframe_bars[interval].append(current)
+                        self._timeframe_closed_counts[interval] += 1
                 value = float(mid)
                 self._timeframe_current[interval] = {
                     "open_time": opened.isoformat(),
@@ -1603,6 +1649,7 @@ class AutopilotBroker(PaperBroker):
                 "active": self._event_plan,
                 "trade_plans": trade_plans,
                 "wake_plans": wake_plans,
+                "expiry_plans": build_event_expiry_plans(),
                 "reference_levels": reference_levels,
                 "hard_max_risk_pct": self.config.autopilot_max_risk_pct,
                 "automatic_wake_events": ["entry_filled", "position_closed"],
@@ -1699,6 +1746,11 @@ class AutopilotBroker(PaperBroker):
             trades=list(self._executions)[:100], account_version=self.account_version,
             target_decision=self._last_target, target_status=self._target_status, risk_halted=self._halted,
             event_plan=self._event_plan if self.config.autopilot_style == "event" else None,
+            event_plan_expires_at=(
+                self._event_plan_expires_at.isoformat()
+                if self.config.autopilot_style == "event" and self._event_plan_expires_at is not None
+                else None
+            ),
             event_request_ready=self._event_request_ready if self.config.autopilot_style == "event" else None,
             event_last_trigger=self._event_last_trigger if self.config.autopilot_style == "event" else None,
             turnover_notional=float(self._turnover), max_exposure=float(self._max_exposure),
