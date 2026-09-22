@@ -520,7 +520,7 @@ def test_strategy_backtest_api(monkeypatch):
 def test_spiritual_backtest_request_defaults_to_ten_minute_wait():
     from jevpip.web.schemas import SpiritualBacktestRequest
 
-    request = SpiritualBacktestRequest(date="20260920")
+    request = SpiritualBacktestRequest(date="20260920", size=1000)
     assert request.reentry_seconds == 600
 
 
