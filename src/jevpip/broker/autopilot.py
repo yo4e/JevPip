@@ -16,7 +16,11 @@ from jevpip.broker.strategies import (
     tarot_signal,
     zodiac_polarity_signal,
 )
-from jevpip.fifty_outcomes import build_directional_races
+from jevpip.fifty_outcomes import (
+    build_directional_races,
+    build_fifty_outcome_context,
+    outcome_completed_at,
+)
 from jevpip.instruments import get_instrument
 from jevpip.jev.autopilot import REASONS, finite_decimal
 from jevpip.trader_context import TIMEFRAME_SPECS, build_timeframe_view, market_clock
@@ -105,6 +109,7 @@ class AutopilotBroker(PaperBroker):
         self._last_spiritual_decision: dict[str, Any] | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
+        self._fifty_outcome_history: deque[dict[str, Any]] = deque(maxlen=500)
         self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
         self._timeframe_bars: dict[str, deque[dict[str, Any]]] = {
             interval: deque(maxlen=256)
@@ -602,6 +607,34 @@ class AutopilotBroker(PaperBroker):
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
 
+    def seed_fifty_outcome_history(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        as_of: datetime,
+    ) -> None:
+        """Seed only completed outcome labels known by *as_of*."""
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must be timezone-aware")
+        self._fifty_outcome_history.clear()
+        for record in records:
+            completed_at = outcome_completed_at(record)
+            if completed_at is None or completed_at > as_of.astimezone(timezone.utc):
+                continue
+            self._fifty_outcome_history.append(record)
+
+    def remember_fifty_outcome(self, record: dict[str, Any]) -> None:
+        """Expose one newly completed answer key to future Fifty+ decisions."""
+        if outcome_completed_at(record) is None:
+            return
+        decision_id = record.get("decision_id")
+        if decision_id is not None and any(
+            existing.get("decision_id") == decision_id
+            for existing in self._fifty_outcome_history
+        ):
+            return
+        self._fifty_outcome_history.append(record)
+
     def fifty_directional_races(
         self,
         *,
@@ -989,6 +1022,10 @@ class AutopilotBroker(PaperBroker):
                 "directional_races": directional_races,
                 "choice_probabilities_are_relative_preferences": True,
                 "directional_win_probabilities_are_not_complements": True,
+                "outcome_history": build_fifty_outcome_context(
+                    list(self._fifty_outcome_history),
+                    as_of=as_of,
+                ),
                 "net_of_spread_fees_slippage": True,
             }
         return {"autopilot": autopilot_state}
