@@ -303,7 +303,7 @@ def test_fifty_trader_context_keeps_past_performance_and_filters_future_bars():
     assert "exit_reasons" in state["performance"]
 
 
-def test_fifty_question_states_exact_configured_net_boundaries():
+def test_fifty_question_compares_independent_long_and_short_net_races():
     b = broker(
         autopilot_style="fifty",
         autopilot_horizon_seconds=30,
@@ -317,15 +317,22 @@ def test_fifty_question_states_exact_configured_net_boundaries():
     instructions = question_specs(state)["target_position"]["instructions"]
 
     assert fifty["target_value"] == 5
-    assert fifty["up_boundary_value"] == 5
-    assert fifty["down_boundary_value"] == -5
-    assert state["autopilot"]["targets"]["UP"]["directional_boundary_label"] == "+5 pips"
-    assert state["autopilot"]["targets"]["DOWN"]["directional_boundary_label"] == "-5 pips"
-    assert "+5 pips" in fifty["boundary_question"]
-    assert "-5 pips" in fifty["boundary_question"]
-    assert "+5 pips" in instructions
-    assert "-5 pips" in instructions
-    assert "spread, fees, and slippage" in instructions
+    assert fifty["directional_win_probabilities_are_not_complements"] is True
+    assert set(fifty["directional_races"]) == {"UP", "DOWN"}
+    up = state["autopilot"]["targets"]["UP"]["directional_race"]
+    down = state["autopilot"]["targets"]["DOWN"]["directional_race"]
+    assert up["side"] == "LONG"
+    assert down["side"] == "SHORT"
+    assert up["target"]["net_take_profit_jpy"] == pytest.approx(50)
+    assert up["target"]["net_stop_loss_jpy"] == pytest.approx(-50)
+    assert down["target"]["net_take_profit_jpy"] == pytest.approx(50)
+    assert down["target"]["net_stop_loss_jpy"] == pytest.approx(-50)
+    assert up["reference_exit_conditions"]["quote_side"] == "bid"
+    assert down["reference_exit_conditions"]["quote_side"] == "ask"
+    assert "TWO INDEPENDENT" in instructions
+    assert "LONG losing does NOT imply SHORT would have won" in instructions
+    assert "not complements" in instructions
+    assert "Choice probabilities are relative choice preferences" in instructions
     assert "1m/5m/15m/1h" in instructions
     assert "account/PnL" in instructions
     assert "Decide for yourself" in instructions
