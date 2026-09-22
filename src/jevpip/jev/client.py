@@ -20,6 +20,11 @@ def _system_one_state(state: dict[str, Any]) -> dict[str, Any]:
     compact_state = dict(state)
     compact_autopilot = dict(autopilot)
     compact_autopilot.pop("targets", None)
+    # Event triggers are monitored locally from raw ticks. Jev only needs the
+    # current quote plus multi-timeframe structure/indicators, so do not spend
+    # TypeSafe context on the tick tape or the duplicate legacy 1m bar list.
+    compact_autopilot.pop("recent_ticks", None)
+    compact_autopilot.pop("closed_1m_bars", None)
     event_plan = compact_autopilot.get("event_plan")
     if isinstance(event_plan, dict):
         compact_event_plan = dict(event_plan)
