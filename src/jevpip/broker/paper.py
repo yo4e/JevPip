@@ -73,7 +73,7 @@ class PaperConfig:
     autopilot_max_risk_pct: float = 0.01
     autopilot_max_change: float | None = None
     autopilot_entry_loss: float | None = None
-    autopilot_max_spread: float | None = 1.0
+    autopilot_max_spread: float | None = None
     autopilot_min_confidence: float | None = None
     autopilot_cooldown_seconds: float | None = None
     autopilot_max_hold_seconds: float | None = None
