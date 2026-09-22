@@ -83,7 +83,6 @@ async def observe(
     async def run_jev_decision(
         *,
         tick: Any,
-        features: dict[str, Any],
         jev_state: dict[str, Any],
         day: str,
     ) -> None:
@@ -254,7 +253,6 @@ async def observe(
                     jev_task = asyncio.create_task(
                         run_jev_decision(
                             tick=tick,
-                            features=features,
                             jev_state=jev_state,
                             day=day,
                         )
