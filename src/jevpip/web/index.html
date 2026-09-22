@@ -197,6 +197,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
                 <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
                 <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
               </div>
+              <div class="field" id="paper-max-risk-wrap" style="display:none;margin-top:8px"><label class="label" for="paper-max-risk-pct">おまかせ戦略 1取引の最大リスク（% equity）</label><input id="paper-max-risk-pct" type="number" value="1" min="0.1" max="25" step="0.1"><div class="muted" style="font-size:9px;margin-top:3px">Jevはこの損失上限を超えるOCO候補を選べません。</div></div>
               <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
               <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
             </div>
@@ -740,7 +741,7 @@ function updateTradeSummary(){
       return;
     }
     if(mode==="event"){
-      box.textContent="Jevモード おまかせ戦略 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / Jevが相場・口座・コストからboundedなentry/OCO候補と次の起床条件を選択 / tick監視中はAPIを呼ばず、価格cross・足確定・timeout・約定・決済で再判断 / 1取引のhard risk上限はequityの1% / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
+      box.textContent="Jevモード おまかせ戦略 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / Jevが相場・口座・コストからboundedなentry/OCO候補と次の起床条件を選択 / tick監視中はAPIを呼ばず、価格cross・足確定・timeout・約定・決済で再判断 / 1取引のhard risk上限はequityの"+$("paper-max-risk-pct").value+"% / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
@@ -771,6 +772,7 @@ function applyInstrumentDefaults(){
   $("paper-leverage").value=i.market_kind==="crypto_spot"?1:25;
   $("paper-leverage").disabled=i.market_kind==="crypto_spot";
   $("paper-max-dd-pct").value=20;
+  $("paper-max-risk-pct").value=1;
   $("paper-max-spread").value=i.default_max_spread;
   $("paper-max-spread-label").textContent="取引する最大spread（"+i.move_unit_label+"）";
   $("paper-risk-note").textContent=i.market_kind==="crypto_spot"
@@ -1513,7 +1515,7 @@ const autoLimits=[
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
   const fifty=$("auto-style").value==="fifty",event=$("auto-style").value==="event";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_risk_pct:Number($("paper-max-risk-pct").value||1)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1532,6 +1534,7 @@ function autopilotStyleChanged(applyDefaults=true){
       ?"全部入りtrader contextを見て判断。標準60秒ごと。短い判断間隔ではJev API call・input tokenを多く使用します。"
       :"全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。";
   $("auto-horizon-field").style.display="none";
+  $("paper-max-risk-wrap").style.display=event?"block":"none";
   $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
   $("auto-constraints").style.display=fifty?"none":"block";
   if(fifty)$("auto-fundamentals").checked=false;
@@ -1601,6 +1604,7 @@ $("fifty-target-jpy").addEventListener("input",updateTradeSummary);
 $("fifty-reentry-seconds").addEventListener("input",updateTradeSummary);
 $("paper-leverage").addEventListener("input",updateTradeSummary);
 $("paper-max-dd-pct").addEventListener("input",updateTradeSummary);
+$("paper-max-risk-pct").addEventListener("input",updateTradeSummary);
 $("paper-max-spread").addEventListener("input",updateTradeSummary);
 $("jev-every").addEventListener("input",updateTradeSummary);
 
