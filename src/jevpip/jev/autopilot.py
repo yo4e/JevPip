@@ -64,6 +64,15 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "criteria": event_plan["wake_plans"],
             },
+            "event_expiry_plan": {
+                "type": "choice",
+                "instructions": (
+                    "Choose the independent maximum lifetime of this plan. If this deadline "
+                    "arrives before the selected entry or wake event, code invalidates the old "
+                    "plan and asks for a fresh review. Choose exactly one supplied lifetime."
+                ),
+                "criteria": event_plan["expiry_plans"],
+            },
         }
     if style == "fifty":
         fifty = policy["fifty_plus"]
@@ -192,8 +201,15 @@ def decode_target(
         wake_choice, wake_confidence = _choice(
             answers.get("event_wake_plan"), set(wake_plans)
         )
+        expiry_plans = event_plan.get("expiry_plans")
+        if not isinstance(expiry_plans, dict) or not expiry_plans:
+            raise ValueError("missing event expiry plans")
+        expiry_choice, expiry_confidence = _choice(
+            answers.get("event_expiry_plan"), set(expiry_plans)
+        )
         trade = dict(trade_plans[trade_choice])
         wake = dict(wake_plans[wake_choice])
+        expiry = dict(expiry_plans[expiry_choice])
         expires_at = min(
             requested_at, datetime.fromisoformat(policy["as_of"])
         ) + timedelta(seconds=policy["ttl_seconds"])
@@ -219,6 +235,9 @@ def decode_target(
                 "wake_choice": wake_choice,
                 "wake_confidence": wake_confidence,
                 "wake": wake,
+                "expiry_choice": expiry_choice,
+                "expiry_confidence": expiry_confidence,
+                "expiry": expiry,
             },
         }
     choice, confidence = _choice(answers.get("target_position"), set(policy["targets"]))
