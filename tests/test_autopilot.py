@@ -1607,6 +1607,8 @@ def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
     sent = captured["state"]["autopilot"]
     sent_plan = sent["event_plan"]
     assert "targets" not in sent
+    assert "recent_ticks" not in sent
+    assert "closed_1m_bars" not in sent
     assert "trade_plans" not in sent_plan
     assert "wake_plans" not in sent_plan
     assert "expiry_plans" not in sent_plan
@@ -1630,6 +1632,8 @@ def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
 
     # The broker/decode state remains complete even though the SDK payload is compact.
     assert "targets" in state["autopilot"]
+    assert "recent_ticks" in state["autopilot"]
+    assert "closed_1m_bars" in state["autopilot"]
     assert "trade_plans" in plan
     assert "wake_plans" in plan
     assert "expiry_plans" in plan
