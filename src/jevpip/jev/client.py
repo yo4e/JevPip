@@ -7,6 +7,29 @@ from .questions import position_question_specs, question_specs, supervisor_quest
 from .autopilot import question_specs as autopilot_questions
 
 
+def _system_one_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Remove event candidate tables that are already carried by questions.
+
+    The caller's full state remains untouched so target decoding and broker-side
+    validation continue to use the exact generated plans.
+    """
+    autopilot = state.get("autopilot")
+    if not isinstance(autopilot, dict) or autopilot.get("style") != "event":
+        return state
+
+    compact_state = dict(state)
+    compact_autopilot = dict(autopilot)
+    compact_autopilot.pop("targets", None)
+    event_plan = compact_autopilot.get("event_plan")
+    if isinstance(event_plan, dict):
+        compact_event_plan = dict(event_plan)
+        for key in ("trade_plans", "wake_plans", "expiry_plans"):
+            compact_event_plan.pop(key, None)
+        compact_autopilot["event_plan"] = compact_event_plan
+    compact_state["autopilot"] = compact_autopilot
+    return compact_state
+
+
 class JevClient:
     """Thin adapter so the rest of JevPip does not depend on SDK response internals."""
 
@@ -41,8 +64,9 @@ class JevClient:
         if supervisor_strategies:
             questions.update(supervisor_question_specs(supervisor_strategies))
         options = {"timeout": 10.0, "retry": RetryPolicy(max_retries=0)} if "autopilot" in state else {}
+        api_state = _system_one_state(state)
         with TypeSafeClient(api_key=self.api_key, **options) as client:
-            response = client.system_one(state=state, questions=questions, model=self.model)
+            response = client.system_one(state=api_state, questions=questions, model=self.model)
         if hasattr(response, "model_dump"):
             return response.model_dump(mode="json")
         raise TypeError(f"Unexpected TypeSafe response type: {type(response)!r}")
