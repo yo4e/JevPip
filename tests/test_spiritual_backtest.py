@@ -7,6 +7,7 @@ from jevpip.backtest import spiritual as module
 from jevpip.backtest.spiritual import SpiritualBacktestConfig
 from jevpip.instruments import get_instrument
 from jevpip.market.models import MarketTick
+from jevpip.web.schemas import SpiritualBacktestRequest
 
 
 def _ticks(values: list[tuple[str, str]]) -> list[MarketTick]:
@@ -40,6 +41,9 @@ def test_spiritual_backtest_default_reentry_wait_is_ten_minutes():
         size=1000,
     )
     assert config.reentry_seconds == 600
+    assert config.max_spread_units == 1.0
+    request = SpiritualBacktestRequest(date="20260920", size=1000)
+    assert request.max_spread_units == config.max_spread_units
 
 
 def test_spiritual_backtest_runs_zodiac_on_fifty_plus_engine(monkeypatch):

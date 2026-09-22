@@ -32,6 +32,7 @@ from jevpip.jev.autopilot import REASONS, finite_decimal
 from jevpip.trader_context import TIMEFRAME_SPECS, build_timeframe_view, market_clock
 
 ZERO = Decimal("0")
+EVENT_ERROR_RETRY_SECONDS = 30.0
 
 
 def make_paper_broker(config: PaperConfig) -> PaperBroker:
@@ -121,6 +122,7 @@ class AutopilotBroker(PaperBroker):
         self._event_plan_expires_at: datetime | None = None
         self._event_plan_bar_counts: dict[str, int] = {}
         self._event_last_trigger: str | None = "session_start" if config.autopilot_style == "event" else None
+        self._event_retry_not_before: datetime | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
         self._fifty_outcome_history: deque[dict[str, Any]] = deque(maxlen=500)
@@ -202,7 +204,24 @@ class AutopilotBroker(PaperBroker):
         except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
             self._target_status = f"rejected:{exc}"
             if self.config.autopilot_style == "event":
-                self._event_request_ready = True
+                raw_anchor = (
+                    event.get("available_at")
+                    or event.get("recorded_at")
+                    or event.get("requested_at")
+                )
+                try:
+                    retry_anchor = (
+                        self._dt(str(raw_anchor))
+                        if raw_anchor is not None
+                        else (self._last_received_at or datetime.now(timezone.utc))
+                    )
+                except (TypeError, ValueError):
+                    retry_anchor = self._last_received_at or datetime.now(timezone.utc)
+                self._event_request_ready = False
+                self._event_retry_not_before = retry_anchor + timedelta(
+                    seconds=EVENT_ERROR_RETRY_SECONDS
+                )
+                self._event_last_trigger = f"request_error:{exc}"
             self._candidate = None
             self._confirmations = 0
 
@@ -485,6 +504,7 @@ class AutopilotBroker(PaperBroker):
         self._event_plan_expires_at = available_at + timedelta(seconds=float(expiry_seconds))
         self._event_plan_bar_counts = dict(self._timeframe_closed_counts)
         self._event_request_ready = False
+        self._event_retry_not_before = None
         self._event_last_trigger = None
         self._target_status = f"event_plan:{action.lower()}"
 
@@ -544,6 +564,7 @@ class AutopilotBroker(PaperBroker):
         self,
         *,
         at: datetime,
+        now: datetime,
         bid: Decimal,
         ask: Decimal,
         allow_entry: bool,
@@ -562,7 +583,7 @@ class AutopilotBroker(PaperBroker):
             side,
             quantity,
             float(self._event_plan.get("trade_confidence", 0)),
-            at,
+            now,
             bid,
             ask,
             allow_entry,
@@ -583,13 +604,12 @@ class AutopilotBroker(PaperBroker):
         row = self._add(
             side,
             quantity,
-            at,
+            now,
             bid,
             ask,
             "EVENT_PLAN",
             self._last_target.get("decision_id") if self._last_target else None,
         )
-        self._set_event_plan_oco(trade)
         self._target_status = "event_entry_filled"
         self._event_request_ready = True
         self._event_last_trigger = "entry_filled"
@@ -787,14 +807,7 @@ class AutopilotBroker(PaperBroker):
 
     def _risk_exit(self, at: datetime, bid: Decimal, ask: Decimal) -> str | None:
         cfg = self.config
-        dd = self._peak_equity - self._equity()
-        if ((cfg.autopilot_max_drawdown is not None and dd >= Decimal(str(cfg.autopilot_max_drawdown))) or
-            (cfg.autopilot_max_drawdown_pct is not None and self._peak_equity > 0 and
-             dd / self._peak_equity >= Decimal(str(cfg.autopilot_max_drawdown_pct)))):
-            self._halted = True
-        if self._equity() <= 0:
-            self._halted = True
-        if self._halted:
+        if self._refresh_halt_state():
             return "drawdown_or_equity_stop"
         if self.position is None:
             return None
@@ -848,6 +861,72 @@ class AutopilotBroker(PaperBroker):
             return "max_notional"
         return None
 
+    def _refresh_halt_state(self) -> bool:
+        """Latch drawdown/equity stops immediately after any accounting change."""
+        cfg = self.config
+        equity = self._equity()
+        dd = self._peak_equity - equity
+        if (
+            (
+                cfg.autopilot_max_drawdown is not None
+                and dd >= Decimal(str(cfg.autopilot_max_drawdown))
+            )
+            or (
+                cfg.autopilot_max_drawdown_pct is not None
+                and self._peak_equity > 0
+                and dd / self._peak_equity
+                >= Decimal(str(cfg.autopilot_max_drawdown_pct))
+            )
+            or equity <= 0
+        ):
+            self._halted = True
+        if self._halted:
+            self._pending = None
+            if self.config.autopilot_style == "event":
+                self._event_request_ready = False
+                self._event_retry_not_before = None
+                self._event_plan = None
+                self._event_plan_started_at = None
+                self._event_plan_expires_at = None
+        return self._halted
+
+    def quote_eligibility(self, event: dict[str, Any]) -> str | None:
+        """Return why a delivered market event is ineligible for execution/labels."""
+        try:
+            at = self._dt(str(event["market_timestamp"]))
+            now = self._dt(str(event.get("received_at") or event["market_timestamp"]))
+            bid = finite_decimal(event["bid"], "bid", positive=True)
+            ask = finite_decimal(event["ask"], "ask", positive=True)
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            return "invalid_quote"
+        if ask < bid or event.get("instrument_id", self.instrument.id) != self.instrument.id:
+            return "invalid_quote"
+        if self._last_market_at is not None and at < self._last_market_at:
+            return "out_of_order_market"
+        if str(event.get("status", "UNKNOWN")) != "OPEN":
+            return "market_closed"
+        market_age = (now - at).total_seconds()
+        max_age = self.config.max_market_age_seconds
+        if not -max_age <= market_age <= max_age:
+            return "stale_market"
+        return None
+
+    def _latest_quote_block(self, now: datetime) -> str | None:
+        if (
+            self._last_bid is None
+            or self._last_ask is None
+            or self._last_market_at is None
+            or self._last_received_at is None
+            or self._last_market_status != "OPEN"
+        ):
+            return "market_unavailable"
+        max_age = self.config.max_market_age_seconds
+        received_age = (now - self._last_received_at).total_seconds()
+        market_age = (now - self._last_market_at).total_seconds()
+        if not 0 <= received_age <= max_age or not -max_age <= market_age <= max_age:
+            return "stale_quote"
+        return None
+
     def _target_block(self, side: str, quantity: Decimal, confidence: float, at: datetime,
                       bid: Decimal, ask: Decimal, allow_entry: bool) -> str | None:
         old = self.position
@@ -855,25 +934,24 @@ class AutopilotBroker(PaperBroker):
         desired = quantity * (1 if side == "LONG" else -1)
         increasing = quantity > 0 and (old is None or side != old.side or quantity > old.size)
         cfg = self.config
+        if (
+            cfg.autopilot_style != "fifty"
+            and cfg.autopilot_max_change is not None
+            and abs(desired - current) > Decimal(str(cfg.autopilot_max_change))
+        ):
+            return "max_position_change"
         if not increasing:
             return None
         if self._halted:
             return "risk_halted"
         if cfg.autopilot_style == "fifty":
-            # Fifty+ stays direction-only, but deterministic market-safety gates
-            # remain code-owned. Recheck spread at execution time because it may
-            # widen after the Jev response was requested.
-            if (
-                cfg.autopilot_max_spread is not None
-                and (ask - bid) / self.price_unit
-                > Decimal(str(cfg.autopilot_max_spread))
-            ):
-                return "max_spread"
+            gate = self._fifty_entry_gate(bid, ask, as_of=at)
+            if not gate["ready"]:
+                reason = str(gate["reason"] or "fifty_entry_gate")
+                return "max_spread" if reason == "spread_above_limit" else reason
             return self._capacity_block(
                 side, quantity, bid, ask, optional_limits=False
             )
-        if cfg.autopilot_max_change is not None and abs(desired-current) > Decimal(str(cfg.autopilot_max_change)):
-            return "max_position_change"
         if not allow_entry:
             return "external_supervisor"
         capacity = self._capacity_block(side, quantity, bid, ask)
@@ -934,7 +1012,7 @@ class AutopilotBroker(PaperBroker):
             return []
 
         block = self._target_block(
-            side, quantity, target["confidence"], at, bid, ask, allow_entry
+            side, quantity, target["confidence"], now, bid, ask, allow_entry
         )
         self._target_status = block or "executed"
         if block is not None:
@@ -944,16 +1022,17 @@ class AutopilotBroker(PaperBroker):
         reason, decision_id = target["reason"], target["decision_id"]
         if old is not None and (side != old.side or quantity < old.size):
             amount = old.size if side != old.side else old.size-quantity
-            trades.append(self._reduce(amount, at, bid, ask, reason, decision_id))
+            trades.append(self._reduce(amount, now, bid, ask, reason, decision_id))
         current = ZERO if self.position is None else self.position.size
         if quantity > current:
-            trades.append(self._add(side, quantity-current, at, bid, ask, reason, decision_id))
+            trades.append(self._add(side, quantity-current, now, bid, ask, reason, decision_id))
         return trades
 
     def _finish_cycle(
         self,
         *,
         at: datetime,
+        market_at: datetime | None = None,
         now: datetime,
         bid: Decimal,
         ask: Decimal,
@@ -964,24 +1043,27 @@ class AutopilotBroker(PaperBroker):
             self._target_changes += 1
             self._last_change_at = at
             self._candidate, self._confirmations = None, 0
-            if self.config.autopilot_style == "event":
-                self._event_request_ready = True
-                self._event_last_trigger = (
-                    "position_closed" if self.position is None else "entry_filled"
-                )
-                self._event_plan = None
-                self._event_plan_started_at = None
-                self._event_plan_expires_at = None
         elif self._pending is None and self._target_status != "confirming_target":
             self._candidate, self._confirmations = None, 0
         self._update_drawdown()
+        halted = self._refresh_halt_state()
+        if trades and self.config.autopilot_style == "event" and not halted:
+            self._event_request_ready = True
+            self._event_retry_not_before = None
+            self._event_last_trigger = (
+                "position_closed" if self.position is None else "entry_filled"
+            )
+            self._event_plan = None
+            self._event_plan_started_at = None
+            self._event_plan_expires_at = None
         self._previous_exposure = ZERO if self.position is None else self.position.size*(bid+ask)/2
         self._max_exposure = max(self._max_exposure, self._previous_exposure)
         self._latest_strategy_decision = StrategyDecision(
             "WAIT" if self.position is None else self.position.side, self._target_status, {})
         empty = {"signal": "WAIT", "reason": "autopilot", "metrics": {}}
+        trace_market_at = market_at or at
         self._last_decision_trace = {
-            "market": {"market_timestamp": at.isoformat(), "received_at": now.isoformat(),
+            "market": {"market_timestamp": trace_market_at.isoformat(), "received_at": now.isoformat(),
                        "bid": str(bid), "ask": str(ask), "status": self._last_market_status},
             "code_candidate": empty, "entry_candidate": asdict(self._latest_strategy_decision),
             "jev_direction": {"signal": self._latest_strategy_decision.signal},
@@ -999,20 +1081,10 @@ class AutopilotBroker(PaperBroker):
         """Apply an event-plan MARKET/CLOSE action on the latest fresh quote."""
         if self.config.autopilot_style != "event" or self._pending is None:
             return []
-        if (
-            self._last_bid is None
-            or self._last_ask is None
-            or self._last_received_at is None
-            or self._last_market_status != "OPEN"
-        ):
+        quote_block = self._latest_quote_block(now)
+        if quote_block is not None:
             self._pending = None
-            self._target_status = "rejected:market_unavailable"
-            self._event_request_ready = False
-            return []
-        age = (now - self._last_received_at).total_seconds()
-        if age < 0 or age > self.config.max_market_age_seconds:
-            self._pending = None
-            self._target_status = "rejected:stale_quote"
+            self._target_status = f"rejected:{quote_block}"
             self._event_request_ready = False
             return []
         before = self.account_version
@@ -1024,12 +1096,9 @@ class AutopilotBroker(PaperBroker):
             allow_entry=True,
             require_new_market=False,
         )
-        if trades and self.position is not None and self._event_plan is not None:
-            trade = self._event_plan.get("trade")
-            if isinstance(trade, dict) and trade.get("action") == "MARKET":
-                self._set_event_plan_oco(trade)
         result = self._finish_cycle(
             at=now,
+            market_at=self._last_market_at,
             now=now,
             bid=self._last_bid,
             ask=self._last_ask,
@@ -1053,21 +1122,10 @@ class AutopilotBroker(PaperBroker):
 
         if self.config.autopilot_style != "fifty" or self._pending is None:
             return []
-        if (
-            self._last_bid is None
-            or self._last_ask is None
-            or self._last_received_at is None
-            or self._last_market_status != "OPEN"
-        ):
+        quote_block = self._latest_quote_block(now)
+        if quote_block is not None:
             self._pending = None
-            self._target_status = "rejected:market_unavailable"
-            return []
-
-        age = (now - self._last_received_at).total_seconds()
-        max_age = self.config.max_market_age_seconds
-        if age < 0 or age > max_age:
-            self._pending = None
-            self._target_status = "rejected:stale_quote"
+            self._target_status = f"rejected:{quote_block}"
             return []
 
         before = self.account_version
@@ -1081,6 +1139,7 @@ class AutopilotBroker(PaperBroker):
         )
         return self._finish_cycle(
             at=now,
+            market_at=self._last_market_at,
             now=now,
             bid=self._last_bid,
             ask=self._last_ask,
@@ -1114,6 +1173,8 @@ class AutopilotBroker(PaperBroker):
         max_age = self.config.max_market_age_seconds
         if self._last_market_status != "OPEN" or not -max_age <= market_age <= max_age:
             self._target_status = "market_closed_or_stale"
+        elif self.position is not None and at < self.position.opened_at:
+            self._target_status = "market_predates_position"
         else:
             oco_fill = (
                 self._oco_fill_quote(bid, ask)
@@ -1125,7 +1186,7 @@ class AutopilotBroker(PaperBroker):
                 trades.append(
                     self._reduce(
                         self.position.size,
-                        at,
+                        now,
                         fill_bid,
                         fill_ask,
                         forced,
@@ -1135,9 +1196,9 @@ class AutopilotBroker(PaperBroker):
                 self._target_status = forced
                 self._pending = None
             else:
-                forced = self._risk_exit(at, bid, ask)
+                forced = self._risk_exit(now, bid, ask)
             if oco_fill is None and forced and self.position is not None:
-                trades.append(self._reduce(self.position.size, at, bid, ask, forced, None))
+                trades.append(self._reduce(self.position.size, now, bid, ask, forced, None))
                 self._target_status = forced
                 self._pending = None
             elif oco_fill is None and self._pending is not None:
@@ -1162,6 +1223,7 @@ class AutopilotBroker(PaperBroker):
                     trades.extend(
                         self._event_price_entry(
                             at=at,
+                            now=now,
                             bid=bid,
                             ask=ask,
                             allow_entry=allow_entry,
@@ -1227,7 +1289,7 @@ class AutopilotBroker(PaperBroker):
                             self._add(
                                 decision.signal,
                                 quantity,
-                                at,
+                                now,
                                 bid,
                                 ask,
                                 self._target_status,
@@ -1235,7 +1297,8 @@ class AutopilotBroker(PaperBroker):
                             )
                         )
         return self._finish_cycle(
-            at=at,
+            at=now,
+            market_at=at,
             now=now,
             bid=bid,
             ask=ask,
@@ -1643,8 +1706,25 @@ class AutopilotBroker(PaperBroker):
                 snapshot=snapshot,
                 timeframes=timeframe_state,
             )
+            retry_clock = (
+                self._last_received_at
+                if self._last_received_at is not None and self._last_received_at > as_of
+                else as_of
+            )
+            retry_ready = (
+                self._event_retry_not_before is not None
+                and retry_clock >= self._event_retry_not_before
+                and self._event_plan is None
+                and self._pending is None
+                and not self._halted
+            )
             autopilot_state["event_plan"] = {
-                "request_ready": self._event_request_ready,
+                "request_ready": bool(self._event_request_ready or retry_ready) and not self._halted,
+                "retry_not_before": (
+                    None
+                    if self._event_retry_not_before is None
+                    else self._event_retry_not_before.isoformat()
+                ),
                 "last_trigger": self._event_last_trigger,
                 "active": self._event_plan,
                 "trade_plans": trade_plans,
@@ -1704,8 +1784,9 @@ class AutopilotBroker(PaperBroker):
         if ask < bid or event.get("status") != "OPEN" or not -max_age <= market_age <= max_age:
             return None  # do not invent an executable terminal quote
         self._last_bid, self._last_ask = bid, ask
-        row = self._reduce(self.position.size, at, bid, ask, reason, None)
+        row = self._reduce(self.position.size, now, bid, ask, reason, None)
         self._update_drawdown()
+        self._refresh_halt_state()
         self._previous_exposure = ZERO
         return row
 
@@ -1752,6 +1833,11 @@ class AutopilotBroker(PaperBroker):
                 else None
             ),
             event_request_ready=self._event_request_ready if self.config.autopilot_style == "event" else None,
+            event_retry_not_before=(
+                self._event_retry_not_before.isoformat()
+                if self.config.autopilot_style == "event" and self._event_retry_not_before is not None
+                else None
+            ),
             event_last_trigger=self._event_last_trigger if self.config.autopilot_style == "event" else None,
             turnover_notional=float(self._turnover), max_exposure=float(self._max_exposure),
             average_exposure=float(self._exposure_integral/self._elapsed) if self._elapsed else 0.0,

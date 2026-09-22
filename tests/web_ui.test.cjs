@@ -23,6 +23,7 @@ function runtime(){
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
   vm.runInContext(source('function eventTradeSummary(', 'function chartPrice('),context);
+  vm.runInContext(source('function decisionLogSummary(', 'function activeDecisionModeLabel('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -77,6 +78,36 @@ test('Jev diagnostics expose event choice and execution block reason',()=>{
   assert.equal(c.executionStatusSummary({target_status:'event_plan:price_cross'}),'実行: 価格cross待ち');
   assert.equal(c.executionStatusSummary({target_status:'event_entry_blocked:max_spread'}),'実行: entry見送り（max_spread）');
   assert.equal(c.executionStatusSummary({target_status:'rejected:expired'}),'実行: rejected:expired');
+});
+
+test('autopilot event log shows target choice instead of legacy WAIT',()=>{
+  const {context:c,$}=runtime();
+  const fifty={
+    kind:'decision',
+    recorded_at:'2026-09-22T10:00:00Z',
+    jev_latency_ms:100,
+    target_decision:{choice:'UP',target_side:'LONG',target_quantity:'1000'}
+  };
+  assert.equal(c.decisionLogSummary(fifty),'UP → LONG 1000');
+  c.renderLogs([fifty]);
+  assert.match($('logs').innerHTML,/UP → LONG 1000/);
+  assert.doesNotMatch($('logs').innerHTML,/JEV<\/span><span>WAIT/);
+
+  const event={
+    kind:'decision',
+    recorded_at:'2026-09-22T10:00:00Z',
+    jev_latency_ms:90,
+    target_decision:{
+      choice:'LONG_BASE_TIGHT_NOW',
+      target_side:'LONG',
+      target_quantity:'1000',
+      event_plan:{
+        trade_choice:'LONG_BASE_TIGHT_NOW',
+        trade:{action:'MARKET',side:'LONG',quantity:'1000'}
+      }
+    }
+  };
+  assert.equal(c.decisionLogSummary(event),'MARKET LONG 1000');
 });
 
 test('event decision summary shows timeout, bar-close, price-cross and expiry',()=>{

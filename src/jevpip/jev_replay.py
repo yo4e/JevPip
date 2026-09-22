@@ -718,6 +718,11 @@ def run_jev_historical_replay(
     def update_fifty_outcomes(tick: MarketTick) -> None:
         if not active_fifty_outcomes:
             return
+        if (
+            isinstance(broker, AutopilotBroker)
+            and broker.quote_eligibility(tick.as_json_dict()) is not None
+        ):
+            return
         completed: list[dict[str, Any]] = []
         for record in active_fifty_outcomes:
             if update_outcome_record(
@@ -726,6 +731,7 @@ def run_jev_historical_replay(
                 bid=tick.bid,
                 ask=tick.ask,
                 market_status=tick.status,
+                known_at=tick.received_at,
             ):
                 completed.append(record)
         for record in completed:
