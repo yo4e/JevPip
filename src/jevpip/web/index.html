@@ -102,7 +102,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="event">おまかせ戦略</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
             <div id="autopilot-controls">
               <div class="field" id="auto-horizon-field" style="display:none"><label class="label" for="auto-horizon">旧見通し時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -197,6 +197,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
                 <div class="field"><label class="label" for="paper-leverage">最大レバレッジ</label><input id="paper-leverage" type="number" value="25" min="1" max="25" step="1"></div>
                 <div class="field"><label class="label" for="paper-max-dd-pct">最大DDで停止（%）</label><input id="paper-max-dd-pct" type="number" value="20" min="1" max="100" step="1"></div>
               </div>
+              <div class="field" id="paper-max-risk-wrap" style="display:none;margin-top:8px"><label class="label" for="paper-max-risk-pct">おまかせ戦略 1取引の最大リスク（% equity）</label><input id="paper-max-risk-pct" type="number" value="1" min="0.1" max="25" step="0.1"><div class="muted" style="font-size:9px;margin-top:3px">Jevはこの損失上限を超えるOCO候補を選べません。</div></div>
               <div class="field" style="margin-top:8px"><label class="label" id="paper-max-spread-label" for="paper-max-spread">取引する最大spread</label><input id="paper-max-spread" type="number" value="1" min="0" step="any"><div class="muted" style="font-size:9px;margin-top:3px">この値を超えるspreadでは新規取引をしません。</div></div>
               <p id="paper-risk-note">FX paperは最大25x。最大DD到達時は建玉を決済し、新規判断を停止します。</p>
             </div>
@@ -717,7 +718,7 @@ function updateJevAccess(){
   $("jev-access").style.display=!paper||jevMode?"block":"none";
   $("jev-toggle-row").style.display=paper?"none":"flex";
   $("auto-style-field").style.display=jevMode?"block":"none";
-  $("cadence-settings").style.display=jevMode&&$("auto-style").value==="fifty"?"none":"block";
+  $("cadence-settings").style.display=jevMode&&["fifty","event"].includes($("auto-style").value)?"none":"block";
   $("jev-access-note").textContent=!$("with-jev").checked?"APIを呼ばずに動作します。"
     :!state.config?.typesafe_api_key_configured?"キー未設定。「設定」から登録してください。"
     :jevMode?"Jevモード。トークンを消費します。":"判断を記録します。トークンを消費します。";
@@ -737,6 +738,10 @@ function updateTradeSummary(){
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
       box.textContent="Jevモード Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益・paper OCO） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 待機後にJevがUP / DOWNを二択で判断します。";
+      return;
+    }
+    if(mode==="event"){
+      box.textContent="Jevモード おまかせ戦略 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / Jevが相場・口座・コストからboundedなentry/OCO候補と次の起床条件を選択 / tick監視中はAPIを呼ばず、価格cross・足確定・timeout・約定・決済で再判断 / 1取引のhard risk上限はequityの"+$("paper-max-risk-pct").value+"% / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
@@ -767,6 +772,7 @@ function applyInstrumentDefaults(){
   $("paper-leverage").value=i.market_kind==="crypto_spot"?1:25;
   $("paper-leverage").disabled=i.market_kind==="crypto_spot";
   $("paper-max-dd-pct").value=20;
+  $("paper-max-risk-pct").value=1;
   $("paper-max-spread").value=i.default_max_spread;
   $("paper-max-spread-label").textContent="取引する最大spread（"+i.move_unit_label+"）";
   $("paper-risk-note").textContent=i.market_kind==="crypto_spot"
@@ -1270,7 +1276,8 @@ function jevReplayBasePayload(){
     date:$("jbt-date").value,
     start_time:$("jbt-start").value||null,
     duration_seconds:Number($("jbt-duration").value||60),
-    cadence_seconds:Number($("jbt-cadence").value||1)
+    cadence_seconds:Number($("jbt-cadence").value||1),
+    event_driven:$("autopilot").checked&&$("auto-style").value==="event"
   }
 }
 function formatTokenEstimate(x){
@@ -1291,7 +1298,8 @@ async function previewJevReplay(silent=false){
     const t=r.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
     const range=new Date(r.selected_start).toISOString().slice(11,19)+"〜"+new Date(r.selected_end).toISOString().slice(11,19)+" UTC";
     const sourceLabel=r.source_kind==="raw_ticks"?"保存済みraw tick":"GMO historical 1分足";
-    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>データ: <strong>${esc(sourceLabel)}</strong> / 対象 ${esc(range)} / 市場点 ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒 / データ間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>${esc(r.source_note||"")}<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
+    const decisionLabel=r.event_driven?"イベント駆動（trigger成立時のみ再判断）":"判断間隔 "+r.cadence_seconds+"秒";
+    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>データ: <strong>${esc(sourceLabel)}</strong> / 対象 ${esc(range)} / 市場点 ${esc(r.selected_ticks)}件 / ${esc(decisionLabel)} / データ間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>${esc(r.source_note||"")}<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
     $("jbt-run").disabled=!r.within_call_limit||!state.config?.typesafe_api_key_configured;
     return r;
   }catch(e){
@@ -1312,7 +1320,7 @@ async function runJevReplay(){
     "課金対象input目安: "+inputEstimate+"\n"+
     "output目安: "+outputEstimate+"（無料）\n"+
     "概算API cost: "+costEstimate+"\n"+
-    "判断間隔: "+preview.cadence_seconds+"秒\n\n"+
+    (preview.event_driven?"判断方式: イベント駆動\n":"判断間隔: "+preview.cadence_seconds+"秒\n")+"\n"+
     (preview.source_note||"")+"\n\n"+
     "この見積りは直近usage平均と現在の公開価格による概算で、実際の請求額を保証しません。\n実行しますか？"
   );
@@ -1340,7 +1348,8 @@ async function runJevReplay(){
       const shortRate=outcome.directions?.SHORT?.resolved?pct(outcome.directions.SHORT.tp_first_rate):"-";
       outcomeText=" Fifty+方向別答え合わせ: 選択方向TP先着 "+chosen+" ("+Number(outcome.chosen_tp_first||0)+"/"+Number(outcome.chosen_resolved||0)+") / LONG "+longRate+" / SHORT "+shortRate+" / 両方向SL "+Number(outcome.both_stop_loss_first||0)+"件。Choice確率はこの実測率とは別物です。";
     }
-    $("jbt-result-note").textContent=(r.data_source_note||"")+outcomeText+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
+    const truncationNote=r.completed_full_window===false?"⚠ call予算到達で途中打ち切りです。全区間の戦略成績として扱わないでください。 ":"";
+    $("jbt-result-note").textContent=truncationNote+(r.data_source_note||"")+outcomeText+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
     $("jbt-diagnostics").textContent=diagnosticsText(s);
     renderExecutions("jbt-executions",s.trades||[]);
@@ -1508,8 +1517,8 @@ const autoLimits=[
 ];
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
-  const fifty=$("auto-style").value==="fifty";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
+  const fifty=$("auto-style").value==="fifty",event=$("auto-style").value==="event";
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_risk_pct:Number($("paper-max-risk-pct").value||1)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1519,20 +1528,23 @@ function updateFiftyTargetUi(){
   $("fifty-jpy-field").style.display=crypto?"block":"none";
 }
 function autopilotStyleChanged(applyDefaults=true){
-  const style=$("auto-style").value,scalp=style==="scalp",fifty=style==="fifty";
+  const style=$("auto-style").value,scalp=style==="scalp",fifty=style==="fifty",event=style==="event";
   $("auto-style-note").textContent=fifty
     ?"固定数量で1ポジションずつ。決済後は設定時間待ってから次のUP / DOWNを判断。"
+    :event
+      ?"Jevがentry/OCOと次の起床条件を選択。tickはコードだけで監視し、価格cross・足確定・timeout・約定時だけJevを再呼び出し。"
     :scalp
       ?"全部入りtrader contextを見て判断。標準60秒ごと。短い判断間隔ではJev API call・input tokenを多く使用します。"
       :"全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。";
   $("auto-horizon-field").style.display="none";
+  $("paper-max-risk-wrap").style.display=event?"block":"none";
   $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
   $("auto-constraints").style.display=fifty?"none":"block";
   if(fifty)$("auto-fundamentals").checked=false;
   if(applyDefaults){
     if(fifty)$("fifty-reentry-seconds").value="60";
-    $("jev-every").value=fifty?"1":scalp?"60":"900";
-    $("jbt-cadence").value=fifty?"1":scalp?"60":"900";
+    $("jev-every").value=(fifty||event)?"1":scalp?"60":"900";
+    $("jbt-cadence").value=fifty?"1":event?"60":scalp?"60":"900";
     state.jevReplayPreview=null;
     $("jbt-run").disabled=true;
   }
@@ -1595,6 +1607,7 @@ $("fifty-target-jpy").addEventListener("input",updateTradeSummary);
 $("fifty-reentry-seconds").addEventListener("input",updateTradeSummary);
 $("paper-leverage").addEventListener("input",updateTradeSummary);
 $("paper-max-dd-pct").addEventListener("input",updateTradeSummary);
+$("paper-max-risk-pct").addEventListener("input",updateTradeSummary);
 $("paper-max-spread").addEventListener("input",updateTradeSummary);
 $("jev-every").addEventListener("input",updateTradeSummary);
 

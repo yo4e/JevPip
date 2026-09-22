@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -183,6 +184,34 @@ def test_plan_uses_raw_ticks_and_configurable_cadence(tmp_path: Path):
     assert fifteen_minutes.planned_max_calls == 1
 
 
+def test_event_replay_call_budget_is_independent_of_hidden_cadence(tmp_path: Path):
+    _write_ticks(tmp_path)
+
+    fast = plan_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=4,
+        cadence_seconds=1,
+        event_driven=True,
+    )
+    slow = plan_jev_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=4,
+        cadence_seconds=60,
+        event_driven=True,
+    )
+
+    assert fast.planned_max_calls == slow.planned_max_calls == 9
+    assert fast.call_budget_basis == slow.call_budget_basis == "event_tick_upper_bound_capped"
+    assert fast.event_driven is True
+    assert slow.event_driven is True
+
+
 def test_plan_prefers_raw_ticks_over_historical_fallback(tmp_path: Path, monkeypatch):
     _write_ticks(tmp_path)
 
@@ -201,6 +230,79 @@ def test_plan_prefers_raw_ticks_over_historical_fallback(tmp_path: Path, monkeyp
     assert plan.source_kind == "raw_ticks"
     assert plan.source_path is not None
     assert plan.replay_mode == "raw_tick"
+
+
+class FakeEventJevClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    @staticmethod
+    def _select(key, choices):
+        return {
+            "type": "choice",
+            "choice": key,
+            "confidence": 0.8,
+            "probabilities": {
+                candidate: 1.0 if candidate == key else 0.0
+                for candidate in choices
+            },
+        }
+
+    def decide(self, state, horizon="5s", *, supervisor_strategies=(), instrument_label="the instrument"):
+        self.calls += 1
+        plan = state["autopilot"]["event_plan"]
+        trade_plans = plan["trade_plans"]
+        trade_choice = next(
+            (
+                key
+                for key, value in trade_plans.items()
+                if value.get("action") == "MARKET"
+            ),
+            next(iter(trade_plans)),
+        )
+        return {
+            "model": "event-test",
+            "usage": {"input_tokens": 100, "output_tokens": 10},
+            "answers": {
+                "event_trade_plan": self._select(trade_choice, trade_plans),
+                "event_wake_plan": self._select("TIMEOUT_30M", plan["wake_plans"]),
+                "event_expiry_plan": self._select("EXPIRY_30M", plan["expiry_plans"]),
+            },
+        }
+
+
+def test_event_replay_marks_result_truncated_when_call_budget_is_exhausted(tmp_path: Path, monkeypatch):
+    _write_ticks(tmp_path)
+    monkeypatch.setattr(replay, "MAX_JEV_REPLAY_CALLS", 1)
+    config = replace(
+        _paper_config(),
+        autopilot_enabled=True,
+        autopilot_style="event",
+        autopilot_max_risk_pct=0.05,
+        paper_leverage=25,
+    )
+    client = FakeEventJevClient()
+
+    result = run_jev_historical_replay(
+        tmp_path,
+        instrument_id="USD_JPY",
+        date="2026-09-20",
+        start_time="00:00:00",
+        duration_seconds=4,
+        cadence_seconds=60,
+        profile={"quote": True},
+        signal_policy=SignalPolicy(),
+        paper_config=config,
+        jev_client=client,
+        acknowledged_token_use=True,
+    )
+
+    assert result["call_budget_exhausted"] is True
+    assert result["completed_full_window"] is False
+    assert result["summary"]["call_budget_exhausted"] is True
+    assert result["summary"]["completed_full_window"] is False
+    assert result["effective_end"] < result["selected_end"]
+    assert any("truncated replay" in item for item in result["limitations"])
 
 
 def test_plan_falls_back_to_gmo_historical_1m_without_raw_ticks(

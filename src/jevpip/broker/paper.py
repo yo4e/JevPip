@@ -70,6 +70,7 @@ class PaperConfig:
     autopilot_max_notional: float | None = None
     autopilot_max_drawdown: float | None = None
     autopilot_max_drawdown_pct: float | None = None
+    autopilot_max_risk_pct: float = 0.01
     autopilot_max_change: float | None = None
     autopilot_entry_loss: float | None = None
     autopilot_max_spread: float | None = None

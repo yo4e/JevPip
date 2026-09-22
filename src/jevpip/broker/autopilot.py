@@ -21,6 +21,12 @@ from jevpip.fifty_outcomes import (
     build_fifty_outcome_context,
     outcome_completed_at,
 )
+from jevpip.event_plan import (
+    build_event_expiry_plans,
+    build_event_reference_levels,
+    build_event_risk_profiles,
+    build_event_wake_plans,
+)
 from jevpip.instruments import get_instrument
 from jevpip.jev.autopilot import REASONS, finite_decimal
 from jevpip.trader_context import TIMEFRAME_SPECS, build_timeframe_view, market_clock
@@ -64,7 +70,7 @@ class AutopilotBroker(PaperBroker):
                 finite_decimal(value, name)
         if config.fee_rate >= 1 or config.size < self.quantity_step:
             raise ValueError("invalid fee rate or base quantity")
-        if config.autopilot_style not in {"daytrade", "scalp", "fifty"}:
+        if config.autopilot_style not in {"daytrade", "scalp", "fifty", "event"}:
             raise ValueError("unsupported autopilot style")
         if config.autopilot_fifty_oracle not in {
             "jev",
@@ -91,6 +97,8 @@ class AutopilotBroker(PaperBroker):
             raise ValueError("confidence must be <= 1")
         if config.autopilot_max_drawdown_pct is not None and config.autopilot_max_drawdown_pct > 1:
             raise ValueError("drawdown fraction must be <= 1")
+        if not 0 < config.autopilot_max_risk_pct <= 0.25:
+            raise ValueError("event-plan risk fraction must be > 0 and <= 0.25")
         super().__init__(config)
         self.session_id = uuid4().hex
         self.account_version = 0
@@ -107,6 +115,12 @@ class AutopilotBroker(PaperBroker):
         self._last_change_at: datetime | None = None
         self._fifty_last_close_at: datetime | None = None
         self._last_spiritual_decision: dict[str, Any] | None = None
+        self._event_plan: dict[str, Any] | None = None
+        self._event_request_ready = config.autopilot_style == "event"
+        self._event_plan_started_at: datetime | None = None
+        self._event_plan_expires_at: datetime | None = None
+        self._event_plan_bar_counts: dict[str, int] = {}
+        self._event_last_trigger: str | None = "session_start" if config.autopilot_style == "event" else None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
         self._fifty_outcome_history: deque[dict[str, Any]] = deque(maxlen=500)
@@ -114,6 +128,9 @@ class AutopilotBroker(PaperBroker):
         self._timeframe_bars: dict[str, deque[dict[str, Any]]] = {
             interval: deque(maxlen=256)
             for interval in TIMEFRAME_SPECS
+        }
+        self._timeframe_closed_counts: dict[str, int] = {
+            interval: 0 for interval in TIMEFRAME_SPECS
         }
         self._timeframe_current: dict[str, dict[str, Any]] = {}
         self._trader_history_meta: dict[str, Any] = {
@@ -176,11 +193,16 @@ class AutopilotBroker(PaperBroker):
             if self._last_request_at is not None and requested <= self._last_request_at:
                 raise ValueError("duplicate_or_out_of_order")
             self._last_request_at = requested
-            self._pending = dict(target)
             self._last_target = dict(target)
-            self._target_status = "pending"
+            if self.config.autopilot_style == "event":
+                self._accept_event_plan(target, available)
+            else:
+                self._pending = dict(target)
+                self._target_status = "pending"
         except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
             self._target_status = f"rejected:{exc}"
+            if self.config.autopilot_style == "event":
+                self._event_request_ready = True
             self._candidate = None
             self._confirmations = 0
 
@@ -318,6 +340,365 @@ class AutopilotBroker(PaperBroker):
             semantics="autopilot_net_optional",
         )
 
+    def _set_event_plan_oco(self, trade_plan: dict[str, Any]) -> None:
+        """Install Jev-selected NET TP/SL distances as a fixed paper OCO."""
+        if self.position is None:
+            return
+        oco = trade_plan.get("oco")
+        if not isinstance(oco, dict):
+            raise ValueError("event entry requires protective OCO")
+        tp_units = finite_decimal(oco.get("take_profit_units"), "event take profit", positive=True)
+        sl_units = finite_decimal(oco.get("stop_loss_units"), "event stop loss", positive=True)
+        position = self.position
+        quantity = position.size
+        entry = position.entry_price
+        entry_fee_per_unit = position.entry_fee / quantity
+        fee = self.fee_rate
+        slip = self.slippage_price
+
+        if position.side == "LONG":
+            denom = Decimal("1") - fee
+            tp_quote = (
+                entry + entry_fee_per_unit + tp_units * self.price_unit
+            ) / denom + slip
+            sl_quote = (
+                entry + entry_fee_per_unit - sl_units * self.price_unit
+            ) / denom + slip
+            quote_side = "bid"
+        else:
+            denom = Decimal("1") + fee
+            tp_quote = (
+                entry - entry_fee_per_unit - tp_units * self.price_unit
+            ) / denom - slip
+            sl_quote = (
+                entry - entry_fee_per_unit + sl_units * self.price_unit
+            ) / denom - slip
+            quote_side = "ask"
+
+        self._oco_bracket = PaperOcoBracket(
+            side=position.side,
+            quote_side=quote_side,
+            take_profit_quote=tp_quote,
+            stop_loss_quote=sl_quote,
+            take_profit_reason="event_take_profit",
+            stop_loss_reason="event_stop_loss",
+            semantics="jev_event_net_oco",
+        )
+
+    def _event_plan_risk_block(
+        self,
+        *,
+        side: str,
+        quantity: Decimal,
+        trade_plan: dict[str, Any],
+        bid: Decimal,
+        ask: Decimal,
+    ) -> str | None:
+        capacity = self._capacity_block(side, quantity, bid, ask)
+        if capacity:
+            return capacity
+        oco = trade_plan.get("oco")
+        if not isinstance(oco, dict):
+            return "missing_protective_oco"
+        finite_decimal(
+            oco.get("take_profit_units"), "event take profit", positive=True
+        )
+        stop_units = finite_decimal(
+            oco.get("stop_loss_units"), "event stop loss", positive=True
+        )
+        estimated_loss = stop_units * self.price_unit * quantity
+        max_loss = max(
+            ZERO,
+            self._equity() * Decimal(str(self.config.autopilot_max_risk_pct)),
+        )
+        if estimated_loss > max_loss:
+            return "max_risk_per_trade"
+        return None
+
+    def _accept_event_plan(self, target: dict[str, Any], available_at: datetime) -> None:
+        payload = target.get("event_plan")
+        if not isinstance(payload, dict):
+            raise ValueError("missing_event_plan")
+        trade = payload.get("trade")
+        wake = payload.get("wake")
+        expiry = payload.get("expiry")
+        if not isinstance(trade, dict) or not isinstance(wake, dict) or not isinstance(expiry, dict):
+            raise ValueError("invalid_event_plan")
+        action = trade.get("action")
+        if action not in {"WAIT", "MARKET", "PRICE_CROSS", "HOLD", "CLOSE"}:
+            raise ValueError("invalid_event_action")
+        wake_type = wake.get("type")
+        if wake_type not in {"price_cross_above", "price_cross_below", "bar_close", "timeout"}:
+            raise ValueError("invalid_wake_trigger")
+
+        side = target["target_side"]
+        quantity = Decimal(str(target["target_quantity"]))
+        if action in {"MARKET", "PRICE_CROSS"}:
+            if self.position is not None or side not in {"LONG", "SHORT"} or quantity <= 0:
+                raise ValueError("invalid_event_entry")
+            trigger = trade.get("entry_trigger")
+            if action == "PRICE_CROSS":
+                if not isinstance(trigger, dict) or trigger.get("type") not in {
+                    "price_cross_above", "price_cross_below"
+                }:
+                    raise ValueError("invalid_event_entry_trigger")
+                finite_decimal(trigger.get("price"), "event trigger price", positive=True)
+            if self._last_bid is None or self._last_ask is None:
+                raise ValueError("market_not_ready")
+            block = self._event_plan_risk_block(
+                side=side,
+                quantity=quantity,
+                trade_plan=trade,
+                bid=self._last_bid,
+                ask=self._last_ask,
+            )
+            if block:
+                raise ValueError(block)
+        elif action == "HOLD":
+            if self.position is None or side != self.position.side or quantity != self.position.size:
+                raise ValueError("invalid_event_hold")
+        elif action in {"WAIT", "CLOSE"}:
+            if action == "WAIT" and self.position is not None:
+                raise ValueError("wait_requires_flat")
+            if action == "CLOSE" and self.position is None:
+                raise ValueError("close_requires_position")
+
+        if wake_type.startswith("price_cross"):
+            finite_decimal(wake.get("price"), "wake price", positive=True)
+        elif wake_type == "bar_close":
+            timeframe = wake.get("timeframe")
+            bars = wake.get("bars")
+            if timeframe not in TIMEFRAME_SPECS or type(bars) is not int or not 1 <= bars <= 12:
+                raise ValueError("invalid_bar_wake")
+        else:
+            seconds = wake.get("seconds")
+            if type(seconds) not in {int, float} or not 1 <= float(seconds) <= 86400:
+                raise ValueError("invalid_timeout_wake")
+
+        expiry_seconds = expiry.get("seconds")
+        if type(expiry_seconds) not in {int, float} or not 60 <= float(expiry_seconds) <= 86400:
+            raise ValueError("invalid_plan_expiry")
+
+        self._pending = dict(target) if action in {"MARKET", "CLOSE"} else None
+        self._event_plan = dict(payload)
+        self._event_plan_started_at = available_at
+        self._event_plan_expires_at = available_at + timedelta(seconds=float(expiry_seconds))
+        self._event_plan_bar_counts = dict(self._timeframe_closed_counts)
+        self._event_request_ready = False
+        self._event_last_trigger = None
+        self._target_status = f"event_plan:{action.lower()}"
+
+    def _event_crossed(self, trigger: dict[str, Any]) -> bool:
+        if len(self._tick_tape) < 2:
+            return False
+        previous = Decimal(str(self._tick_tape[-2]["mid"]))
+        current = Decimal(str(self._tick_tape[-1]["mid"]))
+        price = finite_decimal(trigger.get("price"), "event trigger price", positive=True)
+        if trigger.get("type") == "price_cross_above":
+            return previous < price <= current
+        if trigger.get("type") == "price_cross_below":
+            return previous > price >= current
+        return False
+
+    def _event_wake_fired(self, at: datetime) -> str | None:
+        if self._event_plan is None or self._event_plan_started_at is None:
+            return None
+        wake = self._event_plan.get("wake")
+        if not isinstance(wake, dict):
+            return None
+        wake_type = wake.get("type")
+        if wake_type in {"price_cross_above", "price_cross_below"}:
+            return str(wake_type) if self._event_crossed(wake) else None
+        if wake_type == "bar_close":
+            timeframe = str(wake.get("timeframe"))
+            bars = int(wake.get("bars", 0))
+            baseline = self._event_plan_bar_counts.get(timeframe, 0)
+            if self._timeframe_closed_counts.get(timeframe, 0) - baseline >= bars:
+                return f"bar_close:{timeframe}:{bars}"
+            return None
+        if wake_type == "timeout":
+            seconds = float(wake.get("seconds", 0))
+            if (at - self._event_plan_started_at).total_seconds() >= seconds:
+                return f"timeout:{int(seconds)}"
+        return None
+
+    def _event_time_trigger(self, at: datetime) -> str | None:
+        """Return the earliest due time-based event before evaluating a new entry."""
+        if self._event_plan is None or self._event_plan_started_at is None:
+            return None
+        deadlines: list[tuple[datetime, str]] = []
+        if self._event_plan_expires_at is not None and self._event_plan_expires_at <= at:
+            deadlines.append((self._event_plan_expires_at, "plan_expired"))
+        wake = self._event_plan.get("wake")
+        if isinstance(wake, dict) and wake.get("type") == "timeout":
+            seconds = float(wake.get("seconds", 0))
+            wake_at = self._event_plan_started_at + timedelta(seconds=seconds)
+            if wake_at <= at:
+                deadlines.append((wake_at, f"timeout:{int(seconds)}"))
+        if not deadlines:
+            return None
+        deadlines.sort(key=lambda item: item[0])
+        return deadlines[0][1]
+
+    def _event_price_entry(
+        self,
+        *,
+        at: datetime,
+        bid: Decimal,
+        ask: Decimal,
+        allow_entry: bool,
+    ) -> list[dict[str, Any]]:
+        if self._event_plan is None or self.position is not None:
+            return []
+        trade = self._event_plan.get("trade")
+        if not isinstance(trade, dict) or trade.get("action") != "PRICE_CROSS":
+            return []
+        trigger = trade.get("entry_trigger")
+        if not isinstance(trigger, dict) or not self._event_crossed(trigger):
+            return []
+        side = str(trade.get("side"))
+        quantity = Decimal(str(trade.get("quantity")))
+        block = self._target_block(
+            side,
+            quantity,
+            float(self._event_plan.get("trade_confidence", 0)),
+            at,
+            bid,
+            ask,
+            allow_entry,
+        )
+        if block is None:
+            block = self._event_plan_risk_block(
+                side=side,
+                quantity=quantity,
+                trade_plan=trade,
+                bid=bid,
+                ask=ask,
+            )
+        if block is not None:
+            self._target_status = f"event_entry_blocked:{block}"
+            self._event_request_ready = False
+            self._event_last_trigger = self._target_status
+            return []
+        row = self._add(
+            side,
+            quantity,
+            at,
+            bid,
+            ask,
+            "EVENT_PLAN",
+            self._last_target.get("decision_id") if self._last_target else None,
+        )
+        self._set_event_plan_oco(trade)
+        self._target_status = "event_entry_filled"
+        self._event_request_ready = True
+        self._event_last_trigger = "entry_filled"
+        return [row]
+
+    def _event_trade_plans(
+        self,
+        *,
+        bid: Decimal,
+        ask: Decimal,
+        snapshot: dict[str, Any],
+        timeframes: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        levels = build_event_reference_levels(
+            bid=bid,
+            ask=ask,
+            price_unit=self.price_unit,
+            timeframes=timeframes,
+            round_trip_cost_per_unit=self._round_trip_cost(bid, ask),
+        )
+        profiles = build_event_risk_profiles(
+            price_unit=self.price_unit,
+            round_trip_cost_per_unit=self._round_trip_cost(bid, ask),
+            reference_atr=levels["atr"],
+        )
+        wake_plans = build_event_wake_plans(levels)
+        trade_plans: dict[str, Any] = {}
+
+        if self.position is not None:
+            trade_plans["HOLD"] = {
+                "action": "HOLD",
+                "side": self.position.side,
+                "quantity": str(self.position.size),
+                "description": "Keep the current paper position and existing protective OCO.",
+            }
+            trade_plans["CLOSE_NOW"] = {
+                "action": "CLOSE",
+                "side": "FLAT",
+                "quantity": "0",
+                "description": "Close the entire current paper position at the next fresh quote.",
+            }
+            return trade_plans, wake_plans, {key: str(value) for key, value in levels.items()}
+
+        trade_plans["WAIT"] = {
+            "action": "WAIT",
+            "side": "FLAT",
+            "quantity": "0",
+            "description": "Stay flat until the selected wake-up event asks Jev again.",
+        }
+        equity = Decimal(str(snapshot["equity"]))
+        max_risk = max(
+            ZERO,
+            equity * Decimal(str(self.config.autopilot_max_risk_pct)),
+        )
+        quantities: list[tuple[str, Decimal]] = []
+        for label, multiple in (("SMALL", "0.5"), ("BASE", "1"), ("LARGE", "2")):
+            quantity = (
+                Decimal(str(self.config.size))
+                * Decimal(multiple)
+                / self.quantity_step
+            ).to_integral_value(rounding=ROUND_DOWN) * self.quantity_step
+            if quantity <= 0:
+                continue
+            if self._capacity_block("LONG", quantity, bid, ask) and self._capacity_block("SHORT", quantity, bid, ask):
+                continue
+            quantities.append((label, quantity))
+
+        entries = {
+            "NOW": ("MARKET", None),
+            "ABOVE": (
+                "PRICE_CROSS",
+                {"type": "price_cross_above", "price": str(levels["upper"])},
+            ),
+            "BELOW": (
+                "PRICE_CROSS",
+                {"type": "price_cross_below", "price": str(levels["lower"])},
+            ),
+        }
+        mid = (bid + ask) / 2
+        for side in ("LONG", "SHORT"):
+            for size_label, quantity in quantities:
+                if self._capacity_block(side, quantity, bid, ask):
+                    continue
+                for risk_label, risk in profiles.items():
+                    stop_units = Decimal(str(risk["stop_loss_units"]))
+                    estimated_loss = stop_units * self.price_unit * quantity
+                    if estimated_loss > max_risk:
+                        continue
+                    for entry_label, (action, trigger) in entries.items():
+                        key = f"{side}_{size_label}_{risk_label}_{entry_label}"
+                        plan = {
+                            "action": action,
+                            "side": side,
+                            "quantity": str(quantity),
+                            "entry_trigger": trigger,
+                            "oco": dict(risk),
+                            "estimated_max_loss_jpy": round(float(estimated_loss), 6),
+                            "max_risk_budget_jpy": round(float(max_risk), 6),
+                            "estimated_notional_jpy": round(float(quantity * mid), 6),
+                            "description": (
+                                f"{side} {size_label}; {entry_label}; "
+                                f"net stop {risk['stop_loss_units']:.3f} {self.config.move_unit_label}; "
+                                f"net take {risk['take_profit_units']:.3f} {self.config.move_unit_label}; "
+                                f"RR {risk['risk_reward']:.2f}."
+                            ),
+                        }
+                        trade_plans[key] = plan
+        return trade_plans, wake_plans, {key: str(value) for key, value in levels.items()}
+
     def _record(self, row: dict[str, Any], decision_id: str | None) -> dict[str, Any]:
         self.account_version += 1
         row.update(kind="paper_trade", decision_id=decision_id,
@@ -344,6 +725,10 @@ class AutopilotBroker(PaperBroker):
                     bid=bid,
                     ask=ask,
                 )
+            elif self.config.autopilot_style == "event":
+                if self._event_plan is None or not isinstance(self._event_plan.get("trade"), dict):
+                    raise ValueError("event entry missing active plan")
+                self._set_event_plan_oco(self._event_plan["trade"])
             else:
                 self._set_optional_autopilot_oco()
         else:
@@ -502,6 +887,8 @@ class AutopilotBroker(PaperBroker):
             return "minimum_confidence"
         if cfg.autopilot_cooldown_seconds is not None and self._last_change_at is not None and (at-self._last_change_at).total_seconds() < cfg.autopilot_cooldown_seconds:
             return "cooldown"
+        if cfg.autopilot_style == "event":
+            return None
         signature = (side, quantity)
         if signature != self._candidate:
             self._candidate, self._confirmations = signature, 0
@@ -577,6 +964,14 @@ class AutopilotBroker(PaperBroker):
             self._target_changes += 1
             self._last_change_at = at
             self._candidate, self._confirmations = None, 0
+            if self.config.autopilot_style == "event":
+                self._event_request_ready = True
+                self._event_last_trigger = (
+                    "position_closed" if self.position is None else "entry_filled"
+                )
+                self._event_plan = None
+                self._event_plan_started_at = None
+                self._event_plan_expires_at = None
         elif self._pending is None and self._target_status != "confirming_target":
             self._candidate, self._confirmations = None, 0
         self._update_drawdown()
@@ -599,6 +994,52 @@ class AutopilotBroker(PaperBroker):
             "trade_link": {"trade": trades[0] if trades else None, "executions": trades},
         }
         return trades
+
+    def execute_event_pending(self, now: datetime) -> list[dict[str, Any]]:
+        """Apply an event-plan MARKET/CLOSE action on the latest fresh quote."""
+        if self.config.autopilot_style != "event" or self._pending is None:
+            return []
+        if (
+            self._last_bid is None
+            or self._last_ask is None
+            or self._last_received_at is None
+            or self._last_market_status != "OPEN"
+        ):
+            self._pending = None
+            self._target_status = "rejected:market_unavailable"
+            self._event_request_ready = False
+            return []
+        age = (now - self._last_received_at).total_seconds()
+        if age < 0 or age > self.config.max_market_age_seconds:
+            self._pending = None
+            self._target_status = "rejected:stale_quote"
+            self._event_request_ready = False
+            return []
+        before = self.account_version
+        trades = self._apply_pending_target(
+            at=now,
+            now=now,
+            bid=self._last_bid,
+            ask=self._last_ask,
+            allow_entry=True,
+            require_new_market=False,
+        )
+        if trades and self.position is not None and self._event_plan is not None:
+            trade = self._event_plan.get("trade")
+            if isinstance(trade, dict) and trade.get("action") == "MARKET":
+                self._set_event_plan_oco(trade)
+        result = self._finish_cycle(
+            at=now,
+            now=now,
+            bid=self._last_bid,
+            ask=self._last_ask,
+            before=before,
+            trades=trades,
+        )
+        if not trades:
+            self._event_request_ready = False
+            self._event_last_trigger = self._target_status
+        return result
 
     def execute_fifty_pending(self, now: datetime) -> list[dict[str, Any]]:
         """Apply a Fifty+ direction immediately on the latest still-fresh quote.
@@ -708,6 +1149,33 @@ class AutopilotBroker(PaperBroker):
                     allow_entry=allow_entry,
                     require_new_market=True,
                 ))
+            elif self.config.autopilot_style == "event" and self._event_plan is not None:
+                time_reason = self._event_time_trigger(at)
+                if time_reason is not None:
+                    self._event_request_ready = True
+                    self._event_last_trigger = time_reason
+                    self._event_plan = None
+                    self._event_plan_started_at = None
+                    self._event_plan_expires_at = None
+                    self._target_status = f"event_wake:{time_reason}"
+                else:
+                    trades.extend(
+                        self._event_price_entry(
+                            at=at,
+                            bid=bid,
+                            ask=ask,
+                            allow_entry=allow_entry,
+                        )
+                    )
+                    if not trades and not self._event_request_ready:
+                        wake_reason = self._event_wake_fired(at)
+                        if wake_reason is not None:
+                            self._event_request_ready = True
+                            self._event_last_trigger = wake_reason
+                            self._event_plan = None
+                            self._event_plan_started_at = None
+                            self._event_plan_expires_at = None
+                            self._target_status = f"event_wake:{wake_reason}"
             elif (
                 self.position is None
                 and self.config.autopilot_style == "fifty"
@@ -929,6 +1397,7 @@ class AutopilotBroker(PaperBroker):
         for interval in TIMEFRAME_SPECS:
             target = self._timeframe_bars[interval]
             target.clear()
+            self._timeframe_closed_counts[interval] = 0
             rows = timeframes.get(interval, [])
             if not isinstance(rows, list):
                 continue
@@ -951,6 +1420,7 @@ class AutopilotBroker(PaperBroker):
                 except (KeyError, TypeError, ValueError):
                     continue
                 target.append(row)
+                self._timeframe_closed_counts[interval] += 1
         self._timeframe_current.clear()
         self._trader_history_meta = {
             "source": payload.get("source", "unknown"),
@@ -971,6 +1441,7 @@ class AutopilotBroker(PaperBroker):
                     current_end = self._dt(str(current["end_time"]))
                     if current_end <= at:
                         self._timeframe_bars[interval].append(current)
+                        self._timeframe_closed_counts[interval] += 1
                 value = float(mid)
                 self._timeframe_current[interval] = {
                     "open_time": opened.isoformat(),
@@ -1096,6 +1567,7 @@ class AutopilotBroker(PaperBroker):
         if position is not None:
             position = {**position, "age_seconds": max(0, (as_of-self.position.opened_at).total_seconds())}
         bar_limit = 5 if self.config.autopilot_style in {"scalp", "fifty"} else 30
+        timeframe_state = self._trader_timeframes(as_of)
         autopilot_state = {
             "schema_version": 1, "style": self.config.autopilot_style,
             "fifty_oracle": self.config.autopilot_fifty_oracle,
@@ -1154,7 +1626,7 @@ class AutopilotBroker(PaperBroker):
         autopilot_state["context_version"] = "trader_context_v1"
         autopilot_state["recent_ticks"] = list(self._tick_tape)[-40:]
         autopilot_state["clock"] = market_clock(as_of)
-        autopilot_state["timeframes"] = self._trader_timeframes(as_of)
+        autopilot_state["timeframes"] = timeframe_state
         autopilot_state["trader_history"] = dict(self._trader_history_meta)
         autopilot_state["performance"] = {
             "exit_reasons": snapshot["exit_reasons"],
@@ -1164,6 +1636,25 @@ class AutopilotBroker(PaperBroker):
             "average_exposure": snapshot.get("average_exposure"),
             "target_changes": snapshot.get("target_changes"),
         }
+        if self.config.autopilot_style == "event":
+            trade_plans, wake_plans, reference_levels = self._event_trade_plans(
+                bid=bid,
+                ask=ask,
+                snapshot=snapshot,
+                timeframes=timeframe_state,
+            )
+            autopilot_state["event_plan"] = {
+                "request_ready": self._event_request_ready,
+                "last_trigger": self._event_last_trigger,
+                "active": self._event_plan,
+                "trade_plans": trade_plans,
+                "wake_plans": wake_plans,
+                "expiry_plans": build_event_expiry_plans(),
+                "reference_levels": reference_levels,
+                "hard_max_risk_pct": self.config.autopilot_max_risk_pct,
+                "automatic_wake_events": ["entry_filled", "position_closed"],
+                "arbitrary_code_or_natural_language_triggers": False,
+            }
         if self.config.autopilot_style == "fifty":
             fifty_target = (
                 self.config.autopilot_fifty_target_jpy
@@ -1237,9 +1728,13 @@ class AutopilotBroker(PaperBroker):
             )
         result.update(
             strategy=(
-                "jev_autopilot"
-                if self.config.autopilot_fifty_oracle == "jev"
-                else "spiritual_fifty"
+                "jev_event_plan"
+                if self.config.autopilot_style == "event"
+                else (
+                    "jev_autopilot"
+                    if self.config.autopilot_fifty_oracle == "jev"
+                    else "spiritual_fifty"
+                )
             ),
             strategy_enabled=False,
             autopilot_enabled=True,
@@ -1250,6 +1745,14 @@ class AutopilotBroker(PaperBroker):
             unrealized_pnl=float(unrealized),
             trades=list(self._executions)[:100], account_version=self.account_version,
             target_decision=self._last_target, target_status=self._target_status, risk_halted=self._halted,
+            event_plan=self._event_plan if self.config.autopilot_style == "event" else None,
+            event_plan_expires_at=(
+                self._event_plan_expires_at.isoformat()
+                if self.config.autopilot_style == "event" and self._event_plan_expires_at is not None
+                else None
+            ),
+            event_request_ready=self._event_request_ready if self.config.autopilot_style == "event" else None,
+            event_last_trigger=self._event_last_trigger if self.config.autopilot_style == "event" else None,
             turnover_notional=float(self._turnover), max_exposure=float(self._max_exposure),
             average_exposure=float(self._exposure_integral/self._elapsed) if self._elapsed else 0.0,
             target_changes=self._target_changes,

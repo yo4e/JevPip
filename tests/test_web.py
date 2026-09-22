@@ -59,12 +59,16 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "Choice確率はこの実測率とは別物です" in response.text
         assert "公式イベントを見る" in response.text
         assert "スキャルピング" in response.text
+        assert "おまかせ戦略" in response.text
+        assert "価格cross・足確定・timeout・約定時だけJevを再呼び出し" in response.text
         assert "Fifty+" in response.text
         assert "1ポジションずつ" in response.text
         assert 'id="fifty-reentry-seconds"' in response.text
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
+        assert 'id="paper-max-risk-pct"' in response.text
+        assert "おまかせ戦略 1取引の最大リスク" in response.text
         assert "ドローダウン・レバレッジ" in response.text
         assert "資金・損失上限" not in response.text
         assert response.text.index("ドローダウン・レバレッジ") < response.text.index("動作・コストの詳細")
@@ -1342,6 +1346,7 @@ def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
                 "start_time": "00:00:00",
                 "duration_seconds": 60,
                 "cadence_seconds": 1,
+                "event_driven": True,
             },
         )
 
@@ -1349,6 +1354,7 @@ def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
     assert response.json()["planned_max_calls"] == 60
     assert called["cadence_seconds"] == 1
     assert called["duration_seconds"] == 60
+    assert called["event_driven"] is True
 
 
 def test_jev_replay_run_api_requires_explicit_token_acknowledgement(monkeypatch):

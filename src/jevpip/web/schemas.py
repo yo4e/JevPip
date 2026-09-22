@@ -49,7 +49,7 @@ class SignalPolicyInput(BaseModel):
 class PaperDemoInput(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
     autopilot_enabled: bool = False
-    autopilot_style: Literal["daytrade", "scalp", "fifty"] = "daytrade"
+    autopilot_style: Literal["daytrade", "scalp", "fifty", "event"] = "daytrade"
     autopilot_fundamentals: bool = False
     autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
@@ -68,6 +68,7 @@ class PaperDemoInput(BaseModel):
     autopilot_max_notional: float | None = Field(default=None, gt=0, le=1000000000)
     autopilot_max_drawdown: float | None = Field(default=None, gt=0, le=1000000000)
     autopilot_max_drawdown_pct: float | None = Field(default=0.20, gt=0, le=1)
+    autopilot_max_risk_pct: float = Field(default=0.01, gt=0, le=0.25)
     autopilot_max_change: float | None = Field(default=None, gt=0, le=100000000)
     autopilot_entry_loss: float | None = Field(default=None, gt=0, le=1000000000)
     autopilot_max_spread: float | None = Field(default=None, ge=0, le=100000000)
@@ -139,6 +140,7 @@ class JevReplayPreviewRequest(BaseModel):
     start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}:\d{2}$")
     duration_seconds: int = Field(default=60, ge=1, le=86400)
     cadence_seconds: Literal[1, 2, 5, 10, 30, 60, 300, 900] = 1
+    event_driven: bool = False
 
 
 class JevReplayRunRequest(JevReplayPreviewRequest):

@@ -270,6 +270,7 @@ async def preview_jev_replay_api(
             start_time=request.start_time,
             duration_seconds=request.duration_seconds,
             cadence_seconds=request.cadence_seconds,
+            event_driven=request.event_driven,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

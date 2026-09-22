@@ -494,18 +494,22 @@ class UIController:
                 self._paper.on_decision(event)
                 if (
                     isinstance(self._paper, AutopilotBroker)
-                    and self._paper.config.autopilot_style == "fifty"
                     and event.get("available_at")
                 ):
                     available_at = self._parse_timestamp(str(event["available_at"]))
-                    executions = self._paper.execute_fifty_pending(available_at)
-                    for paper_event in executions:
-                        self._events.appendleft(paper_event)
-                    self._start_live_fifty_outcome(
-                        event,
-                        executions,
-                        entry_at=available_at,
-                    )
+                    if self._paper.config.autopilot_style == "fifty":
+                        executions = self._paper.execute_fifty_pending(available_at)
+                        for paper_event in executions:
+                            self._events.appendleft(paper_event)
+                        self._start_live_fifty_outcome(
+                            event,
+                            executions,
+                            entry_at=available_at,
+                        )
+                    elif self._paper.config.autopilot_style == "event":
+                        executions = self._paper.execute_event_pending(available_at)
+                        for paper_event in executions:
+                            self._events.appendleft(paper_event)
             self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
@@ -1083,6 +1087,7 @@ class UIController:
         start_time: str | None,
         duration_seconds: int,
         cadence_seconds: int,
+        event_driven: bool = False,
     ) -> dict[str, Any]:
         get_instrument(instrument_id)
         return await asyncio.to_thread(
@@ -1093,6 +1098,7 @@ class UIController:
             start_time=start_time,
             duration_seconds=duration_seconds,
             cadence_seconds=cadence_seconds,
+            event_driven=event_driven,
         )
 
     async def run_jev_replay(
