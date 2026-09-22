@@ -20,6 +20,7 @@ function runtime(){
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
+  vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
