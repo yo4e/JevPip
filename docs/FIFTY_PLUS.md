@@ -60,9 +60,15 @@ Jevが決めるのは次の二択だけです。
 - `UP` → LONG
 - `DOWN` → SHORT
 
-質問時には、そのラウンドで設定されている対称NET勝負幅も**実数で明示**します。たとえばFXで勝負幅が5 pipsなら、「UP側 +5 pips と DOWN側 -5 pips のどちらへ先に到達するか」を予測させます。Jevが答えた方向を建てた後、brokerも同じNET ±5 pips境界で決済します。
+質問時には、そのラウンドで設定されている対称NET勝負幅と、LONG / SHORTそれぞれの独立した勝敗条件をコード側で明示します。たとえばFXで勝負幅が5 pipsなら、「LONGを建てた場合にそのLONG自身のnet +5 pipsがnet -5 pipsより先に到達するか」と、「SHORTを建てた場合にそのSHORT自身のnet +5 pipsがnet -5 pipsより先に到達するか」を別々に評価させ、そのうえでTP先着がより見込める方向を選ばせます。spread / fee / slippageがあるため、LONGが負けてもSHORTなら必ず勝ちとは限らず、両方向がそれぞれSL先着になる経路もあります。Jevが答えた方向を建てた後、brokerは同じNET ±5 pips境界で決済します。
 
 数量、コスト計算、TP/SL、口座計算、約定判定はコード側が管理します。
+
+### 方向別の答え合わせ
+
+live Fifty+とraw tick Jev BTでは、実際に選んだ方向の売買とは別に、同じentry条件からLONG / SHORT双方の仮想tradeを追跡します。各方向について `take_profit_first / stop_loss_first / unresolved` と決着時間を保存し、片側の結果を反転してもう片側の正解にはしません。セッション終了・データ終端などで未決着なら勝敗へ無理に分類しません。
+
+liveの結果は `data/fifty_outcomes/<instrument>/YYYY-MM-DD.jsonl`、Jev BTの結果は既存のreplay JSONLへ保存します。ChoiceのUP / DOWN確率は二択の相対選好であり、LONG / SHORTそれぞれの実測勝率や校正済み確率ではありません。
 
 ### AIが決めないもの
 
