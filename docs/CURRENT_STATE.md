@@ -410,6 +410,20 @@ BTC現物paperと暗号資産FX paperの分離。
 
 当面は **BTC現物paper = 1x固定 / SHORTはsynthetic** を維持する。暗号資産FX paperが必要になった時だけ、margin / fee / liquidation modelを別商品として設計する。
 
+### Issue #58: Jevおまかせ戦略
+
+event-drivenなJev裁量paper modeを実装中。
+
+- `trader_context_v1` から、コードが現在相場・ATR・直近高安・cost・risk envelopeに沿ったbounded trade planを生成
+- Jevはentry/OCO planと次のwake-up条件をChoiceで選ぶ
+- code-onlyでprice cross / bar close / timeoutを監視し、条件成立時だけJevを再呼び出す
+- entry fill / position closeは自動wake
+- protective OCOと最大DD / leverage / spread / stale / 1取引risk上限はコード所有
+- 任意自然言語triggerや任意コード実行はしない
+- 実注文は追加しない
+
+研究上はFifty+の「方向二択能力」と分離し、相場観察 → risk/reward設計 → 待機条件 → 再判断まで含む裁量運用能力を見る。
+
 ### Fifty+ comparison experiment
 
 次の検証ではJev Fifty+とcoin flipを、同じmarket path・quantity・勝負幅・fee / slippage・spread gate・DD rule・paper OCO semanticsで比較する。
@@ -464,6 +478,7 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 - PR #57: USD/JPYの初期spread上限を1.0 pipsへ変更
 
 現在の主なopen work:
+- #58: event-driven Jevおまかせ戦略の実装・検証
 - #3: live orderを将来検討する場合の運用制約
 - #5: non-JPY FXのJPY accounting
 - #32: BTC暗号資産FX paperの将来設計
@@ -471,4 +486,4 @@ Fifty+は1ポジションずつ持ち、決済後の待機を挟んでJevへUP /
 
 次の作業テーマ:
 
-> Jev Fifty+とcoin flip random controlを、同じmarket path / cost modelで比較できるexperimentへ整理し、十分な試行数で検証する。
+> #58のevent-driven Jevおまかせ戦略をfake response / CI / paper smoke testで固める。その後、Fifty+ vs coin flip random controlの比較実験と並行して、固定cadence Jevとevent-driven Jevのcall/token効率・PnL・DD・取引頻度を比較する。
