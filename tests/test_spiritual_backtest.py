@@ -33,6 +33,15 @@ def _ticks(values: list[tuple[str, str]]) -> list[MarketTick]:
     return rows
 
 
+def test_spiritual_backtest_default_reentry_wait_is_ten_minutes():
+    config = SpiritualBacktestConfig(
+        oracle="moon_phase",
+        initial_balance=100000,
+        size=1000,
+    )
+    assert config.reentry_seconds == 600
+
+
 def test_spiritual_backtest_runs_zodiac_on_fifty_plus_engine(monkeypatch):
     ticks = _ticks(
         [
