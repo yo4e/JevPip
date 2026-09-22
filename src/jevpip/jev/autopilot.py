@@ -106,9 +106,10 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                 "instructions": (
                     "Choose when the system should wake Jev for another review if no fill or "
                     "position close wakes it first. Select exactly one supplied typed trigger. "
-                    "The code, not Jev, watches ticks and bars between calls. Prefer the event "
-                    "that would materially change the current thesis rather than a needlessly "
-                    "frequent timer."
+                    "The code, not Jev, watches ticks and bars between calls. This wake choice "
+                    "is not a heartbeat or polling timer. Prefer a price-cross event when price "
+                    "movement can define the next meaningful review, and otherwise choose the "
+                    "least frequent supplied time/bar trigger that still protects the thesis."
                 ),
                 "criteria": _event_wake_criteria(event_plan["wake_plans"]),
             },
