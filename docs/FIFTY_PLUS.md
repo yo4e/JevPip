@@ -70,6 +70,10 @@ live Fifty+とraw tick Jev BTでは、実際に選んだ方向の売買とは別
 
 liveの結果は `data/fifty_outcomes/<instrument>/YYYY-MM-DD.jsonl`、Jev BTの結果は既存のreplay JSONLへ保存します。ChoiceのUP / DOWN確率は二択の相対選好であり、LONG / SHORTそれぞれの実測勝率や校正済み確率ではありません。
 
+完了した答え合わせは、次回以降のJev Fifty+判断にも `fifty_plus.outcome_history` として渡します。毎回ログ全文を投げるのではなく、直近20件のcompactな結果、全完了サンプルの方向別TP先着率、選択方向TP先着率、confidence帯ごとの実績を渡します。再起動後も `data/fifty_outcomes/` から最大500件を読み戻します。
+
+この履歴は**判断時刻までに両方向の答えが確定している記録だけ**を対象にします。現在進行中のラウンドや、その判断時刻より後に決着した結果は入れません。Jevには「過去の実績を参考にしてよいが、必須ルールにせず、小標本を一般化しすぎない」ことも明示します。
+
 ### AIが決めないもの
 
 Fifty+ではJevに次を判断させません。
