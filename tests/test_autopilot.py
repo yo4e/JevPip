@@ -530,7 +530,8 @@ def test_event_plan_rejects_tampered_risk_beyond_code_envelope():
 
     snap = b.snapshot()
     assert snap["target_status"] == "rejected:max_risk_per_trade"
-    assert snap["event_request_ready"] is True
+    assert snap["event_request_ready"] is False
+    assert snap["event_retry_not_before"] is not None
     assert snap["position"] is None
 
 
@@ -740,6 +741,7 @@ def test_fifty_question_compares_independent_long_and_short_net_races():
     b.seed_fifty_outcome_history(
         [{
             "kind": "fifty_directional_outcome",
+            "schema_version": 2,
             "complete": True,
             "decision_id": "past-1",
             "choice": "UP",
@@ -751,11 +753,13 @@ def test_fifty_question_compares_independent_long_and_short_net_races():
                 "LONG": {
                     "status": "take_profit_first",
                     "resolved_at": (START - timedelta(seconds=30)).isoformat(),
+                    "known_at": (START - timedelta(seconds=29)).isoformat(),
                     "duration_seconds": 90,
                 },
                 "SHORT": {
                     "status": "stop_loss_first",
                     "resolved_at": (START - timedelta(seconds=20)).isoformat(),
+                    "known_at": (START - timedelta(seconds=19)).isoformat(),
                     "duration_seconds": 100,
                 },
             },
