@@ -15,7 +15,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 
 - `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
-- `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補とwake候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
+- `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補、wake候補、plan expiry候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout、expiry候補は5 / 15 / 30 / 60分。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。実entry時にspread・手数料・slippage込みのNET ±Xをpaper OCOとして固定し、後続tickが境界を飛び越えても登録済み境界へ補間して決済する。
@@ -37,14 +37,15 @@ UIではJevとの混在を避けるため、通常のMomentum / RSI / MAは **�
 
 KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 1000→LONG 500は500減額、LONG 1000→SHORT 1000は全決済と新規SHORTを同一decision IDへ紐付ける。BTCは0.0001 BTC、FXは1通貨刻み。任意数量・任意コマンドをモデルから受け取る構造ではない。
 
-おまかせ戦略では別の2 Choiceを使う。
+おまかせ戦略では別の3 Choiceを使う。
 
 - `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補は資金上限・最大数量/保有額・spread等を満たすものだけを渡す。
 - `event_wake_plan`: 価格cross、1m/5m/15mの指定本数close、5/15/30分timeoutから、次にJevを起こす条件を選ぶ。任意文章、任意数式、任意コードは実行しない。
+- `event_expiry_plan`: wake条件とは独立したplanの最大寿命を5/15/30/60分から選ぶ。expiryが先に到来した場合は未約定entryを失効させ、古いplanで後から約定しない。
 
 初版のrisk profileはTIGHT / BASE / WIDEの動的候補で、stop幅はATRと往復コストからコードが生成し、take幅はRR 1.25 / 1.5 / 2.0候補になる。さらに `autopilot_max_risk_pct`（標準1% equity、UIで0.1〜25%）をhard envelopeとして、候補生成時と実行直前の両方で最大損失を検証する。risk envelopeは人間/設定側が所有し、Jevはこの上限を変更できない。
 
-MARKET entryはfresh quoteで直ちにpaper約定し、同時にprotective paper OCOを固定する。PRICE_CROSS entryはコードがMID crossingを監視して約定する。fill直後はOCOを残したままJevを再度起こす。HOLD中も既存OCOは残る。position close後も自動的に再判断する。
+MARKET entryはfresh quoteで直ちにpaper約定し、同時にprotective paper OCOを固定する。PRICE_CROSS entryはコードがMID crossingを監視して約定する。entry planは最初のfillで消費し、同じPRICE_CROSS planを再実行しない一方、protective OCOは独立して残す。fill直後はOCOを残したままJevを再度起こす。HOLD中も既存OCOは残る。position close後も自動的に再判断する。TP/SLは口座状態を変更する前に検証し、不正payloadでOCOなし建玉を残さない。
 
 コードが `schema_version / decision_id / session_id / account_version / instrument_id / target_side / target_quantity / confidence / reason / basis_market_timestamp / requested_at / available_at / expires_at` を組み立てる。選択肢、確率集合・合計、confidence、有限数、数量刻み、銘柄、時刻順を検証する。confidenceは実測勝率ではない。
 
@@ -85,7 +86,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 ## Historical Jev BT
 
-右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60/300/900秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。保存済みraw tickをFifty+比較の本命とし、raw tickがない場合のGMO historical 1分足fallbackは概算/smoke testとして扱う。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
+右側の同じ設定をJev BTへ渡す。daytrade / scalp等は1/2/5/10/30/60/300/900秒のcadenceから最大call数を見積もる。event modeはcadenceを実行条件に使わないため、対象market point数を上限に10,000 callsまでの明示的なcall budgetとしてpreviewし、その予算を実行時にも適用する。予算到達時に本来必要な再判断を実行できなくなった場合はその時点でreplayを打ち切り、`completed_full_window=false` / `call_budget_exhausted=true` を返して全区間成績として扱わせない。30秒〜1日のwindow、token確認、10,000 calls上限は維持する。保存済みraw tickをFifty+比較の本命とし、raw tickがない場合のGMO historical 1分足fallbackは概算/smoke testとして扱う。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
 
 受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。Fifty+とおまかせ戦略のMARKET/CLOSEはliveと同様、応答の `available_at` に達したら、その時点までに受信済みの最新fresh quoteを使って即時適用する。おまかせ戦略の価格cross / bar close / timeoutはreplay tickからコード側で発火させ、固定cadenceでは再問い合わせしない。次のtickをentry価格として先取りしない。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
 
