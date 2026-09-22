@@ -62,7 +62,7 @@ class PaperConfig:
     autopilot_horizon_seconds: int = 600
     autopilot_fifty_target_units: float = 5.0
     autopilot_fifty_target_jpy: float = 500.0
-    autopilot_fifty_reentry_seconds: float = 60.0
+    autopilot_fifty_reentry_seconds: float = 600.0
     autopilot_fifty_oracle: str = "jev"
     autopilot_ttl_seconds: float = 5.0
     autopilot_confirmations: int = 2
@@ -73,7 +73,7 @@ class PaperConfig:
     autopilot_max_risk_pct: float = 0.01
     autopilot_max_change: float | None = None
     autopilot_entry_loss: float | None = None
-    autopilot_max_spread: float | None = None
+    autopilot_max_spread: float | None = 1.0
     autopilot_min_confidence: float | None = None
     autopilot_cooldown_seconds: float | None = None
     autopilot_max_hold_seconds: float | None = None
