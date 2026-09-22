@@ -145,7 +145,7 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
             "fresh executable quote when the answer becomes available, so do not assume "
             "future spread is fixed. There is no abstain, FLAT, KEEP, position sizing, or "
             "TP/SL adjustment decision. Use the supplied trader context broadly: current "
-            "quote, recent ticks, 1m/5m/15m/1h price structure and indicators, clock, "
+            "quote, bounded recent 1m/5m/15m/1h price structure and indicators, clock, "
             "account/PnL history, recent executions, costs, constraints, and any supplied "
             "external context. The `fifty_plus.outcome_history` block contains only "
             "past completed answer keys known before this decision, including recent paired "
