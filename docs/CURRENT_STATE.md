@@ -1,6 +1,6 @@
 # JevPip Current State
 
-更新日: 2026-09-21
+更新日: 2026-09-22
 
 この文書は、JevPipの**現在の実装状態と次の作業境界**を短く把握するためのhandoffです。
 
@@ -49,7 +49,7 @@ Jevおまかせはprimary paper workflowとして実装済みです。
 スタイル:
 - **デイトレ**: `trader_context_v1` を利用。標準900秒（15分）ごとに現在の最適total positionを再判断
 - **スキャルピング**: `trader_context_v1` を利用。標準60秒ごとに現在の最適total positionを再判断。短く設定するほどtoken消費が増える
-- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。対称のnet TP/SLと決済後待機を使う
+- **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。LONG / SHORTそれぞれについて自身のnet TP-vs-SLを独立に評価させ、対称のnet TP/SLと決済後待機を使う
 
 3スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
 
@@ -342,6 +342,7 @@ strategy PnL backtestではありません。
 - Fifty+応答は `available_at` 時点までに受信済みの最新fresh quoteでlive同様に即時適用
 - replay開始時もPublic historical KLineを `start_at` 時点まででwarmupし、1m / 5m / 15m / 1h contextをliveと揃える
 - pending decision中の重複call抑止
+- Fifty+の実entryごとにLONG / SHORT双方の独立TP-vs-SL結果をraw pathで答え合わせし、TP先着率・決着時間・両方向SL・未決着を保存
 - Jev direct paper entry + bounded HOLD/CLOSE
 - preview時の最大call数計算
 - recent reported usageからtoken消費目安
@@ -349,6 +350,7 @@ strategy PnL backtestではありません。
 - UI + APIの二重token-use acknowledgement
 - 1run 10,000 calls hard cap
 - runtime output: `data/jev_replays/<instrument>/`
+- live Fifty+ direction label: `data/fifty_outcomes/<instrument>/YYYY-MM-DD.jsonl`
 
 制約:
 
