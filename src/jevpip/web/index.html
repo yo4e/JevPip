@@ -230,7 +230,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div class="position" id="paper-position">建玉なし</div>
           <div class="account-stats">
             <div class="stat"><span>コスト後確定損益</span><strong id="paper-realized">-</strong></div>
-            <div class="stat"><span>含み損益</span><strong id="paper-unrealized">-</strong></div>
+            <div class="stat"><span>含み損益（入口手数料除く）</span><strong id="paper-unrealized">-</strong></div>
           </div>
           <details class="account-detail"><summary>成績・コストの内訳</summary><div class="account-stats">
             <div class="stat"><span>粗利益</span><strong id="paper-gross">-</strong></div>
@@ -931,7 +931,7 @@ $("paper-cost-note").textContent=costText;
 $("auto-live-diagnostics").textContent=diagnosticsText(p);
 $("auto-live-diagnostics").style.display=p?"block":"none";
 renderExecutions("auto-live-executions",p.trades||[]);
-$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(formatPrice(p.position.entry_price))} / コスト後含み損益 ${yen(p.position.unrealized_pnl)} / ${Number(p.position.current_units||0).toLocaleString("ja-JP",{maximumFractionDigits:3})} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
+$("paper-position").innerHTML=p.position?`<strong>${esc(p.position.side)} ${Number(p.position.size).toLocaleString()} ${esc(instrumentSpec()?.quantity_label||"")}</strong><br>建値 ${esc(formatPrice(p.position.entry_price))} / 今決済した場合のNET損益 ${yen(p.position.unrealized_pnl)} / ${Number(p.position.current_units||0).toLocaleString("ja-JP",{maximumFractionDigits:3})} ${esc(p.position.move_unit_label||"")}`:"建玉なし"}
 
 function signalGateSummary(d){
   const x=d?.direction_detail,p=x?.policy;
