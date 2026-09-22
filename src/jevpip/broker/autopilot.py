@@ -16,6 +16,11 @@ from jevpip.broker.strategies import (
     tarot_signal,
     zodiac_polarity_signal,
 )
+from jevpip.fifty_outcomes import (
+    build_directional_races,
+    build_fifty_outcome_context,
+    outcome_completed_at,
+)
 from jevpip.instruments import get_instrument
 from jevpip.jev.autopilot import REASONS, finite_decimal
 from jevpip.trader_context import TIMEFRAME_SPECS, build_timeframe_view, market_clock
@@ -104,6 +109,7 @@ class AutopilotBroker(PaperBroker):
         self._last_spiritual_decision: dict[str, Any] | None = None
         self._halted = False
         self._executions: deque[dict[str, Any]] = deque(maxlen=1000)
+        self._fifty_outcome_history: deque[dict[str, Any]] = deque(maxlen=500)
         self._tick_tape: deque[dict[str, Any]] = deque(maxlen=80)
         self._timeframe_bars: dict[str, deque[dict[str, Any]]] = {
             interval: deque(maxlen=256)
@@ -601,6 +607,75 @@ class AutopilotBroker(PaperBroker):
     def _round_trip_cost(self, bid: Decimal, ask: Decimal) -> Decimal:
         return ask-bid + 2*self.slippage_price + (ask+bid)*self.fee_rate
 
+    def seed_fifty_outcome_history(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        as_of: datetime,
+    ) -> None:
+        """Seed only completed outcome labels known by *as_of*."""
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must be timezone-aware")
+        self._fifty_outcome_history.clear()
+        for record in records:
+            completed_at = outcome_completed_at(record)
+            if completed_at is None or completed_at > as_of.astimezone(timezone.utc):
+                continue
+            self._fifty_outcome_history.append(record)
+
+    def remember_fifty_outcome(self, record: dict[str, Any]) -> None:
+        """Expose one newly completed answer key to future Fifty+ decisions."""
+        if outcome_completed_at(record) is None:
+            return
+        decision_id = record.get("decision_id")
+        if decision_id is not None and any(
+            existing.get("decision_id") == decision_id
+            for existing in self._fifty_outcome_history
+        ):
+            return
+        self._fifty_outcome_history.append(record)
+
+    def fifty_directional_races(
+        self,
+        *,
+        bid: Decimal | None = None,
+        ask: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """Build independent LONG/SHORT net TP-vs-SL contracts at one quote."""
+        if self.config.autopilot_style != "fifty":
+            raise ValueError("directional races are Fifty+ only")
+        current_bid = self._last_bid if bid is None else bid
+        current_ask = self._last_ask if ask is None else ask
+        if current_bid is None or current_ask is None:
+            raise ValueError("market not ready")
+        quantity = (
+            Decimal(str(self.config.size)) / self.quantity_step
+        ).to_integral_value(rounding=ROUND_DOWN) * self.quantity_step
+        target_kind = (
+            "jpy" if self.instrument.market_kind == "crypto_spot" else "units"
+        )
+        target_value = Decimal(
+            str(
+                self.config.autopilot_fifty_target_jpy
+                if target_kind == "jpy"
+                else self.config.autopilot_fifty_target_units
+            )
+        )
+        target_label = (
+            "円" if target_kind == "jpy" else self.config.move_unit_label
+        )
+        return build_directional_races(
+            bid=current_bid,
+            ask=current_ask,
+            quantity=quantity,
+            price_unit=self.price_unit,
+            fee_rate=self.fee_rate,
+            slippage_price=self.slippage_price,
+            target_value=target_value,
+            target_label=target_label,
+            target_kind=target_kind,
+        )
+
     def _fifty_entry_gate(
         self,
         bid: Decimal,
@@ -828,23 +903,10 @@ class AutopilotBroker(PaperBroker):
             transition = change*((ask-bid)/2+self.slippage_price+(ask+bid)/2*self.fee_rate)
             targets[key] = {"side": side, "quantity": str(quantity)}
             if self.config.autopilot_style == "fifty":
-                fifty_target = (
-                    self.config.autopilot_fifty_target_jpy
-                    if self.instrument.market_kind == "crypto_spot"
-                    else self.config.autopilot_fifty_target_units
-                )
-                fifty_label = (
-                    "円"
-                    if self.instrument.market_kind == "crypto_spot"
-                    else self.config.move_unit_label
-                )
-                signed_boundary = fifty_target if key == "UP" else -fifty_target
-                targets[key].update(
-                    directional_boundary_value=signed_boundary,
-                    directional_boundary_label=(
-                        f"{signed_boundary:+g} {fifty_label}"
-                    ),
-                )
+                targets[key]["directional_race"] = self.fifty_directional_races(
+                    bid=bid,
+                    ask=ask,
+                )[key]
             else:
                 targets[key].update(
                     notional_jpy=float(quantity*(ask+bid)/2),
@@ -942,6 +1004,7 @@ class AutopilotBroker(PaperBroker):
                 if self.instrument.market_kind == "crypto_spot"
                 else self.config.move_unit_label
             )
+            directional_races = self.fifty_directional_races(bid=bid, ask=ask)
             autopilot_state["fifty_plus"] = {
                 "always_one_position": True,
                 "waiting_for_direction": self.position is None,
@@ -950,11 +1013,18 @@ class AutopilotBroker(PaperBroker):
                 "target_kind": "jpy" if self.instrument.market_kind == "crypto_spot" else "units",
                 "target_value": fifty_target,
                 "target_label": fifty_label,
-                "up_boundary_value": fifty_target,
-                "down_boundary_value": -fifty_target,
-                "boundary_question": (
-                    f"+{fifty_target:g} {fifty_label} と "
-                    f"-{fifty_target:g} {fifty_label} のどちらに先に到達するか"
+                "prediction_task": (
+                    "Compare two independent hypothetical trades from the same current "
+                    "conditions. For LONG, estimate whether its own net take-profit is "
+                    "reached before its own net stop-loss. Do the same independently for "
+                    "SHORT, then choose the side with the stronger TP-before-SL case."
+                ),
+                "directional_races": directional_races,
+                "choice_probabilities_are_relative_preferences": True,
+                "directional_win_probabilities_are_not_complements": True,
+                "outcome_history": build_fifty_outcome_context(
+                    list(self._fifty_outcome_history),
+                    as_of=as_of,
                 ),
                 "net_of_spread_fees_slippage": True,
             }

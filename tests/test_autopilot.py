@@ -303,7 +303,7 @@ def test_fifty_trader_context_keeps_past_performance_and_filters_future_bars():
     assert "exit_reasons" in state["performance"]
 
 
-def test_fifty_question_states_exact_configured_net_boundaries():
+def test_fifty_question_compares_independent_long_and_short_net_races():
     b = broker(
         autopilot_style="fifty",
         autopilot_horizon_seconds=30,
@@ -312,20 +312,56 @@ def test_fifty_question_states_exact_configured_net_boundaries():
         slippage_units=0,
     )
     b.on_tick(tick(0))
+    b.seed_fifty_outcome_history(
+        [{
+            "kind": "fifty_directional_outcome",
+            "complete": True,
+            "decision_id": "past-1",
+            "choice": "UP",
+            "chosen_side": "LONG",
+            "entry_at": (START - timedelta(minutes=2)).isoformat(),
+            "prediction": {"confidence": 0.7},
+            "races": {},
+            "outcomes": {
+                "LONG": {
+                    "status": "take_profit_first",
+                    "resolved_at": (START - timedelta(seconds=30)).isoformat(),
+                    "duration_seconds": 90,
+                },
+                "SHORT": {
+                    "status": "stop_loss_first",
+                    "resolved_at": (START - timedelta(seconds=20)).isoformat(),
+                    "duration_seconds": 100,
+                },
+            },
+        }],
+        as_of=START,
+    )
     state = b.decision_state(START)
     fifty = state["autopilot"]["fifty_plus"]
     instructions = question_specs(state)["target_position"]["instructions"]
 
     assert fifty["target_value"] == 5
-    assert fifty["up_boundary_value"] == 5
-    assert fifty["down_boundary_value"] == -5
-    assert state["autopilot"]["targets"]["UP"]["directional_boundary_label"] == "+5 pips"
-    assert state["autopilot"]["targets"]["DOWN"]["directional_boundary_label"] == "-5 pips"
-    assert "+5 pips" in fifty["boundary_question"]
-    assert "-5 pips" in fifty["boundary_question"]
-    assert "+5 pips" in instructions
-    assert "-5 pips" in instructions
-    assert "spread, fees, and slippage" in instructions
+    assert fifty["directional_win_probabilities_are_not_complements"] is True
+    assert fifty["outcome_history"]["sample_count"] == 1
+    assert fifty["outcome_history"]["future_results_excluded"] is True
+    assert fifty["outcome_history"]["recent"][0]["choice"] == "UP"
+    assert set(fifty["directional_races"]) == {"UP", "DOWN"}
+    up = state["autopilot"]["targets"]["UP"]["directional_race"]
+    down = state["autopilot"]["targets"]["DOWN"]["directional_race"]
+    assert up["side"] == "LONG"
+    assert down["side"] == "SHORT"
+    assert up["target"]["net_take_profit_jpy"] == pytest.approx(50)
+    assert up["target"]["net_stop_loss_jpy"] == pytest.approx(-50)
+    assert down["target"]["net_take_profit_jpy"] == pytest.approx(50)
+    assert down["target"]["net_stop_loss_jpy"] == pytest.approx(-50)
+    assert up["reference_exit_conditions"]["quote_side"] == "bid"
+    assert down["reference_exit_conditions"]["quote_side"] == "ask"
+    assert "TWO INDEPENDENT" in instructions
+    assert "LONG losing does NOT imply SHORT would have won" in instructions
+    assert "not complements" in instructions
+    assert "Choice probabilities are relative choice preferences" in instructions
+    assert "past completed answer keys" in instructions
     assert "1m/5m/15m/1h" in instructions
     assert "account/PnL" in instructions
     assert "Decide for yourself" in instructions
@@ -915,6 +951,16 @@ def test_fifty_replay_executes_at_response_time_before_sparse_next_tick(tmp_path
     assert trades[0]["timestamp"] == (START + timedelta(seconds=0.1)).isoformat()
     assert trades[1]["reason"] == "fifty_take_profit"
     assert not any("rejected:expired" in json.dumps(row) for row in saved)
+    labels = result["summary"]["fifty_directional_outcomes"]
+    assert labels["samples"] == 1
+    assert labels["chosen_resolved"] == 1
+    assert labels["chosen_tp_first_rate"] == pytest.approx(1.0)
+    assert labels["directions"]["LONG"]["take_profit_first"] == 1
+    assert labels["directions"]["SHORT"]["stop_loss_first"] == 1
+    outcome_rows = [row for row in saved if row.get("kind") == "fifty_directional_outcome"]
+    assert len(outcome_rows) == 1
+    assert outcome_rows[0]["outcomes"]["LONG"]["status"] == "take_profit_first"
+    assert outcome_rows[0]["outcomes"]["SHORT"]["status"] == "stop_loss_first"
 
 
 def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch):
@@ -1272,6 +1318,54 @@ def test_replay_rejects_excessive_exchange_clock_lead_before_call(tmp_path):
             jev_client=MustNotCall(),
             acknowledged_token_use=True,
         )
+
+
+def test_live_controller_persists_fifty_directional_outcomes(tmp_path):
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="jev",
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=60,
+        autopilot_max_spread=10,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    ui = UIController(Settings(data_dir=tmp_path))
+    ui._paper, ui._paper_config = b, b.config
+    ui._instrument_id = "USD_JPY"
+
+    async def run():
+        await ui._on_update({"kind": "tick", **tick(0, 99, 101)})
+        await ui._on_update({"kind": "decision", **event_for(b, 0, "UP")})
+        await ui._on_update({"kind": "tick", **tick(10, 106, 108)})
+
+    asyncio.run(run())
+
+    path = tmp_path/"fifty_outcomes"/"USD_JPY"/"2026-09-20.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [row["kind"] for row in rows] == [
+        "fifty_directional_outcome_started",
+        "fifty_directional_outcome",
+    ]
+    completed = rows[-1]
+    assert completed["choice"] == "UP"
+    assert completed["chosen_side"] == "LONG"
+    assert completed["outcomes"]["LONG"]["status"] == "take_profit_first"
+    assert completed["outcomes"]["SHORT"]["status"] == "stop_loss_first"
+
+    summary = ui.snapshot()["fifty_outcomes"]["summary"]
+    assert summary["samples"] == 1
+    assert summary["chosen_tp_first_rate"] == pytest.approx(1.0)
+
+    jev_history = b.decision_state(
+        START + timedelta(seconds=11)
+    )["autopilot"]["fifty_plus"]["outcome_history"]
+    assert jev_history["sample_count"] == 1
+    assert jev_history["recent"][0]["choice"] == "UP"
+    assert jev_history["recent"][0]["outcomes"]["LONG"]["status"] == "take_profit_first"
 
 
 def test_live_controller_persists_both_reversal_legs(tmp_path):

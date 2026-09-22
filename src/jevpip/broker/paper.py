@@ -15,6 +15,7 @@ from jevpip.broker.strategies import (
     rsi_mean_reversion_signal,
 )
 from jevpip.broker.supervisor import SupervisorDecision, deterministic_supervisor
+from jevpip.fifty_outcomes import hypothetical_net_pnl
 
 Side = Literal["LONG", "SHORT"]
 
@@ -725,10 +726,16 @@ class PaperBroker:
     def _position_net_pnl(self, bid: Decimal, ask: Decimal) -> Decimal:
         if self.position is None:
             return Decimal("0")
-        gross = self._position_gross_pnl(bid, ask)
-        exit_price = self._exit_price(self.position.side, bid, ask)
-        exit_fee = self._fee(exit_price, self.position.size)
-        return gross - self.position.entry_fee - exit_fee
+        return hypothetical_net_pnl(
+            side=self.position.side,
+            quantity=self.position.size,
+            entry_price=self.position.entry_price,
+            entry_fee=self.position.entry_fee,
+            bid=bid,
+            ask=ask,
+            fee_rate=self.fee_rate,
+            slippage_price=self.slippage_price,
+        )
 
     def _exit_reason(
         self,
