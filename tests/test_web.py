@@ -65,6 +65,9 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "1ポジションずつ" in response.text
         assert 'id="fifty-reentry-seconds"' in response.text
         assert 'id="fifty-reentry-seconds" type="number" value="600"' in response.text
+        assert 'if(fifty)$("fifty-reentry-seconds").value="600";' in response.text
+        assert 'if(applyDefaults&&spiritual)$("fifty-reentry-seconds").value="600";' in response.text
+        assert 'autopilotStyleChanged(false);modeChanged();applyInstrumentDefaults();' in response.text
         assert '<option value="event" selected>おまかせ戦略</option><option value="fifty">Fifty+</option><option value="daytrade">デイトレ</option><option value="scalp">スキャルピング</option>' in response.text
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
