@@ -243,3 +243,90 @@ def test_load_fifty_outcomes_survives_restart_without_future_leak(tmp_path):
         as_of=START + timedelta(seconds=50),
     )
     assert [row["choice"] for row in loaded] == ["UP"]
+
+
+def test_outcome_known_at_controls_causal_history_cutoff(tmp_path):
+    root = tmp_path / "fifty_outcomes" / "USD_JPY"
+    root.mkdir(parents=True)
+    record = new_outcome_record(
+        decision=decision("UP"),
+        races=races(),
+        entry_at=START + timedelta(seconds=0.5),
+        source_kind="live_raw_ticks",
+    )
+    assert update_outcome_record(
+        record,
+        at=START + timedelta(seconds=1),
+        known_at=START + timedelta(seconds=2),
+        bid=Decimal("106"),
+        ask=Decimal("108"),
+        market_status="OPEN",
+    ) is False
+    assert update_outcome_record(
+        record,
+        at=START + timedelta(seconds=1.1),
+        known_at=START + timedelta(seconds=2.1),
+        bid=Decimal("106"),
+        ask=Decimal("108"),
+        market_status="OPEN",
+    ) is True
+    path = root / "2026-09-20.jsonl"
+    path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    before_known = load_fifty_outcomes(
+        tmp_path,
+        instrument_id="USD_JPY",
+        as_of=START + timedelta(seconds=2.05),
+    )
+    after_known = load_fifty_outcomes(
+        tmp_path,
+        instrument_id="USD_JPY",
+        as_of=START + timedelta(seconds=2.2),
+    )
+    assert before_known == []
+    assert [row["choice"] for row in after_known] == ["UP"]
+
+
+def test_pre_entry_market_timestamp_cannot_resolve_fifty_outcome():
+    entry_at = START + timedelta(seconds=0.5)
+    record = new_outcome_record(
+        decision=decision("UP"),
+        races=races(),
+        entry_at=entry_at,
+        source_kind="live_raw_ticks",
+    )
+    assert update_outcome_record(
+        record,
+        at=START + timedelta(seconds=0.2),
+        known_at=START + timedelta(seconds=0.6),
+        bid=Decimal("106"),
+        ask=Decimal("108"),
+        market_status="OPEN",
+    ) is False
+    assert record["outcomes"]["LONG"]["status"] == "pending"
+    assert record["outcomes"]["SHORT"]["status"] == "pending"
+
+
+def test_legacy_outcome_without_known_at_is_excluded_from_causal_context(tmp_path):
+    record = completed_record(choice="UP", completed_after=10)
+    record["schema_version"] = 1
+    for side in ("LONG", "SHORT"):
+        record["outcomes"][side].pop("known_at", None)
+
+    context = build_fifty_outcome_context(
+        [record],
+        as_of=START + timedelta(seconds=100),
+    )
+    assert context["sample_count"] == 0
+
+    root = tmp_path / "fifty_outcomes" / "USD_JPY"
+    root.mkdir(parents=True)
+    (root / "2026-09-20.jsonl").write_text(
+        json.dumps(record) + "\n",
+        encoding="utf-8",
+    )
+    assert load_fifty_outcomes(
+        tmp_path,
+        instrument_id="USD_JPY",
+        as_of=START + timedelta(seconds=100),
+    ) == []
