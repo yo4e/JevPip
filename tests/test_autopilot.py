@@ -1569,6 +1569,36 @@ def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
     )
     b.on_tick(tick(0))
     state = b.decision_state(START)
+    # Simulate a mature session: the API payload must stay bounded even when the
+    # broker has accumulated more history and executions internally.
+    for interval, view in state["autopilot"]["timeframes"].items():
+        view["closed_bars"] = [
+            {
+                "open_time": (START + timedelta(minutes=index)).isoformat(),
+                "end_time": (START + timedelta(minutes=index + 1)).isoformat(),
+                "open": 100 + index,
+                "high": 101 + index,
+                "low": 99 + index,
+                "close": 100.5 + index,
+                "ticks": 42,
+            }
+            for index in range(40)
+        ]
+        view["closed_bars_available"] = 240
+        view["indicators"] = {
+            "sma20": 123.4,
+            "sma50": 122.2,
+            "sma200": 120.1,
+            "rsi14": 55.5,
+            "atr14": 0.42,
+            "recent_20_high": 130.0,
+            "recent_20_low": 110.0,
+            "range_position_20": 0.6,
+        }
+    state["autopilot"]["recent_executions"] = [
+        {"execution_id": f"test:{index}", "action": "CLOSE", "pnl": index}
+        for index in range(30)
+    ]
     plan = state["autopilot"]["event_plan"]
     trade_choice = next(
         key
@@ -1609,6 +1639,15 @@ def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
     assert "targets" not in sent
     assert "recent_ticks" not in sent
     assert "closed_1m_bars" not in sent
+    assert len(sent["recent_executions"]) == 10
+    assert len(state["autopilot"]["recent_executions"]) == 30
+    for interval, view in sent["timeframes"].items():
+        assert len(view["closed_bars"]) == 16, interval
+        assert view["closed_bars_available"] == 240
+        assert view["indicators"]["recent_20_high"] == 130.0
+        assert view["indicators"]["recent_20_low"] == 110.0
+        assert all("ticks" not in row for row in view["closed_bars"])
+        assert len(state["autopilot"]["timeframes"][interval]["closed_bars"]) == 40
     assert "trade_plans" not in sent_plan
     assert "wake_plans" not in sent_plan
     assert "expiry_plans" not in sent_plan
