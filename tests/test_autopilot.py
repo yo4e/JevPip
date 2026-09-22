@@ -60,7 +60,7 @@ def event_for(b, second, choice="LONG_BASE", **updates):
     return event
 
 
-def event_plan_answer(state, trade_choice, wake_choice):
+def event_plan_answer(state, trade_choice, wake_choice, expiry_choice="EXPIRY_30M"):
     def select(key, choices):
         return {
             "type": "choice",
@@ -79,15 +79,16 @@ def event_plan_answer(state, trade_choice, wake_choice):
         "answers": {
             "event_trade_plan": select(trade_choice, plan["trade_plans"]),
             "event_wake_plan": select(wake_choice, plan["wake_plans"]),
+            "event_expiry_plan": select(expiry_choice, plan["expiry_plans"]),
         },
     }
 
 
-def event_plan_event(b, second, trade_choice, wake_choice):
+def event_plan_event(b, second, trade_choice, wake_choice, expiry_choice="EXPIRY_30M"):
     requested = START + timedelta(seconds=second)
     state = b.decision_state(requested)
     event = {
-        "jev": event_plan_answer(state, trade_choice, wake_choice),
+        "jev": event_plan_answer(state, trade_choice, wake_choice, expiry_choice),
         "state": state,
         "requested_at": requested.isoformat(),
         "available_at": (requested + timedelta(seconds=0.1)).isoformat(),
@@ -200,7 +201,7 @@ def test_event_plan_builds_bounded_trade_and_wake_choices():
         plan["wake_plans"]
     )
     assert plan["arbitrary_code_or_natural_language_triggers"] is False
-    assert set(question_specs(state)) == {"event_trade_plan", "event_wake_plan"}
+    assert set(question_specs(state)) == {"event_trade_plan", "event_wake_plan", "event_expiry_plan"}
     assert _should_request_jev(state) is True
 
 
@@ -311,6 +312,199 @@ def test_event_bar_close_and_timeout_are_code_only_wake_triggers():
     timeout.on_tick(tick(301))
     assert timeout.snapshot()["event_request_ready"] is True
     assert timeout.snapshot()["event_last_trigger"] == "timeout:300"
+
+
+def test_event_price_cross_plan_is_consumed_after_first_fill():
+    b = broker(
+        autopilot_style="event",
+        size=5,
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_quantity=5,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0, bid=99.99, ask=100.01))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "PRICE_CROSS" and value.get("side") == "LONG"
+    )
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_30M")
+    trigger = Decimal(
+        event["target_decision"]["event_plan"]["trade"]["entry_trigger"]["price"]
+    )
+    b.on_decision(event)
+
+    above = trigger + Decimal("0.05")
+    opened = b.on_tick(
+        tick(1, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01")))
+    )
+    assert opened and opened[0]["action"] == "OPEN"
+    first_size = b.position.size
+    assert b.snapshot()["event_plan"] is None
+
+    below = trigger - Decimal("0.05")
+    b.on_tick(
+        tick(2, bid=float(below - Decimal("0.01")), ask=float(below + Decimal("0.01")))
+    )
+    repeated = b.on_tick(
+        tick(3, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01")))
+    )
+    assert not any(row["action"] in {"OPEN", "INCREASE"} for row in repeated)
+    assert b.position is not None
+    assert b.position.size == first_size
+
+
+def test_event_bar_close_wake_survives_full_history_deque():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    rows = []
+    for index in range(256):
+        ended = START - timedelta(minutes=255 - index)
+        opened = ended - timedelta(minutes=1)
+        rows.append({
+            "open_time": opened.isoformat(),
+            "end_time": ended.isoformat(),
+            "open": 100,
+            "high": 101,
+            "low": 99,
+            "close": 100,
+        })
+    b.seed_trader_history(
+        {
+            "source": "test",
+            "as_of": START.isoformat(),
+            "timeframes": {
+                "1min": rows,
+                "5min": [],
+                "15min": [],
+                "1hour": [],
+            },
+            "used_dates": {},
+            "errors": {},
+        },
+        as_of=START,
+    )
+    b.on_tick(tick(0))
+    b.on_decision(event_plan_event(b, 0, "WAIT", "BAR_1M_1"))
+    assert b.snapshot()["event_request_ready"] is False
+    b.on_tick(tick(61))
+    assert b.snapshot()["event_request_ready"] is True
+    assert b.snapshot()["event_last_trigger"] == "bar_close:1min:1"
+
+
+def test_event_blocked_market_waits_for_selected_wake_instead_of_requerying_each_tick():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_spread=1,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0, bid=99, ask=101))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "MARKET" and value.get("side") == "LONG"
+    )
+    b.on_decision(event_plan_event(b, 0, trade_choice, "TIMEOUT_30M"))
+    assert b.execute_event_pending(START + timedelta(seconds=0.1)) == []
+    assert b.snapshot()["target_status"] == "max_spread"
+    assert b.snapshot()["event_request_ready"] is False
+
+    for second in (1, 2, 3, 4):
+        b.on_tick(tick(second, bid=99, ask=101))
+        state = b.decision_state(START + timedelta(seconds=second))
+        assert b.snapshot()["event_request_ready"] is False
+        assert _should_request_jev(state) is False
+
+
+def test_event_timeout_wins_over_late_price_cross():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0, bid=99.99, ask=100.01))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "PRICE_CROSS" and value.get("side") == "LONG"
+    )
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_5M", "EXPIRY_30M")
+    trigger = Decimal(
+        event["target_decision"]["event_plan"]["trade"]["entry_trigger"]["price"]
+    )
+    b.on_decision(event)
+    below = trigger - Decimal("0.05")
+    above = trigger + Decimal("0.05")
+    b.on_tick(tick(299, bid=float(below - Decimal("0.01")), ask=float(below + Decimal("0.01"))))
+    trades = b.on_tick(tick(301, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
+    assert trades == []
+    assert b.position is None
+    assert b.snapshot()["event_request_ready"] is True
+    assert b.snapshot()["event_last_trigger"] == "timeout:300"
+
+
+def test_event_rejects_invalid_take_profit_before_account_mutation():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "MARKET"
+    )
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_30M")
+    event["target_decision"]["event_plan"]["trade"]["oco"]["take_profit_units"] = 0
+    before_version = b.account_version
+    b.on_decision(event)
+
+    snap = b.snapshot()
+    assert snap["target_status"] == "rejected:invalid event take profit"
+    assert snap["position"] is None
+    assert b.account_version == before_version
+    assert b.execute_event_pending(START + timedelta(seconds=0.1)) == []
+
+
+def test_event_plan_expiry_invalidates_old_entry_before_cross():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0, bid=99.99, ask=100.01))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "PRICE_CROSS" and value.get("side") == "LONG"
+    )
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_30M", "EXPIRY_5M")
+    trigger = Decimal(
+        event["target_decision"]["event_plan"]["trade"]["entry_trigger"]["price"]
+    )
+    b.on_decision(event)
+    above = trigger + Decimal("0.05")
+    trades = b.on_tick(tick(301, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
+    assert trades == []
+    assert b.position is None
+    assert b.snapshot()["event_last_trigger"] == "plan_expired"
+    assert b.snapshot()["event_request_ready"] is True
 
 
 def test_event_plan_rejects_tampered_risk_beyond_code_envelope():
