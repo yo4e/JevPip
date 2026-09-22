@@ -239,6 +239,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
             <div class="stat"><span>最大DD</span><strong id="paper-dd">-</strong></div>
             <div class="stat"><span>決済</span><strong id="paper-trades">-</strong></div>
             <div class="stat"><span>勝率</span><strong id="paper-winrate">-</strong></div>
+            <div class="stat"><span>Fifty+ 選択方向TP先着</span><strong id="paper-fifty-outcome">-</strong></div>
           </div>
           <div class="position" id="paper-strategy-state">戦略判断: - / 監督: -</div>
           <div class="notice" id="paper-cost-note"></div>
@@ -631,7 +632,7 @@ function applyStrategyPreset(value){
   }
   updateTradeSummary();updateStrategyBacktestSummary();
 }
-function modeChanged(){const paper=$("mode").value==="paper";const access=$("jev-access"),slot=$(paper?"jev-access-paper-slot":"jev-access-observe-slot");if(access&&slot&&access.parentElement!==slot)slot.appendChild(access);$("paper-basic").style.display=paper?"block":"none";$("paper-advanced").style.display=paper&&$("paper-mode").value==="strategy"?"block":"none";if(paper)setPaperDecisionMode($("paper-mode").value||"jev",false);else updateJevAccess();updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper(active?state.lastStatus.paper:null)}}
+function modeChanged(){const paper=$("mode").value==="paper";const access=$("jev-access"),slot=$(paper?"jev-access-paper-slot":"jev-access-observe-slot");if(access&&slot&&access.parentElement!==slot)slot.appendChild(access);$("paper-basic").style.display=paper?"block":"none";$("paper-advanced").style.display=paper&&$("paper-mode").value==="strategy"?"block":"none";if(paper)setPaperDecisionMode($("paper-mode").value||"jev",false);else updateJevAccess();updateTradeSummary();if(state.lastStatus){const active=state.lastStatus.instrument_id===$("instrument").value;renderPaper(active?state.lastStatus.paper:null,active?state.lastStatus.fifty_outcomes:null)}}
 function strategyChanged(){applyStrategyPreset($("paper-strategy").value)}
 function strategyEnabledChanged(){updateTradeSummary();updateStrategyBacktestSummary()}
 const paperFields={
@@ -883,12 +884,12 @@ async function stop(){
 async function resetPaper(){try{await api("/api/paper/reset",{method:"POST",body:"{}"});toast("デモ口座をリセットしました。");refresh()}catch(e){toast(e.message,true)}}
 
 function pnlClass(node,v){node.classList.remove("pos","neg");if(Number(v)>0)node.classList.add("pos");if(Number(v)<0)node.classList.add("neg")}
-function renderPaper(p){
+function renderPaper(p,outcomes=null){
 const costWarning=$("fifty-cost-warning");
 $("paper-session-state").textContent=p&&!state.lastStatus?.running?" · 停止済み":"";
 if(!p){
   if(costWarning)costWarning.style.display="none";
-  $("paper-empty").textContent=$("mode").value==="paper"?"上部の「開始」でデモ取引を始めます。":"観測のみ。デモ取引は行いません。";$("session-paper-state").textContent="未開始";$("auto-live-diagnostics").style.display="none";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
+  $("paper-empty").textContent=$("mode").value==="paper"?"上部の「開始」でデモ取引を始めます。":"観測のみ。デモ取引は行いません。";$("session-paper-state").textContent="未開始";$("auto-live-diagnostics").style.display="none";$("paper-fifty-outcome").textContent="-";renderExecutions("auto-live-executions",[]);$("paper-empty").style.display="block";$("paper-body").style.display="none";$("paper-equity").textContent="-";$("paper-pnl").textContent="デモOFF";$("paper-reset").disabled=true;return}
 $("paper-empty").style.display="none";$("paper-body").style.display="block";$("paper-reset").disabled=Boolean(state.pendingSession);
 const costGate=p.fifty_entry_gate;
 const costBlocked=Boolean(p.autopilot_enabled&&p.config?.autopilot_style==="fifty"&&costGate&&!costGate.ready);
@@ -917,6 +918,9 @@ $("paper-gross").textContent=yen(p.gross_realized_pnl);$("paper-fees").textConte
 $("paper-pf").textContent=p.profit_factor==null?(p.closed_trades&&p.realized_pnl>0?"∞":"-"):Number(p.profit_factor).toFixed(2);
 $("paper-dd").textContent=yen(p.max_drawdown)+" / "+pct(p.max_drawdown_pct);
 $("paper-trades").textContent=p.closed_trades;$("paper-winrate").textContent=p.win_rate==null?"-":pct(p.win_rate);
+const fiftySummary=outcomes?.summary||{},fiftyResolved=Number(fiftySummary.chosen_resolved||0),fiftyTp=Number(fiftySummary.chosen_tp_first||0);
+$("paper-fifty-outcome").textContent=fiftyResolved?(pct(fiftyTp/fiftyResolved)+" ("+fiftyTp+"/"+fiftyResolved+")"):"-";
+$("paper-fifty-outcome").title=fiftyResolved?("実際に選んだ方向の仮想tradeがTPへ先着した割合。UP/DOWN Choice確率とは別。両方向SL "+Number(fiftySummary.both_stop_loss_first||0)+"件。"):"方向別ラベルはまだ確定していません。";
 const sd=p.strategy_decision||{},sv=p.supervisor||{};
 const age=sv.last_tick_age_seconds==null?"":" / tick age "+Number(sv.last_tick_age_seconds).toFixed(1)+"s";
 $("paper-strategy-state").style.display=p.autopilot_enabled?"none":"block";
@@ -1215,7 +1219,7 @@ async function refresh(){
     const localDecision=activePaper?.spiritual_decision||(!activePaper?.autopilot_enabled?activePaper?.strategy_decision:null);
     $("signal").textContent=d?.target_decision?(d.target_decision.target_side+" "+d.target_decision.target_quantity):d?.direction_signal||d?.research_signal||localDecision?.signal||"-";
     $("signal-sub").textContent=s.running&&activeInstrument?modeLabel:"";
-    renderPaper(activePaper);
+    renderPaper(activePaper,activeInstrument?s.fifty_outcomes:null);
     renderEventContext(activeInstrument?s.external_context:null);
     renderDecision(d,activeInstrument?s.jev_supervisor:null,activePaper);
     renderJevUsage(s.jev_usage);
@@ -1328,7 +1332,15 @@ async function runJevReplay(){
     $("jbt-dd").textContent=yen(s.max_drawdown)+" / "+pct(s.max_drawdown_pct);
     $("jbt-win").textContent=pct(s.win_rate);$("jbt-trades").textContent=s.closed_trades??0;
     $("jbt-latency").textContent=s.average_latency_ms==null?"-":Number(s.average_latency_ms).toFixed(0)+" ms";
-    $("jbt-result-note").textContent=(r.data_source_note||"")+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
+    const outcome=s.fifty_directional_outcomes;
+    let outcomeText="";
+    if(outcome?.samples){
+      const chosen=outcome.chosen_resolved?pct(outcome.chosen_tp_first_rate):"-";
+      const longRate=outcome.directions?.LONG?.resolved?pct(outcome.directions.LONG.tp_first_rate):"-";
+      const shortRate=outcome.directions?.SHORT?.resolved?pct(outcome.directions.SHORT.tp_first_rate):"-";
+      outcomeText=" Fifty+方向別答え合わせ: 選択方向TP先着 "+chosen+" ("+Number(outcome.chosen_tp_first||0)+"/"+Number(outcome.chosen_resolved||0)+") / LONG "+longRate+" / SHORT "+shortRate+" / 両方向SL "+Number(outcome.both_stop_loss_first||0)+"件。Choice確率はこの実測率とは別物です。";
+    }
+    $("jbt-result-note").textContent=(r.data_source_note||"")+outcomeText+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
     $("jbt-diagnostics").textContent=diagnosticsText(s);
     renderExecutions("jbt-executions",s.trades||[]);
