@@ -23,7 +23,7 @@ paper取引の判断系は、UI上で **Jevモード / 戦略モード / スピ�
 - **戦略モード**: Jev APIを呼ばず、Momentum / RSI逆張り / MAトレンドのコード戦略を使う
 - **スピリチュアルモード**: Jev APIと通常戦略を使わず、Fifty+の売買骨格に月相・太陽星座・ランダムタロット・コイントスの方向ルールを接続する実験用baseline
 
-Jevモードのデイトレは標準15分ごと、スキャルピングは標準60秒ごとに、固定の予測時間を課さず現在の最適total positionを再判断します。**おまかせ戦略**は固定cadenceを使わず、Jevが現在の `trader_context_v1` からboundedなentry / protective OCO候補、次のwake-up条件、独立したplan expiryを選びます。コードだけがtickを監視し、価格cross・指定本数のbar close・timeout・plan expiry・entry fill・position closeが起きた時だけJevを再度呼びます。entry planはfill時に消費され、protective OCOだけが独立して残るため、同じPRICE_CROSS planを再実行しません。1取引の損失候補は標準でequityの1%以内にコード側で制限し、UIから0.1〜25%の範囲で人間がrisk envelopeを変更できます。Jev自身はこの上限を変更できません。Fifty+は1ポジションずつ持ち、決済後は標準60秒待って次の方向を決めます。すべてのJevスタイルは1分 / 5分 / 15分 / 1時間足、基本テクニカル、口座/PnL、cost、recent execution等を含む共通contextを使います。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
+Jevモードのデイトレは標準15分ごと、スキャルピングは標準60秒ごとに、固定の予測時間を課さず現在の最適total positionを再判断します。**おまかせ戦略**は固定cadenceを使わず、Jevが現在の `trader_context_v1` からboundedなentry / protective OCO候補、次のwake-up条件、独立したplan expiryを選びます。コードだけがtickを監視し、価格cross・指定本数のbar close・timeout・plan expiry・entry fill・position closeが起きた時だけJevを再度呼びます。時間起因のwake / expiryは最短15分とし、1〜5分単位のidle pollingは行いません。entry planはfill時に消費され、protective OCOだけが独立して残るため、同じPRICE_CROSS planを再実行しません。1取引の損失候補は標準でequityの1%以内にコード側で制限し、UIから0.1〜25%の範囲で人間がrisk envelopeを変更できます。Jev自身はこの上限を変更できません。Fifty+は1ポジションずつ持ち、決済後は標準600秒（10分）待って次の方向を決めます。「公式イベントを見る」がONならJev Fifty+の方向判断にも観測済み公式event contextを追加します。すべてのJevスタイルは1分 / 5分 / 15分 / 1時間足、基本テクニカル、口座/PnL、cost、recent execution等を含む共通contextを使います。仕様・制限は [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md)、Fifty+の発想と実験ルールは [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 
 ## ライセンス・免責・サポート

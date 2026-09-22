@@ -20,7 +20,7 @@ class SpiritualBacktestConfig:
     paper_leverage: float = 25.0
     target_units: float = 10.0
     target_jpy: float = 500.0
-    reentry_seconds: float = 60.0
+    reentry_seconds: float = 600.0
     max_spread_units: float = 1.5
     max_drawdown_pct: float = 0.20
     slippage_units: float = 0.0

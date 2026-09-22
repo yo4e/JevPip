@@ -17,10 +17,12 @@ function runtime(){
   const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},setPaperDecisionMode(mode){$('paper-mode').value=mode;state.restoredPaperMode=mode;},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
   vm.runInContext(source('function chartPrice(', 'window.addEventListener("resize"'),context);
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
+  vm.runInContext(source('function autopilotConfig()', 'function updateFiftyTargetUi()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
+  vm.runInContext(source('function eventTradeSummary(', 'function chartPrice('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -59,6 +61,20 @@ for(const [interval,ms] of [['1min',60000],['5min',300000],['15min',900000],['1h
     assert.equal(c.chartTradeIndex(points,{timestamp:'invalid'},interval),-1);
   });
 }
+
+test('Jev diagnostics expose event choice and execution block reason',()=>{
+  const {context:c}=runtime();
+  const event={
+    target_decision:{
+      choice:'WAIT',
+      event_plan:{trade_choice:'WAIT',trade:{action:'WAIT'}}
+    }
+  };
+  assert.equal(c.eventTradeSummary(event),'Jev選択: WAIT');
+  assert.equal(c.executionStatusSummary({target_status:'confirming_target'}),'実行: 同一targetの再確認待ち');
+  assert.equal(c.executionStatusSummary({target_status:'max_spread'}),'実行: spread上限で見送り');
+  assert.equal(c.executionStatusSummary({target_status:'rejected:expired'}),'実行: rejected:expired');
+});
 
 test('event decision summary shows timeout, bar-close, price-cross and expiry',()=>{
   const {context:c}=runtime(),base={available_at:'2026-09-22T08:00:00+00:00'};
@@ -109,8 +125,13 @@ test('Jev style defaults use 15-minute daytrade and 60-second scalp cadence',()=
   assert.ok($('auto-style-note').textContent.includes('token'));
 
   $('auto-style').value='fifty';
+  $('auto-fundamentals').checked=true;
   apply();
   assert.equal($('jev-every').value,'1');
+  assert.equal($('fifty-reentry-seconds').value,'600');
+  assert.equal($('auto-fundamentals-wrap').style.display,'flex');
+  assert.equal($('auto-fundamentals').checked,true);
+  assert.equal(c.autopilotConfig().autopilot_fundamentals,true);
 });
 
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{

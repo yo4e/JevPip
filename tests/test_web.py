@@ -64,6 +64,11 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "Fifty+" in response.text
         assert "1ポジションずつ" in response.text
         assert 'id="fifty-reentry-seconds"' in response.text
+        assert 'id="fifty-reentry-seconds" type="number" value="600"' in response.text
+        assert 'if(fifty)$("fifty-reentry-seconds").value="600";' in response.text
+        assert 'if(applyDefaults&&spiritual)$("fifty-reentry-seconds").value="600";' in response.text
+        assert 'autopilotStyleChanged(false);modeChanged();applyInstrumentDefaults();' in response.text
+        assert '<option value="event" selected>おまかせ戦略</option><option value="fifty">Fifty+</option><option value="daytrade">デイトレ</option><option value="scalp">スキャルピング</option>' in response.text
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
@@ -86,6 +91,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "No Trade（比較用）" in response.text
         assert "Jev APIも通常戦略も使いません" in response.text
         assert 'id="paper-max-spread"' in response.text
+        assert 'id="paper-max-spread" type="number" value="1"' in response.text
         assert "この値を超えるspreadでは新規取引をしません" in response.text
         assert "GMO Public RESTの停止中プレビュー" in response.text
         assert "最大DDで停止" in response.text
@@ -509,6 +515,13 @@ def test_strategy_backtest_api(monkeypatch):
         payload = response.json()
         assert payload["summary"]["net_pnl"] == 12.0
         assert payload["baselines"]["buy_and_hold"]["net_pnl"] == 7.0
+
+
+def test_spiritual_backtest_request_defaults_to_ten_minute_wait():
+    from jevpip.web.schemas import SpiritualBacktestRequest
+
+    request = SpiritualBacktestRequest(date="20260920", size=1000)
+    assert request.reentry_seconds == 600
 
 
 def test_spiritual_backtest_api(monkeypatch):

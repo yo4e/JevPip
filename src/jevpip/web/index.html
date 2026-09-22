@@ -102,7 +102,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="event">おまかせ戦略</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="event" selected>おまかせ戦略</option><option value="fifty">Fifty+</option><option value="daytrade">デイトレ</option><option value="scalp">スキャルピング</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">Jevがentry/OCOと次の起床条件を選択。tickはコードだけで監視し、価格cross・足確定・timeout・約定時だけJevを再呼び出し。</div></div>
             <div id="autopilot-controls">
               <div class="field" id="auto-horizon-field" style="display:none"><label class="label" for="auto-horizon">旧見通し時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -185,7 +185,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div>
               <div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div>
               <small>利確・損切りは同額。spread・手数料・滑りを含みます。</small>
-              <details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details>
+              <details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="600" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details>
             </div>
             <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
           </div>
@@ -317,7 +317,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="field"><label class="label" id="spbt-target-label" for="spbt-target">勝負幅</label><input id="spbt-target" type="number" value="10" min="0.01" step="any"></div>
       </div>
       <div class="mode-grid">
-        <div class="field"><label class="label" for="spbt-reentry">決済後の待機（秒）</label><input id="spbt-reentry" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くするとhistoricalでも往復ビンタ寄りになります。</div></div>
+        <div class="field"><label class="label" for="spbt-reentry">決済後の待機（秒）</label><input id="spbt-reentry" type="number" value="600" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くするとhistoricalでも往復ビンタ寄りになります。</div></div>
         <div class="field"><label class="label" id="spbt-spread-label" for="spbt-spread">最大spread</label><input id="spbt-spread" type="number" value="1.5" min="0" step="any"></div>
         <div class="field"><label class="label" id="spbt-slip-label" for="spbt-slip">slippage</label><input id="spbt-slip" type="number" value="0" min="0" step="any"></div>
       </div>
@@ -618,7 +618,7 @@ function setPaperDecisionMode(mode,applyDefaults=true){
     btn.setAttribute("aria-selected",active?"true":"false");
   });
   if(applyDefaults&&strategy)applyStrategyPreset($("paper-strategy").value);
-  if(applyDefaults&&spiritual)$("fifty-reentry-seconds").value="60";
+  if(applyDefaults&&spiritual)$("fifty-reentry-seconds").value="600";
   updateFiftyTargetUi();
   updateTradeSummary();
   updateJevAccess();
@@ -996,6 +996,42 @@ function eventPlanScheduleSummary(d){
   if(expiryDelay)parts.push("plan期限: "+expiryDelay+"後"+(expiryClock?"（"+expiryClock+"）":""));
   return parts.join(" / ");
 }
+function eventTradeSummary(d){
+  const plan=d?.target_decision?.event_plan,trade=plan?.trade||{};
+  const choice=plan?.trade_choice||d?.target_decision?.choice||"";
+  const action=trade.action||"";
+  if(!choice&&!action)return "";
+  if(action==="WAIT")return "Jev選択: WAIT";
+  if(action==="MARKET")return "Jev選択: MARKET "+(trade.side||"")+" "+(trade.quantity||"");
+  if(action==="PRICE_CROSS"){
+    const trigger=trade.entry_trigger||{},dir=trigger.type==="price_cross_above"?"以上":"以下";
+    return "Jev選択: PRICE_CROSS "+(trade.side||"")+" "+(trade.quantity||"")+" / MID "+(trigger.price||"-")+" "+dir;
+  }
+  if(action==="HOLD")return "Jev選択: HOLD";
+  if(action==="CLOSE")return "Jev選択: CLOSE";
+  return "Jev選択: "+(choice||action);
+}
+function executionStatusSummary(paper){
+  const status=paper?.target_status;
+  if(!status)return "";
+  const labels={
+    pending:"実行待ち",
+    executed:"約定",
+    hold:"変更なし",
+    confirming_target:"同一targetの再確認待ち",
+    max_spread:"spread上限で見送り",
+    external_supervisor:"公式イベント等のgateで見送り",
+    risk_halted:"リスク停止",
+    minimum_confidence:"confidence不足",
+    cooldown:"cooldown中",
+    max_position_change:"数量変更上限",
+    max_notional:"最大保有額",
+    max_quantity:"最大数量",
+    insufficient_margin:"証拠金不足"
+  };
+  if(status.startsWith("rejected:"))return "実行: "+status;
+  return "実行: "+(labels[status]||status);
+}
 function renderDecision(d,sup,paper=null){
   const supBox=$("jev-supervisor");
   if(supBox){
@@ -1037,8 +1073,9 @@ function renderDecision(d,sup,paper=null){
   }
   $("decision-panel-title").textContent="最新Jev判断";
   $("decision-empty").style.display="none";$("decision").style.display="block";
-  const a=d.jev.answers||{},fifty=d.state?.autopilot?.style==="fifty",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
-  const decisionText=d.target_decision?(fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
+  const a=d.jev.answers||{},style=d.state?.autopilot?.style,fifty=style==="fifty",event=style==="event",pr=fifty?(a.target_position?.probabilities||{}):(a.direction?.probabilities||{});
+  const eventChoice=event?eventTradeSummary(d):"";
+  const decisionText=d.target_decision?(event?(eventChoice.replace(/^Jev選択: /,"")||"WAIT"):fifty?((d.target_decision.choice||d.target_decision.target_side)+" → "+d.target_decision.target_side+" "+d.target_decision.target_quantity):(d.target_decision.target_side+" "+d.target_decision.target_quantity)):d.direction_signal||d.research_signal||"WAIT";
   $("decision-signal").textContent=decisionText;
   $("session-target-state").textContent=decisionText;
   $("up").textContent=fifty?pct(pr.UP||0):(d.target_decision?"—":pct(pr.UP||0));
@@ -1048,9 +1085,10 @@ function renderDecision(d,sup,paper=null){
   const at=d.available_at||d.received_at||d.timestamp;
   $("decision-time").textContent=at?"判断時刻 "+new Date(at).toLocaleString("ja-JP"):"";
   $("latency").textContent=d.jev_latency_ms==null?"-":d.jev_latency_ms+" ms";
-  const eventSchedule=d.state?.autopilot?.style==="event"?eventPlanScheduleSummary(d):"";
+  const eventSchedule=event?eventPlanScheduleSummary(d):"";
+  const execution=executionStatusSummary(paper);
   const detail=d.target_error||(d.target_decision?(fifty?("Fifty+ 二択 / confidence "+pct(d.target_decision.confidence)):("判断要因 "+d.target_decision.reason+" / confidence "+pct(d.target_decision.confidence))):signalGateSummary(d));
-  $("signal-detail").textContent=eventSchedule?(detail+" / "+eventSchedule):detail
+  $("signal-detail").textContent=[detail,eventChoice,eventSchedule,execution].filter(Boolean).join(" / ")
 }
 
 function chartPrice(p){
@@ -1234,7 +1272,7 @@ function activeDecisionModeLabel(s){
     if(oracle==="zodiac_polarity")return "スピ: 星座 ♈";
     if(oracle==="tarot")return "スピ: タロット 🃏";
     if(oracle==="coin_flip")return "スピ: コイントス 🪙";
-    const style=cfg.autopilot_style==="scalp"?"スキャ":cfg.autopilot_style==="fifty"?"Fifty+":"デイトレ";
+    const style=cfg.autopilot_style==="event"?"おまかせ":cfg.autopilot_style==="scalp"?"スキャ":cfg.autopilot_style==="fifty"?"Fifty+":"デイトレ";
     return "Jev: "+style;
   }
   const labels={momentum:"モメンタム",rsi_mean_reversion:"RSI逆張り",ma_trend:"MAトレンド"};
@@ -1541,7 +1579,7 @@ async function runSpiritualBacktest(){
 function updateBacktestNote(){const spec=instrumentSpec();if(!spec)return;$("bt-note").textContent=spec.market_kind==="crypto_spot"?"過去日付を自由に選べます。BTCはhistorical OHLCのclose-to-close粗いリプレイです。historical spreadは含みません。":"過去日付を自由に選べます。FXはhistorical BID/ASK 1分足でspread-aware edgeも確認できます。"}
 async function runBacktest(){const date=$("bt-date").value;if(!date){toast("日付を選んでください。",true);return}const b=$("bt-run");b.disabled=true;b.textContent="リプレイ中…";try{const r=await api("/api/statistical-replay",{method:"POST",body:JSON.stringify({instrument_id:$("instrument").value,date:date.replaceAll("-",""),profile_name:$("profile").value+" / UI",profile:features(),limit:$("bt-limit").value?Number($("bt-limit").value):null})}),s=r.summary;$("bt-result").style.display="block";$("bt-rows").textContent=s.rows;$("bt-mid").textContent=moveUnits(s.mean_change_units);$("bt-max").textContent=moveUnits(s.max_change_units);$("bt-min").textContent=moveUnits(s.min_change_units);$("bt-up").textContent=pct(s.up_ratio);$("bt-down").textContent=pct(s.down_ratio);$("bt-long").textContent=moveUnits(s.mean_long_edge_units);$("bt-short").textContent=moveUnits(s.mean_short_edge_units);$("bt-lr").textContent=pct(s.long_positive_ratio);$("bt-sr").textContent=pct(s.short_positive_ratio);$("bt-mode-note").textContent=s.mode==="crypto_close_only"?"BTC historical KLineはBID/ASKを含まないため、LONG/SHORT edgeは算出しません。close-to-closeの方向・変化量を見る粗い研究リプレイです。":"FX historical BID/ASK closeを使った1分足リプレイです。";$("bt-output").textContent="保存先: "+r.output;toast("リプレイ完了")}catch(e){toast(e.message,true)}finally{b.disabled=false;b.textContent="1分足を統計リプレイ"}}
 
-async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles,visibleProfiles=Object.entries(ps).filter(([n,p])=>!p.moon_phase||n==="minimal");$("profile").innerHTML=visibleProfiles.map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":visibleProfiles[0]?.[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);$("spbt-date").max=fmt(today);$("spbt-date").value=fmt(d);setPaperDecisionMode("jev",false);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);}catch(e){toast("初期化失敗: "+e.message,true)}}
+async function init(){try{state.config=await api("/api/config");$("instrument").innerHTML=Object.entries(state.config.instruments).map(([id,i])=>`<option value="${esc(id)}">${esc(i.display_symbol)}${id==="BTC"?" ₿":""}</option>`).join("");$("instrument").value="USD_JPY";const ps=state.config.profiles,visibleProfiles=Object.entries(ps).filter(([n,p])=>!p.moon_phase||n==="minimal");$("profile").innerHTML=visibleProfiles.map(([n,p])=>`<option value="${esc(n)}">${esc(profileLabels[n]||n)}　${esc(p.description_ja||"")}</option>`).join("");$("profile").value=ps.minimal?"minimal":visibleProfiles[0]?.[0];applyProfile($("profile").value);const sp=state.config.signal_policies;$("signal-policy").innerHTML=Object.entries(sp).map(([n,p])=>`<option value="${esc(n)}">${esc(n)}　${esc(p.description_ja||"")}</option>`).join("");$("signal-policy").value=sp.research_default?"research_default":Object.keys(sp)[0];applySignal($("signal-policy").value);renderCredentialState();if(state.config.gmo_private_credentials_configured){$("account-unconfigured").style.display="none";refreshAccount()}const today=new Date(),d=new Date(today);d.setDate(d.getDate()-1);const fmt=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;$("bt-date").max=fmt(today);$("bt-date").value=fmt(d);$("sbt-date").max=fmt(today);$("sbt-date").value=fmt(d);$("spbt-date").max=fmt(today);$("spbt-date").value=fmt(d);setPaperDecisionMode("jev",false);autopilotStyleChanged(false);modeChanged();applyInstrumentDefaults();updateBacktestNote();updateStrategyBacktestSummary();state.ready=true;await refresh();await Promise.all([loadHistory(),loadCompareDates(),loadJevReplayDates(),refreshPreviewQuote(true)]);}catch(e){toast("初期化失敗: "+e.message,true)}}
 
 
 const autoLimits=[
@@ -1555,7 +1593,7 @@ const autoLimits=[
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
   const fifty=$("auto-style").value==="fifty",event=$("auto-style").value==="event";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_risk_pct:Number($("paper-max-risk-pct").value||1)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_risk_pct:Number($("paper-max-risk-pct").value||1)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1575,11 +1613,10 @@ function autopilotStyleChanged(applyDefaults=true){
       :"全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。";
   $("auto-horizon-field").style.display="none";
   $("paper-max-risk-wrap").style.display=event?"block":"none";
-  $("auto-fundamentals-wrap").style.display=fifty?"none":"flex";
+  $("auto-fundamentals-wrap").style.display="flex";
   $("auto-constraints").style.display=fifty?"none":"block";
-  if(fifty)$("auto-fundamentals").checked=false;
   if(applyDefaults){
-    if(fifty)$("fifty-reentry-seconds").value="60";
+    if(fifty)$("fifty-reentry-seconds").value="600";
     $("jev-every").value=(fifty||event)?"1":scalp?"60":"900";
     $("jbt-cadence").value=fifty?"1":event?"60":scalp?"60":"900";
     state.jevReplayPreview=null;

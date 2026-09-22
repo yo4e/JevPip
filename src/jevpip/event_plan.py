@@ -111,18 +111,6 @@ def build_event_wake_plans(levels: dict[str, Decimal]) -> dict[str, dict[str, An
             "price": str(levels["lower"]),
             "description": "Wake when MID crosses below the supplied lower reference.",
         },
-        "BAR_1M_1": {
-            "type": "bar_close",
-            "timeframe": "1min",
-            "bars": 1,
-            "description": "Wake after one additional 1-minute bar closes.",
-        },
-        "BAR_5M_1": {
-            "type": "bar_close",
-            "timeframe": "5min",
-            "bars": 1,
-            "description": "Wake after one additional 5-minute bar closes.",
-        },
         "BAR_5M_3": {
             "type": "bar_close",
             "timeframe": "5min",
@@ -134,11 +122,6 @@ def build_event_wake_plans(levels: dict[str, Decimal]) -> dict[str, dict[str, An
             "timeframe": "15min",
             "bars": 1,
             "description": "Wake after one additional 15-minute bar closes.",
-        },
-        "TIMEOUT_5M": {
-            "type": "timeout",
-            "seconds": 300,
-            "description": "Wake after five minutes even if no other event happens.",
         },
         "TIMEOUT_15M": {
             "type": "timeout",
@@ -156,10 +139,6 @@ def build_event_wake_plans(levels: dict[str, Decimal]) -> dict[str, dict[str, An
 def build_event_expiry_plans() -> dict[str, dict[str, Any]]:
     """Bounded independent lifetimes for an accepted event plan."""
     return {
-        "EXPIRY_5M": {
-            "seconds": 300,
-            "description": "Invalidate this plan after five minutes even if its wake trigger has not fired.",
-        },
         "EXPIRY_15M": {
             "seconds": 900,
             "description": "Invalidate this plan after fifteen minutes.",
