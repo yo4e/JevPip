@@ -4,6 +4,18 @@ JevPip の検証機能は、実装の追加順ではなく **何を検証する�
 
 この文書は、今後「過去データを使う機能」を追加するたびに新しい独立BTを増やさないための基準とする。
 
+## Current priority: Fifty+ direction-source comparison
+
+現在の研究優先順位は、**Fifty+ executionを固定したうえで方向源だけを比較すること**に置く。
+
+主比較:
+- Jev Fifty+
+- coin flip random control
+
+必要に応じて moon / zodiac / tarot を補助baselineとして残す。Jevがcoin flipを上回るかを評価するときは、単発PnLや単純な50%基準だけで結論を出さない。spread / fee / slippage / entry timingを含む同一execution条件、複数期間・銘柄、coin flipの複数seed分布を使う。
+
+この比較の専用runnerはまだ未実装。既存のJev BTとスピBTを手作業で見比べ続けるのではなく、実装時は下記Comparison experimentsへ統合する。
+
 ## 1. Performance backtests
 
 売買判断を過去のmarket pathへ流し、paper accountingでPnLを評価するもの。
