@@ -1696,6 +1696,112 @@ def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
     assert new_size < old_size * 0.7
 
 
+def test_fifty_client_bounds_common_history_but_preserves_dedicated_context(monkeypatch):
+    from jevpip.jev.client import JevClient
+
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    policy = state["autopilot"]
+    assert set(policy["targets"]) == {"UP", "DOWN"}
+    policy["fifty_plus"]["outcome_history"] = {
+        "schema_version": 1,
+        "sample_count": 2,
+        "aggregate": {"chosen": {"resolved": 2, "take_profit_first": 1}},
+        "confidence_bands": {"0.6-0.8": {"resolved": 2, "take_profit_first": 1}},
+        "recent": [{"decision_id": "past-1"}, {"decision_id": "past-2"}],
+    }
+    for interval, view in policy["timeframes"].items():
+        view["closed_bars"] = [
+            {
+                "open_time": (START + timedelta(minutes=index)).isoformat(),
+                "end_time": (START + timedelta(minutes=index + 1)).isoformat(),
+                "open": 100 + index,
+                "high": 101 + index,
+                "low": 99 + index,
+                "close": 100.5 + index,
+                "ticks": 42,
+            }
+            for index in range(40)
+        ]
+        view["closed_bars_available"] = 240
+        view["indicators"] = {
+            "sma20": 123.4,
+            "sma50": 122.2,
+            "sma200": 120.1,
+            "rsi14": 55.5,
+            "atr14": 0.42,
+            "recent_20_high": 130.0,
+            "recent_20_low": 110.0,
+            "range_position_20": 0.6,
+        }
+    policy["recent_executions"] = [
+        {"execution_id": f"fifty:{index}", "action": "CLOSE", "pnl": index}
+        for index in range(30)
+    ]
+    dedicated = json.loads(json.dumps(policy["fifty_plus"]))
+    captured = {}
+
+    class FakeSDK:
+        def __init__(self, **kwargs):
+            captured["options"] = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def system_one(self, **kwargs):
+            captured.update(kwargs)
+
+            class Response:
+                def model_dump(self, **kwargs):
+                    return {
+                        "model": "test-only",
+                        "usage": {"input_tokens": 100, "output_tokens": 10},
+                        "answers": {
+                            "target_position": {
+                                "type": "choice",
+                                "choice": "UP",
+                                "confidence": 0.8,
+                                "probabilities": {"UP": 1.0, "DOWN": 0.0},
+                            },
+                        },
+                    }
+
+            return Response()
+
+    monkeypatch.setattr("typesafe_sdk.TypeSafeClient", FakeSDK)
+    JevClient("test-key-not-a-credential").decide(state)
+
+    sent = captured["state"]["autopilot"]
+    assert "recent_ticks" not in sent
+    assert "closed_1m_bars" not in sent
+    assert len(sent["recent_executions"]) == 10
+    assert sent["targets"] == policy["targets"]
+    assert sent["fifty_plus"] == dedicated
+    assert sent["fifty_plus"]["directional_races"] == policy["fifty_plus"]["directional_races"]
+    assert sent["fifty_plus"]["outcome_history"] == dedicated["outcome_history"]
+    for interval, view in sent["timeframes"].items():
+        assert len(view["closed_bars"]) == 16, interval
+        assert view["closed_bars_available"] == 240
+        assert view["indicators"]["recent_20_high"] == 130.0
+        assert view["indicators"]["recent_20_low"] == 110.0
+        assert all("ticks" not in row for row in view["closed_bars"])
+        assert len(policy["timeframes"][interval]["closed_bars"]) == 40
+    assert set(captured["questions"]) == {"target_position"}
+    assert set(captured["questions"]["target_position"]["criteria"]) == {"UP", "DOWN"}
+    assert "recent_ticks" in policy
+    assert len(policy["recent_executions"]) == 30
+
+
 def test_live_provider_shares_replay_state_and_fundamentals_toggle(tmp_path):
     from jevpip.config import Settings
     from jevpip.web.controller import UIController
