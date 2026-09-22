@@ -18,6 +18,7 @@ from jevpip.async_work import joined_thread
 from jevpip.broker.supervisor import (
     JevSupervisorAdvice,
     SupervisorDecision,
+    SupervisorPlan,
     combine_supervisors,
     deterministic_event_supervisor,
     validate_jev_supervisor_payload,
@@ -437,7 +438,7 @@ class UIController:
         recorded_at: datetime,
         decision_clock: datetime,
         jev_advice: JevSupervisorAdvice | None = None,
-        supervisor_plan: SupervisorDecision | None = None,
+        supervisor_plan: SupervisorPlan | None = None,
     ) -> None:
         if (
             self._paper is None
