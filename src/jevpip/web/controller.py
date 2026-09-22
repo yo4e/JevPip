@@ -387,6 +387,9 @@ class UIController:
         if not self._fifty_outcomes_active:
             return
         at = self._parse_timestamp(str(event["market_timestamp"]))
+        known_at = self._parse_timestamp(
+            str(event.get("received_at") or event["market_timestamp"])
+        )
         bid = Decimal(str(event["bid"]))
         ask = Decimal(str(event["ask"]))
         status = str(event.get("status") or "UNKNOWN")
@@ -398,6 +401,7 @@ class UIController:
                 bid=bid,
                 ask=ask,
                 market_status=status,
+                known_at=known_at,
             ):
                 completed.append(record)
         for record in completed:
@@ -409,12 +413,75 @@ class UIController:
             return
         if self._latest_market and self._latest_market.get("market_timestamp"):
             at = self._parse_timestamp(str(self._latest_market["market_timestamp"]))
+            known_at = self._parse_timestamp(
+                str(
+                    self._latest_market.get("received_at")
+                    or self._latest_market["market_timestamp"]
+                )
+            )
         else:
-            at = datetime.now(timezone.utc)
+            at = known_at = datetime.now(timezone.utc)
         for record in list(self._fifty_outcomes_active):
-            finalize_outcome_record(record, at=at, reason=reason)
+            finalize_outcome_record(
+                record,
+                at=at,
+                reason=reason,
+                known_at=known_at,
+            )
             self._fifty_outcomes_active.remove(record)
             self._persist_fifty_outcome(record)
+
+    def _persist_current_broker_trace(
+        self,
+        *,
+        recorded_at: datetime,
+        decision_clock: datetime,
+        jev_advice: JevSupervisorAdvice | None = None,
+        supervisor_plan: SupervisorDecision | None = None,
+    ) -> None:
+        if (
+            self._paper is None
+            or self._paper.last_decision_trace is None
+            or self._trace_run_id is None
+            or self._trace_run_config is None
+        ):
+            return
+        advice = jev_advice if jev_advice is not None else self._active_jev_supervisor(decision_clock)
+        combined = supervisor_plan if supervisor_plan is not None else combine_supervisors(
+            self._event_supervisor,
+            advice,
+        )
+        jev_supervisor_trace = (
+            None
+            if advice is None
+            else {
+                **asdict(advice),
+                "available_at": (
+                    None
+                    if self._jev_supervisor_available_at is None
+                    else self._jev_supervisor_available_at.isoformat()
+                ),
+                "expires_at": (
+                    None
+                    if self._jev_supervisor_expires_at is None
+                    else self._jev_supervisor_expires_at.isoformat()
+                ),
+            }
+        )
+        paper_snapshot = self._paper.snapshot()
+        trace = build_decision_trace(
+            run_id=self._trace_run_id,
+            instrument_id=self._instrument_id,
+            recorded_at=recorded_at.isoformat(),
+            run_config=self._trace_run_config,
+            cost_model=dict(paper_snapshot["cost_model"]),
+            broker_trace=self._paper.last_decision_trace,
+            event_supervisor=asdict(self._event_supervisor),
+            jev_supervisor=jev_supervisor_trace,
+            combined_supervisor=asdict(combined),
+        )
+        append_decision_trace(self.settings.data_dir, trace)
+        self._last_decision_trace = trace
 
     async def _on_update(self, event: dict[str, Any]) -> None:
         kind = event.get("kind")
@@ -432,7 +499,13 @@ class UIController:
             )
             if self._paper is not None:
                 at = self._parse_timestamp(str(event["market_timestamp"]))
-                self._update_live_fifty_outcomes(event)
+                quote_block = (
+                    self._paper.quote_eligibility(event)
+                    if isinstance(self._paper, AutopilotBroker)
+                    else None
+                )
+                if quote_block is None:
+                    self._update_live_fifty_outcomes(event)
                 decision_clock = self._parse_timestamp(
                     str(event.get("received_at") or event["market_timestamp"])
                 )
@@ -450,43 +523,12 @@ class UIController:
                 ):
                     self._events.appendleft(paper_event)
 
-                broker_trace = self._paper.last_decision_trace
-                if (
-                    broker_trace is not None
-                    and self._trace_run_id is not None
-                    and self._trace_run_config is not None
-                ):
-                    jev_supervisor_trace = (
-                        None
-                        if jev_advice is None
-                        else {
-                            **asdict(jev_advice),
-                            "available_at": (
-                                None
-                                if self._jev_supervisor_available_at is None
-                                else self._jev_supervisor_available_at.isoformat()
-                            ),
-                            "expires_at": (
-                                None
-                                if self._jev_supervisor_expires_at is None
-                                else self._jev_supervisor_expires_at.isoformat()
-                            ),
-                        }
-                    )
-                    paper_snapshot = self._paper.snapshot()
-                    trace = build_decision_trace(
-                        run_id=self._trace_run_id,
-                        instrument_id=self._instrument_id,
-                        recorded_at=datetime.now(timezone.utc).isoformat(),
-                        run_config=self._trace_run_config,
-                        cost_model=dict(paper_snapshot["cost_model"]),
-                        broker_trace=broker_trace,
-                        event_supervisor=asdict(self._event_supervisor),
-                        jev_supervisor=jev_supervisor_trace,
-                        combined_supervisor=asdict(supervisor_plan),
-                    )
-                    append_decision_trace(self.settings.data_dir, trace)
-                    self._last_decision_trace = trace
+                self._persist_current_broker_trace(
+                    recorded_at=datetime.now(timezone.utc),
+                    decision_clock=decision_clock,
+                    jev_advice=jev_advice,
+                    supervisor_plan=supervisor_plan,
+                )
         elif kind == "decision":
             self._latest_decision = event
             self._record_jev_usage(event)
@@ -510,11 +552,25 @@ class UIController:
                         executions = self._paper.execute_event_pending(available_at)
                         for paper_event in executions:
                             self._events.appendleft(paper_event)
+                    else:
+                        executions = []
+                    if executions:
+                        self._persist_current_broker_trace(
+                            recorded_at=available_at,
+                            decision_clock=available_at,
+                        )
             self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
             if isinstance(self._paper, AutopilotBroker):
-                self._paper.on_decision({"target_error": "api_error"})
+                failed_at = datetime.now(timezone.utc).isoformat()
+                self._paper.on_decision(
+                    {
+                        "target_error": "api_error",
+                        "available_at": failed_at,
+                        "recorded_at": failed_at,
+                    }
+                )
 
         self._events.appendleft(event)
 
