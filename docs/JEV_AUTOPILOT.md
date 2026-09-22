@@ -5,7 +5,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 ## 始め方
 
 1. デモ自動売買で **Jevモード** タブを選ぶ。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔、**スキャルピング**は標準60秒間隔。**おまかせ戦略**は固定cadenceではなくevent-drivenで、Jevがentry / protective OCO候補と次のwake-up条件を選ぶ。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。すべて `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。
+2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔、**スキャルピング**は標準60秒間隔。**おまかせ戦略**は固定cadenceではなくevent-drivenで、Jevがentry / protective OCO候補と次のwake-up条件を選ぶ。**Fifty+**は1ポジションずつ持ち、決済後は標準600秒（10分）待ってからJevへ次のUP / DOWNを二択で問い合わせる。すべて `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
@@ -16,7 +16,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 - `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
 - `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補、wake候補、plan expiry候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout、expiry候補は5 / 15 / 30 / 60分。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
-- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
+- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準600秒 / 10分）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。実entry時にspread・手数料・slippage込みのNET ±Xをpaper OCOとして固定し、後続tickが境界を飛び越えても登録済み境界へ補間して決済する。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
