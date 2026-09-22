@@ -73,6 +73,9 @@ test('Jev diagnostics expose event choice and execution block reason',()=>{
   assert.equal(c.eventTradeSummary(event),'Jev選択: WAIT');
   assert.equal(c.executionStatusSummary({target_status:'confirming_target'}),'実行: 同一targetの再確認待ち');
   assert.equal(c.executionStatusSummary({target_status:'max_spread'}),'実行: spread上限で見送り');
+  assert.equal(c.executionStatusSummary({target_status:'event_plan:wait'}),'実行: 待機中（JevがWAIT）');
+  assert.equal(c.executionStatusSummary({target_status:'event_plan:price_cross'}),'実行: 価格cross待ち');
+  assert.equal(c.executionStatusSummary({target_status:'event_entry_blocked:max_spread'}),'実行: entry見送り（max_spread）');
   assert.equal(c.executionStatusSummary({target_status:'rejected:expired'}),'実行: rejected:expired');
 });
 
