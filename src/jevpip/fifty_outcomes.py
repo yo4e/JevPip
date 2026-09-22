@@ -54,7 +54,7 @@ def _direction_contract(
     # quote side, assuming configured fee/slippage stay fixed. Future spread
     # itself is not assumed fixed: LONG settles against BID, SHORT against ASK.
     if side == "LONG":
-        denom = ONE_MINUS_FEE = Decimal("1") - fee_rate
+        denom = Decimal("1") - fee_rate
         if denom <= 0:
             raise ValueError("fee_rate must be below 1")
         tp_exit = (entry_price * (Decimal("1") + fee_rate) + target_jpy / quantity) / denom
