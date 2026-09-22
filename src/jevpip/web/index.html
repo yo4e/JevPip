@@ -1272,8 +1272,10 @@ async function refreshContext(){
 function decisionLogSummary(e){
   const target=e?.target_decision;
   if(target){
-    const eventChoice=eventTradeSummary(e);
-    if(eventChoice)return eventChoice.replace(/^Jev選択: /,"");
+    if(target.event_plan){
+      const eventChoice=eventTradeSummary(e);
+      if(eventChoice)return eventChoice.replace(/^Jev選択: /,"");
+    }
     const choice=target.choice||"";
     const side=target.target_side||"";
     const quantity=target.target_quantity??"";
