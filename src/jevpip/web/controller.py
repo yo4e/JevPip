@@ -575,7 +575,6 @@ class UIController:
             "paper": None if self._paper is None else self._paper.snapshot(),
             "fifty_outcomes": {
                 "active": len(self._fifty_outcomes_active),
-                "recent": list(self._fifty_outcomes_recent)[:20],
                 "summary": summarize_outcomes(list(self._fifty_outcomes_recent)),
             },
             "external_context": self._external_context_snapshot(now, self._instrument_id),
