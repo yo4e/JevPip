@@ -642,11 +642,31 @@ def run_jev_historical_replay(
         target = decision_event.get("target_decision")
         if not isinstance(target, dict):
             return
+        jev = decision_event.get("jev")
+        target_answer = None
+        model = None
+        if isinstance(jev, dict):
+            model = jev.get("model")
+            answers = jev.get("answers")
+            if isinstance(answers, dict) and isinstance(answers.get("target_position"), dict):
+                target_answer = dict(answers["target_position"])
+        state = decision_event.get("state")
+        context_version = None
+        if isinstance(state, dict):
+            autopilot_state = state.get("autopilot")
+            if isinstance(autopilot_state, dict):
+                context_version = autopilot_state.get("context_version")
         record = new_outcome_record(
             decision=target,
             races=broker.fifty_directional_races(),
             entry_at=entry_at,
             source_kind=source_kind,
+            prediction={
+                "model": model,
+                "target_position": target_answer,
+                "confidence": target.get("confidence"),
+            },
+            context_version=None if context_version is None else str(context_version),
         )
         active_fifty_outcomes.append(record)
         append_jsonl(
