@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Any
 from uuid import uuid4
 
-from jevpip.broker.paper import PaperBroker, PaperConfig, PaperPosition
+from jevpip.broker.paper import PaperBroker, PaperConfig, PaperOcoBracket, PaperPosition
 from jevpip.broker.strategies import (
     StrategyDecision,
     coin_flip_signal,
@@ -184,6 +184,58 @@ class AutopilotBroker(PaperBroker):
             self._candidate = None
             self._confirmations = 0
 
+    def _set_fifty_oco(
+        self,
+        *,
+        side: str,
+        quantity: Decimal,
+        bid: Decimal,
+        ask: Decimal,
+    ) -> None:
+        """Register the exact code-owned NET TP/SL race as a paper OCO."""
+        if self.config.autopilot_style != "fifty":
+            self._oco_bracket = None
+            return
+        target_kind = (
+            "jpy" if self.instrument.market_kind == "crypto_spot" else "units"
+        )
+        target_value = Decimal(
+            str(
+                self.config.autopilot_fifty_target_jpy
+                if target_kind == "jpy"
+                else self.config.autopilot_fifty_target_units
+            )
+        )
+        target_label = (
+            "円" if target_kind == "jpy" else self.config.move_unit_label
+        )
+        races = build_directional_races(
+            bid=bid,
+            ask=ask,
+            quantity=quantity,
+            price_unit=self.price_unit,
+            fee_rate=self.fee_rate,
+            slippage_price=self.slippage_price,
+            target_value=target_value,
+            target_label=target_label,
+            target_kind=target_kind,
+        )
+        race = races["UP" if side == "LONG" else "DOWN"]
+        conditions = race["reference_exit_conditions"]
+        self._oco_bracket = PaperOcoBracket(
+            side=side,
+            quote_side=conditions["quote_side"],
+            take_profit_quote=Decimal(
+                str(conditions["take_profit"]["quote_price"])
+            ),
+            stop_loss_quote=Decimal(
+                str(conditions["stop_loss"]["quote_price"])
+            ),
+            take_profit_reason="fifty_take_profit",
+            stop_loss_reason="fifty_stop_loss",
+            semantics="fifty_net_symmetric",
+        )
+
     def _record(self, row: dict[str, Any], decision_id: str | None) -> dict[str, Any]:
         self.account_version += 1
         row.update(kind="paper_trade", decision_id=decision_id,
@@ -203,6 +255,15 @@ class AutopilotBroker(PaperBroker):
         if old is None:
             self.position = PaperPosition(side, quantity, price, at, fee, slip)
             self._entry_mid, self._entry_spread_cost = mid, spread
+            if self.config.autopilot_style == "fifty":
+                self._set_fifty_oco(
+                    side=side,
+                    quantity=quantity,
+                    bid=bid,
+                    ask=ask,
+                )
+            else:
+                self._oco_bracket = None
         else:
             size = old.size + quantity
             self._entry_mid = (self._entry_mid * old.size + mid * quantity) / size
@@ -271,6 +332,12 @@ class AutopilotBroker(PaperBroker):
         net_pnl = self._position_net_pnl(bid, ask)
         net_units = net_pnl / self.position.size / self.price_unit
         if cfg.autopilot_style == "fifty":
+            # Normal Fifty+ exits are resting paper-OCO legs created at entry.
+            # Keep the old threshold check only as a defensive fallback for a
+            # position created without a bracket (for example malformed legacy
+            # state in a direct library caller).
+            if self._oco_bracket is not None:
+                return None
             if self.instrument.market_kind == "crypto_spot":
                 target_jpy = Decimal(str(cfg.autopilot_fifty_target_jpy))
                 if net_pnl >= target_jpy:
@@ -515,7 +582,6 @@ class AutopilotBroker(PaperBroker):
         self._last_market_status = str(event.get("status", "UNKNOWN"))
         self._last_spread_units = (ask-bid)/self.price_unit
         self._remember_market(at, bid, ask)
-        self._update_drawdown()
         trades: list[dict[str, Any]] = []
         before = self.account_version
         market_age = (now-at).total_seconds()
@@ -523,12 +589,33 @@ class AutopilotBroker(PaperBroker):
         if self._last_market_status != "OPEN" or not -max_age <= market_age <= max_age:
             self._target_status = "market_closed_or_stale"
         else:
-            forced = self._risk_exit(at, bid, ask)
-            if forced and self.position is not None:
+            oco_fill = (
+                self._oco_fill_quote(bid, ask)
+                if self.position is not None
+                and self.config.autopilot_style == "fifty"
+                else None
+            )
+            if oco_fill is not None and self.position is not None:
+                forced, fill_bid, fill_ask = oco_fill
+                trades.append(
+                    self._reduce(
+                        self.position.size,
+                        at,
+                        fill_bid,
+                        fill_ask,
+                        forced,
+                        None,
+                    )
+                )
+                self._target_status = forced
+                self._pending = None
+            else:
+                forced = self._risk_exit(at, bid, ask)
+            if oco_fill is None and forced and self.position is not None:
                 trades.append(self._reduce(self.position.size, at, bid, ask, forced, None))
                 self._target_status = forced
                 self._pending = None
-            elif self._pending is not None:
+            elif oco_fill is None and self._pending is not None:
                 trades.extend(self._apply_pending_target(
                     at=at,
                     now=now,
