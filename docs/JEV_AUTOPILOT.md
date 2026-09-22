@@ -17,7 +17,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
-- Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問でも毎回この実数値を明示し、例として5 pips設定なら「UP側 +5 pips と DOWN側 -5 pips のどちらへ先に到達するか」を予測させる。決済判定もspread・手数料・slippage込みのネット損益で同じ対称幅を使う。
+- Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。決済判定もspread・手数料・slippage込みのネット損益で同じ対称幅を使う。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
 - Jevモードには銘柄別のspread上限を初期設定する。UIの「ドローダウン・レバレッジ」から調整でき、USD/JPYの初期値は1.5 pips。Fifty+では上限超過中はUP / DOWN候補を作らずJev APIも呼ばない。回答取得後にspreadが拡大した場合も約定直前に再判定する。
 - Fifty+は `trader_context_v1` として、現在quote、直近tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account / PnL、cost / constraints、recent execution / performanceを広くJevへ渡す。どの情報を重視するかはJev自身へ任せる。コストを理由に棄権する選択肢は引き続きない。
@@ -81,7 +81,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 Jev BT開始時もliveと同じ `fetch_trader_history(as_of=start_at)` → `seed_trader_history()` を使い、開始時点までに確定済みのPublic KLineだけで `trader_context_v1` の1m / 5m / 15m / 1hをwarmupする。live起動直後と揃えるため、window前のraw tickは `recent_ticks` や短期feature bufferへ注入しない。判断開始後に実際に到着したreplay tickだけでそれらを育て、開始時刻より後に閉じるbarも先取りしない。
 
-`data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
+`data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。 Fifty+ではさらに、実entryごとにLONG / SHORT双方のcounterfactualなnet TP-vs-SL到達結果・決着時間を同じraw tick pathから保存し、選択方向TP先着率と方向別TP先着率を集計する。未決着は別分類にし、Choice確率を実測勝率として扱わない。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
 ## 検証と残る課題
 
