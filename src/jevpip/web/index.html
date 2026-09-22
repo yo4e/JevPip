@@ -1269,7 +1269,20 @@ async function refreshContext(){
   }catch(e){toast(e.message,true)}
   finally{$("context-refresh").disabled=false}
 }
-function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${e.direction_signal||e.research_signal||"WAIT"} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
+function decisionLogSummary(e){
+  const target=e?.target_decision;
+  if(target){
+    const eventChoice=eventTradeSummary(e);
+    if(eventChoice)return eventChoice.replace(/^Jev選択: /,"");
+    const choice=target.choice||"";
+    const side=target.target_side||"";
+    const quantity=target.target_quantity??"";
+    if(choice&&side)return choice+" → "+side+(quantity!==""?" "+quantity:"");
+    if(side)return side+(quantity!==""?" "+quantity:"");
+  }
+  return e?.direction_signal||e?.research_signal||"WAIT";
+}
+function renderLogs(events){if(!events?.length){$("logs").innerHTML='<div class="empty">まだイベントはありません。</div>';return}$("logs").innerHTML=events.map(e=>{const raw=e.recorded_at||e.received_at||e.timestamp||e.market_timestamp,t=raw?new Date(raw).toLocaleTimeString("ja-JP"):"-";let k=e.kind||"event",d="";if(k==="tick"){k="TICK";d=`bid ${e.bid} / ask ${e.ask}`}else if(k==="decision"){k="JEV";d=`${decisionLogSummary(e)} / ${e.jev_latency_ms||"-"} ms`}else if(k==="paper_trade"){k="DEMO";d=`${e.action} ${e.side} ${e.size} @ ${e.price}${e.pnl==null?"":" / "+yen(e.pnl)}`}else if(k==="error"){k="ERROR";d=e.message||""}return `<div class="logrow"><span class="logtime">${esc(t)}</span><span class="logkind">${esc(k)}</span><span>${esc(d)}</span></div>`}).join("")}
 
 function activeDecisionModeLabel(s){
   const p=s?.paper,cfg=p?.config||{};
