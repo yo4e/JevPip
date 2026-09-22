@@ -198,9 +198,11 @@ def test_event_plan_builds_bounded_trade_and_wake_choices():
     assert plan["request_ready"] is True
     assert "WAIT" in plan["trade_plans"]
     assert any(key.endswith("_NOW") for key in plan["trade_plans"])
-    assert {"PRICE_ABOVE", "PRICE_BELOW", "BAR_5M_1", "TIMEOUT_15M"} <= set(
+    assert {"PRICE_ABOVE", "PRICE_BELOW", "BAR_5M_3", "BAR_15M_1", "TIMEOUT_15M"} <= set(
         plan["wake_plans"]
     )
+    assert {"BAR_1M_1", "BAR_5M_1", "TIMEOUT_5M"}.isdisjoint(plan["wake_plans"])
+    assert "EXPIRY_5M" not in plan["expiry_plans"]
     assert plan["arbitrary_code_or_natural_language_triggers"] is False
     assert set(question_specs(state)) == {"event_trade_plan", "event_wake_plan", "event_expiry_plan"}
     assert _should_request_jev(state) is True
@@ -263,7 +265,7 @@ def test_event_market_entry_installs_protective_oco_and_wakes_after_fill():
         for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
         if value.get("action") == "MARKET" and value.get("side") == "LONG"
     )
-    event = event_plan_event(b, 0, trade_choice, "BAR_5M_1")
+    event = event_plan_event(b, 0, trade_choice, "BAR_15M_1")
     selected = event["target_decision"]["event_plan"]["trade"]
     b.on_decision(event)
 
@@ -293,12 +295,12 @@ def test_event_bar_close_and_timeout_are_code_only_wake_triggers():
         autopilot_max_risk_pct=0.05,
     )
     bar.on_tick(tick(0))
-    bar.on_decision(event_plan_event(bar, 0, "WAIT", "BAR_1M_1"))
-    bar.on_tick(tick(30))
+    bar.on_decision(event_plan_event(bar, 0, "WAIT", "BAR_15M_1"))
+    bar.on_tick(tick(899))
     assert bar.snapshot()["event_request_ready"] is False
-    bar.on_tick(tick(61))
+    bar.on_tick(tick(901))
     assert bar.snapshot()["event_request_ready"] is True
-    assert bar.snapshot()["event_last_trigger"] == "bar_close:1min:1"
+    assert bar.snapshot()["event_last_trigger"] == "bar_close:15min:1"
 
     timeout = broker(
         autopilot_style="event",
@@ -307,12 +309,12 @@ def test_event_bar_close_and_timeout_are_code_only_wake_triggers():
         autopilot_max_risk_pct=0.05,
     )
     timeout.on_tick(tick(0))
-    timeout.on_decision(event_plan_event(timeout, 0, "WAIT", "TIMEOUT_5M"))
-    timeout.on_tick(tick(299))
+    timeout.on_decision(event_plan_event(timeout, 0, "WAIT", "TIMEOUT_15M"))
+    timeout.on_tick(tick(899))
     assert timeout.snapshot()["event_request_ready"] is False
-    timeout.on_tick(tick(301))
+    timeout.on_tick(tick(901))
     assert timeout.snapshot()["event_request_ready"] is True
-    assert timeout.snapshot()["event_last_trigger"] == "timeout:300"
+    assert timeout.snapshot()["event_last_trigger"] == "timeout:900"
 
 
 def test_event_price_cross_plan_is_consumed_after_first_fill():
@@ -392,11 +394,11 @@ def test_event_bar_close_wake_survives_full_history_deque():
         as_of=START,
     )
     b.on_tick(tick(0))
-    b.on_decision(event_plan_event(b, 0, "WAIT", "BAR_1M_1"))
+    b.on_decision(event_plan_event(b, 0, "WAIT", "BAR_15M_1"))
     assert b.snapshot()["event_request_ready"] is False
-    b.on_tick(tick(61))
+    b.on_tick(tick(901))
     assert b.snapshot()["event_request_ready"] is True
-    assert b.snapshot()["event_last_trigger"] == "bar_close:1min:1"
+    assert b.snapshot()["event_last_trigger"] == "bar_close:15min:1"
 
 
 def test_event_blocked_market_waits_for_selected_wake_instead_of_requerying_each_tick():
@@ -440,19 +442,19 @@ def test_event_timeout_wins_over_late_price_cross():
         for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
         if value.get("action") == "PRICE_CROSS" and value.get("side") == "LONG"
     )
-    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_5M", "EXPIRY_30M")
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_15M", "EXPIRY_30M")
     trigger = Decimal(
         event["target_decision"]["event_plan"]["trade"]["entry_trigger"]["price"]
     )
     b.on_decision(event)
     below = trigger - Decimal("0.05")
     above = trigger + Decimal("0.05")
-    b.on_tick(tick(299, bid=float(below - Decimal("0.01")), ask=float(below + Decimal("0.01"))))
-    trades = b.on_tick(tick(301, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
+    b.on_tick(tick(899, bid=float(below - Decimal("0.01")), ask=float(below + Decimal("0.01"))))
+    trades = b.on_tick(tick(901, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
     assert trades == []
     assert b.position is None
     assert b.snapshot()["event_request_ready"] is True
-    assert b.snapshot()["event_last_trigger"] == "timeout:300"
+    assert b.snapshot()["event_last_trigger"] == "timeout:900"
 
 
 def test_event_rejects_invalid_take_profit_before_account_mutation():
@@ -495,13 +497,13 @@ def test_event_plan_expiry_invalidates_old_entry_before_cross():
         for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
         if value.get("action") == "PRICE_CROSS" and value.get("side") == "LONG"
     )
-    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_30M", "EXPIRY_5M")
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_30M", "EXPIRY_15M")
     trigger = Decimal(
         event["target_decision"]["event_plan"]["trade"]["entry_trigger"]["price"]
     )
     b.on_decision(event)
     above = trigger + Decimal("0.05")
-    trades = b.on_tick(tick(301, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
+    trades = b.on_tick(tick(901, bid=float(above - Decimal("0.01")), ask=float(above + Decimal("0.01"))))
     assert trades == []
     assert b.position is None
     assert b.snapshot()["event_last_trigger"] == "plan_expired"
@@ -522,7 +524,7 @@ def test_event_plan_rejects_tampered_risk_beyond_code_envelope():
         for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
         if value.get("action") == "MARKET"
     )
-    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_5M")
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_15M")
     event["target_decision"]["event_plan"]["trade"]["oco"]["stop_loss_units"] = 1_000_000
     b.on_decision(event)
 
