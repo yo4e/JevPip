@@ -102,7 +102,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="event">おまかせ戦略</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="event" selected>おまかせ戦略</option><option value="fifty">Fifty+</option><option value="daytrade">デイトレ</option><option value="scalp">スキャルピング</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">Jevがentry/OCOと次の起床条件を選択。tickはコードだけで監視し、価格cross・足確定・timeout・約定時だけJevを再呼び出し。</div></div>
             <div id="autopilot-controls">
               <div class="field" id="auto-horizon-field" style="display:none"><label class="label" for="auto-horizon">旧見通し時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -185,7 +185,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
               <div class="field" id="fifty-units-field" style="margin-top:8px"><label class="label" for="fifty-target-units">勝負幅（ネット損益・pips）</label><input id="fifty-target-units" type="number" value="5" min="0.01" step="0.1"></div>
               <div class="field" id="fifty-jpy-field" style="display:none;margin-top:8px"><label class="label" for="fifty-target-jpy">勝負額（ネット損益・円）</label><input id="fifty-target-jpy" type="number" value="500" min="1" step="1"></div>
               <small>利確・損切りは同額。spread・手数料・滑りを含みます。</small>
-              <details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details>
+              <details class="session-details" id="fifty-details"><summary>Fifty+ 詳細設定</summary><div class="details-body"><div class="field"><label class="label" for="fifty-reentry-seconds">決済後の再判断待機（秒）</label><input id="fifty-reentry-seconds" type="number" value="600" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くすると、急変時に決済 → 即再判断 → 反対方向へ入り直す「往復ビンタ」が起きやすくなります。</div></div></div></details>
             </div>
             <div class="notice" id="fifty-cost-warning" style="display:none;margin:8px 0"></div>
           </div>
@@ -317,7 +317,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
         <div class="field"><label class="label" id="spbt-target-label" for="spbt-target">勝負幅</label><input id="spbt-target" type="number" value="10" min="0.01" step="any"></div>
       </div>
       <div class="mode-grid">
-        <div class="field"><label class="label" for="spbt-reentry">決済後の待機（秒）</label><input id="spbt-reentry" type="number" value="60" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くするとhistoricalでも往復ビンタ寄りになります。</div></div>
+        <div class="field"><label class="label" for="spbt-reentry">決済後の待機（秒）</label><input id="spbt-reentry" type="number" value="600" min="0" max="3600" step="1"><div class="muted" style="font-size:9px;margin-top:3px">短くするとhistoricalでも往復ビンタ寄りになります。</div></div>
         <div class="field"><label class="label" id="spbt-spread-label" for="spbt-spread">最大spread</label><input id="spbt-spread" type="number" value="1.5" min="0" step="any"></div>
         <div class="field"><label class="label" id="spbt-slip-label" for="spbt-slip">slippage</label><input id="spbt-slip" type="number" value="0" min="0" step="any"></div>
       </div>
