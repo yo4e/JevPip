@@ -67,6 +67,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "往復ビンタ" in response.text
         assert 'id="paper-leverage"' in response.text
         assert 'id="paper-max-dd-pct"' in response.text
+        assert 'id="paper-max-risk-pct"' in response.text
+        assert "おまかせ戦略 1取引の最大リスク" in response.text
         assert "ドローダウン・レバレッジ" in response.text
         assert "資金・損失上限" not in response.text
         assert response.text.index("ドローダウン・レバレッジ") < response.text.index("動作・コストの詳細")
