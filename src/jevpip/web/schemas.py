@@ -71,7 +71,7 @@ class PaperDemoInput(BaseModel):
     autopilot_max_risk_pct: float = Field(default=0.01, gt=0, le=0.25)
     autopilot_max_change: float | None = Field(default=None, gt=0, le=100000000)
     autopilot_entry_loss: float | None = Field(default=None, gt=0, le=1000000000)
-    autopilot_max_spread: float | None = Field(default=1.0, ge=0, le=100000000)
+    autopilot_max_spread: float | None = Field(default=None, ge=0, le=100000000)
     autopilot_min_confidence: float | None = Field(default=None, ge=0, le=1)
     autopilot_cooldown_seconds: float | None = Field(default=None, ge=0, le=3600)
     autopilot_max_hold_seconds: float | None = Field(default=None, gt=0, le=86400)
