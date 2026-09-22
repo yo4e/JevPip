@@ -1360,6 +1360,13 @@ def test_live_controller_persists_fifty_directional_outcomes(tmp_path):
     assert summary["samples"] == 1
     assert summary["chosen_tp_first_rate"] == pytest.approx(1.0)
 
+    jev_history = b.decision_state(
+        START + timedelta(seconds=11)
+    )["autopilot"]["fifty_plus"]["outcome_history"]
+    assert jev_history["sample_count"] == 1
+    assert jev_history["recent"][0]["choice"] == "UP"
+    assert jev_history["recent"][0]["outcomes"]["LONG"]["status"] == "take_profit_first"
+
 
 def test_live_controller_persists_both_reversal_legs(tmp_path):
     from jevpip.config import Settings
