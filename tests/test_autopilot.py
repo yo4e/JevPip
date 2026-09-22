@@ -1291,6 +1291,47 @@ def test_replay_rejects_excessive_exchange_clock_lead_before_call(tmp_path):
         )
 
 
+def test_live_controller_persists_fifty_directional_outcomes(tmp_path):
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_oracle="jev",
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=60,
+        autopilot_max_spread=10,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    ui = UIController(Settings(data_dir=tmp_path))
+    ui._paper, ui._paper_config = b, b.config
+    ui._instrument_id = "USD_JPY"
+
+    async def run():
+        await ui._on_update({"kind": "tick", **tick(0, 99, 101)})
+        await ui._on_update({"kind": "decision", **event_for(b, 0, "UP")})
+        await ui._on_update({"kind": "tick", **tick(10, 106, 108)})
+
+    asyncio.run(run())
+
+    path = tmp_path/"fifty_outcomes"/"USD_JPY"/"2026-09-20.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [row["kind"] for row in rows] == [
+        "fifty_directional_outcome_started",
+        "fifty_directional_outcome",
+    ]
+    completed = rows[-1]
+    assert completed["choice"] == "UP"
+    assert completed["chosen_side"] == "LONG"
+    assert completed["outcomes"]["LONG"]["status"] == "take_profit_first"
+    assert completed["outcomes"]["SHORT"]["status"] == "stop_loss_first"
+
+    summary = ui.snapshot()["fifty_outcomes"]["summary"]
+    assert summary["samples"] == 1
+    assert summary["chosen_tp_first_rate"] == pytest.approx(1.0)
+
+
 def test_live_controller_persists_both_reversal_legs(tmp_path):
     from jevpip.config import Settings
     from jevpip.web.controller import UIController
