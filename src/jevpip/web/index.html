@@ -102,7 +102,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
           <div id="jev-mode-panel" style="margin-top:8px">
             <div class="research-callout"><strong>Jevモード</strong><br>Jevが売買判断します。コード戦略・研究フィルタは売買判断に混ぜません。</div>
             <div id="jev-access-paper-slot"></div>
-            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
+            <div class="field" id="auto-style-field"><label class="label" for="auto-style">Jevスタイル</label><select id="auto-style"><option value="daytrade" selected>デイトレ</option><option value="scalp">スキャルピング</option><option value="event">おまかせ戦略</option><option value="fifty">Fifty+</option></select><div class="muted" id="auto-style-note" style="font-size:9px;margin-top:3px">全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。</div></div>
             <div id="autopilot-controls">
               <div class="field" id="auto-horizon-field" style="display:none"><label class="label" for="auto-horizon">旧見通し時間</label><select id="auto-horizon"><option value="30">30秒</option><option value="120">2分</option><option value="600" selected>10分</option><option value="1800">30分</option></select></div>
               <label class="toggle" id="auto-fundamentals-wrap"><input id="auto-fundamentals" type="checkbox"><span>公式イベントを見る<small>BLS / BOJ / Fedの予定を判断に追加。過去BTでは利用できません。</small></span></label>
@@ -717,7 +717,7 @@ function updateJevAccess(){
   $("jev-access").style.display=!paper||jevMode?"block":"none";
   $("jev-toggle-row").style.display=paper?"none":"flex";
   $("auto-style-field").style.display=jevMode?"block":"none";
-  $("cadence-settings").style.display=jevMode&&$("auto-style").value==="fifty"?"none":"block";
+  $("cadence-settings").style.display=jevMode&&["fifty","event"].includes($("auto-style").value)?"none":"block";
   $("jev-access-note").textContent=!$("with-jev").checked?"APIを呼ばずに動作します。"
     :!state.config?.typesafe_api_key_configured?"キー未設定。「設定」から登録してください。"
     :jevMode?"Jevモード。トークンを消費します。":"判断を記録します。トークンを消費します。";
@@ -737,6 +737,10 @@ function updateTradeSummary(){
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
       box.textContent="Jevモード Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益・paper OCO） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 待機後にJevがUP / DOWNを二択で判断します。";
+      return;
+    }
+    if(mode==="event"){
+      box.textContent="Jevモード おまかせ戦略 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / Jevが相場・口座・コストからboundedなentry/OCO候補と次の起床条件を選択 / tick監視中はAPIを呼ばず、価格cross・足確定・timeout・約定・決済で再判断 / 1取引のhard risk上限はequityの1% / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / "+i.paper_fee_label+"。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
@@ -1508,8 +1512,8 @@ const autoLimits=[
 ];
 $("auto-limits").innerHTML=autoLimits.map(([key,label,value])=>`<div class="pair"><label class="toggle"><input id="auto-${key}-on" type="checkbox"><span>${esc(label)}</span></label><div class="field"><input id="auto-${key}" type="number" value="${value}" min="0" step="any" aria-label="${esc(label)}"></div></div>`).join("");
 function autopilotConfig(){
-  const fifty=$("auto-style").value==="fifty";
-  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:fifty?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
+  const fifty=$("auto-style").value==="fifty",event=$("auto-style").value==="event";
+  const config={autopilot_enabled:$("autopilot").checked,autopilot_style:$("auto-style").value,autopilot_fundamentals:fifty?false:$("auto-fundamentals").checked,autopilot_horizon_seconds:Number($("auto-horizon").value),autopilot_fifty_target_units:Number($("fifty-target-units").value||5),autopilot_fifty_target_jpy:Number($("fifty-target-jpy").value||500),autopilot_fifty_reentry_seconds:Number($("fifty-reentry-seconds").value||0),autopilot_ttl_seconds:Number($("auto-ttl").value),autopilot_confirmations:(fifty||event)?1:Number($("auto-confirmations").value),autopilot_max_drawdown_pct:Number($("paper-max-dd-pct").value||20)/100,autopilot_max_spread:Number($("paper-max-spread").value||0)};
   for(const [key] of autoLimits)config["autopilot_"+key]=fifty?null:($("auto-"+key+"-on").checked?Number($("auto-"+key).value):null);
   return config;
 }
@@ -1519,9 +1523,11 @@ function updateFiftyTargetUi(){
   $("fifty-jpy-field").style.display=crypto?"block":"none";
 }
 function autopilotStyleChanged(applyDefaults=true){
-  const style=$("auto-style").value,scalp=style==="scalp",fifty=style==="fifty";
+  const style=$("auto-style").value,scalp=style==="scalp",fifty=style==="fifty",event=style==="event";
   $("auto-style-note").textContent=fifty
     ?"固定数量で1ポジションずつ。決済後は設定時間待ってから次のUP / DOWNを判断。"
+    :event
+      ?"Jevがentry/OCOと次の起床条件を選択。tickはコードだけで監視し、価格cross・足確定・timeout・約定時だけJevを再呼び出し。"
     :scalp
       ?"全部入りtrader contextを見て判断。標準60秒ごと。短い判断間隔ではJev API call・input tokenを多く使用します。"
       :"全部入りtrader contextを見て、現在の最適ポジションを標準15分ごとに再判断。";
@@ -1531,8 +1537,8 @@ function autopilotStyleChanged(applyDefaults=true){
   if(fifty)$("auto-fundamentals").checked=false;
   if(applyDefaults){
     if(fifty)$("fifty-reentry-seconds").value="60";
-    $("jev-every").value=fifty?"1":scalp?"60":"900";
-    $("jbt-cadence").value=fifty?"1":scalp?"60":"900";
+    $("jev-every").value=(fifty||event)?"1":scalp?"60":"900";
+    $("jbt-cadence").value=fifty?"1":event?"60":scalp?"60":"900";
     state.jevReplayPreview=null;
     $("jbt-run").disabled=true;
   }
