@@ -763,30 +763,32 @@ def run_jev_historical_replay(
         ):
             available_at, decision_event = pending_decision
             broker.on_decision(decision_event)
-            if (
-                isinstance(broker, AutopilotBroker)
-                and broker.config.autopilot_style == "fifty"
-            ):
-                # Live Fifty+ applies a completed Jev answer immediately at
-                # available_at using the freshest quote already observed.
-                # Do this before consuming the next tick so replay cannot peek
-                # at a price that arrived after the answer became available.
-                executions = broker.execute_fifty_pending(available_at)
-                for execution in executions:
-                    append_jsonl(output, execution)
-                start_fifty_outcome(
-                    decision_event,
-                    executions,
-                    entry_at=available_at,
-                )
-                if broker.last_decision_trace is not None:
-                    append_jsonl(
-                        output,
-                        {
-                            "kind": "target_decision_trace",
-                            **broker.last_decision_trace,
-                        },
+            if isinstance(broker, AutopilotBroker):
+                if broker.config.autopilot_style == "fifty":
+                    # Live Fifty+ applies a completed Jev answer immediately at
+                    # available_at using the freshest quote already observed.
+                    # Do this before consuming the next tick so replay cannot peek
+                    # at a price that arrived after the answer became available.
+                    executions = broker.execute_fifty_pending(available_at)
+                    for execution in executions:
+                        append_jsonl(output, execution)
+                    start_fifty_outcome(
+                        decision_event,
+                        executions,
+                        entry_at=available_at,
                     )
+                    if broker.last_decision_trace is not None:
+                        append_jsonl(
+                            output,
+                            {
+                                "kind": "target_decision_trace",
+                                **broker.last_decision_trace,
+                            },
+                        )
+                elif broker.config.autopilot_style == "event":
+                    executions = broker.execute_event_pending(available_at)
+                    for execution in executions:
+                        append_jsonl(output, execution)
             pending_decision = None
 
         update_fifty_outcomes(tick)
@@ -799,7 +801,12 @@ def run_jev_historical_replay(
         if config.autopilot_enabled and tick.market_timestamp == final_market_at:
             continue
 
-        if clock < next_request_at:
+        event_driven = (
+            config.autopilot_enabled
+            and isinstance(broker, AutopilotBroker)
+            and broker.config.autopilot_style == "event"
+        )
+        if not event_driven and clock < next_request_at:
             continue
         if pending_decision is not None:
             skipped_by_latency += 1
@@ -855,7 +862,11 @@ def run_jev_historical_replay(
             usages.append((input_tokens, output_tokens))
 
         pending_decision = (available_at, event)
-        next_request_at = (requested_at if config.autopilot_enabled else available_at) + cadence
+        next_request_at = (
+            requested_at
+            if event_driven
+            else (requested_at if config.autopilot_enabled else available_at) + cadence
+        )
 
     last_tick = next(
         (
@@ -875,18 +886,20 @@ def run_jev_historical_replay(
     ):
         available_at, decision_event = pending_decision
         broker.on_decision(decision_event)
-        if (
-            isinstance(broker, AutopilotBroker)
-            and broker.config.autopilot_style == "fifty"
-        ):
-            executions = broker.execute_fifty_pending(available_at)
-            for execution in executions:
-                append_jsonl(output, execution)
-            start_fifty_outcome(
-                decision_event,
-                executions,
-                entry_at=available_at,
-            )
+        if isinstance(broker, AutopilotBroker):
+            if broker.config.autopilot_style == "fifty":
+                executions = broker.execute_fifty_pending(available_at)
+                for execution in executions:
+                    append_jsonl(output, execution)
+                start_fifty_outcome(
+                    decision_event,
+                    executions,
+                    entry_at=available_at,
+                )
+            elif broker.config.autopilot_style == "event":
+                executions = broker.execute_event_pending(available_at)
+                for execution in executions:
+                    append_jsonl(output, execution)
 
     final_trade = broker.finalize(
         last_tick.as_json_dict(),
