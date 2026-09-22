@@ -175,7 +175,7 @@ def new_outcome_record(
 ) -> dict[str, Any]:
     return {
         "kind": "fifty_directional_outcome",
-        "schema_version": 1,
+        "schema_version": 2,
         "decision_id": decision.get("decision_id"),
         "choice": decision.get("choice"),
         "chosen_side": decision.get("target_side"),
@@ -207,12 +207,22 @@ def update_outcome_record(
     bid: Decimal,
     ask: Decimal,
     market_status: str,
+    known_at: datetime | None = None,
 ) -> bool:
-    """Update one paired LONG/SHORT race. Returns True when both are resolved."""
+    """Update one paired LONG/SHORT race using market and known-at clocks."""
     if market_status != "OPEN":
         return bool(record.get("complete"))
 
     entry_at = datetime.fromisoformat(str(record["entry_at"]))
+    if entry_at.tzinfo is None:
+        entry_at = entry_at.replace(tzinfo=timezone.utc)
+    known = known_at or at
+    if known.tzinfo is None:
+        known = known.replace(tzinfo=timezone.utc)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    if at < entry_at or known < entry_at:
+        return bool(record.get("complete"))
     for side in ("LONG", "SHORT"):
         current = record["outcomes"][side]
         if current.get("status") != "pending":
@@ -243,7 +253,8 @@ def update_outcome_record(
             current.update(
                 status=status,
                 resolved_at=at.isoformat(),
-                duration_seconds=max(0.0, (at - entry_at).total_seconds()),
+                known_at=known.isoformat(),
+                duration_seconds=(at - entry_at).total_seconds(),
                 # Match paper OCO accounting. The observed tick may already be
                 # far beyond the order level, but the research fill is pinned
                 # to the registered NET boundary.
@@ -264,16 +275,27 @@ def finalize_outcome_record(
     *,
     at: datetime,
     reason: str,
+    known_at: datetime | None = None,
 ) -> dict[str, Any]:
     entry_at = datetime.fromisoformat(str(record["entry_at"]))
+    if entry_at.tzinfo is None:
+        entry_at = entry_at.replace(tzinfo=timezone.utc)
+    known = known_at or at
+    if known.tzinfo is None:
+        known = known.replace(tzinfo=timezone.utc)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    terminal_at = max(at, entry_at)
+    terminal_known = max(known, entry_at)
     for side in ("LONG", "SHORT"):
         current = record["outcomes"][side]
         if current.get("status") == "pending":
             current.update(
                 status="unresolved",
                 unresolved_reason=reason,
-                observed_until=at.isoformat(),
-                observed_seconds=max(0.0, (at - entry_at).total_seconds()),
+                observed_until=terminal_at.isoformat(),
+                known_at=terminal_known.isoformat(),
+                observed_seconds=(terminal_at - entry_at).total_seconds(),
             )
     record["complete"] = True
     return record
@@ -356,8 +378,18 @@ def _parsed_time(value: object) -> datetime | None:
 
 
 def outcome_completed_at(record: dict[str, Any]) -> datetime | None:
-    """Return when both directional labels became known, or None if incomplete."""
+    """Return when both directional labels were actually known.
+
+    Schema v1 records did not preserve quote-observation time, so they are
+    excluded from seeded Jev context rather than guessing causal availability.
+    """
     if not record.get("complete"):
+        return None
+    try:
+        schema_version = int(record.get("schema_version", 1))
+    except (TypeError, ValueError):
+        return None
+    if schema_version < 2:
         return None
     times: list[datetime] = []
     outcomes = record.get("outcomes")
@@ -367,8 +399,7 @@ def outcome_completed_at(record: dict[str, Any]) -> datetime | None:
         row = outcomes.get(side)
         if not isinstance(row, dict):
             return None
-        raw = row.get("resolved_at") or row.get("observed_until")
-        parsed = _parsed_time(raw)
+        parsed = _parsed_time(row.get("known_at"))
         if parsed is None:
             return None
         times.append(parsed)
@@ -432,6 +463,7 @@ def _compact_outcome(record: dict[str, Any]) -> dict[str, Any]:
             for key in (
                 "status",
                 "resolved_at",
+                "known_at",
                 "duration_seconds",
                 "unresolved_reason",
                 "observed_seconds",
@@ -541,8 +573,8 @@ def build_fifty_outcome_context(
 
     recent = eligible[-max(0, recent_limit):] if recent_limit else []
     return {
-        "schema_version": 1,
-        "semantics": "past_completed_independent_counterfactual_net_tp_vs_sl",
+        "schema_version": 2,
+        "semantics": "past_completed_independent_counterfactual_net_tp_vs_sl_known_at",
         "as_of": cutoff.isoformat(),
         "future_results_excluded": True,
         "sample_count": len(eligible),
@@ -550,8 +582,9 @@ def build_fifty_outcome_context(
         "confidence_bands": bands,
         "recent": [_compact_outcome(record) for record in recent],
         "guidance": (
-            "These are past completed answer keys only. Use them as empirical context, "
-            "not as mandatory rules. Choice probabilities are relative preferences and "
+            "These are past completed answer keys whose known_at is no later than as_of. "
+            "Legacy records without causal known_at are excluded. Use them as empirical "
+            "context, not as mandatory rules. Choice probabilities are relative preferences and "
             "must not be treated as calibrated win probabilities."
         ),
     }
