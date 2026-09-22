@@ -1087,6 +1087,7 @@ class UIController:
         start_time: str | None,
         duration_seconds: int,
         cadence_seconds: int,
+        event_driven: bool = False,
     ) -> dict[str, Any]:
         get_instrument(instrument_id)
         return await asyncio.to_thread(
@@ -1097,6 +1098,7 @@ class UIController:
             start_time=start_time,
             duration_seconds=duration_seconds,
             cadence_seconds=cadence_seconds,
+            event_driven=event_driven,
         )
 
     async def run_jev_replay(
