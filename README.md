@@ -368,7 +368,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 1. `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl` があれば保存済みraw tickを使う
 2. raw tickがなければGMO Public APIのhistorical 1分足へ自動fallbackする
 
-raw tick時は秒以下の市場経路を使い、Fifty+の応答をliveと同じ `available_at` 時点で、その時点までに受信済みの最新fresh quoteへ適用します。Fifty+では実際に選んだ方向の売買成績とは別に、同じentry条件からLONG / SHORT双方のnet TP-vs-SLを独立に追跡し、TP先着率・決着時間・両方向SL等を答え合わせします。UP / DOWNのChoice確率は相対選好であり、この実測TP先着率とは別です。開始時の1m / 5m / 15m / 1h contextも、`start_at` までに確定したPublic historical KLineでlive同様にwarmupします。1分足fallback時はFXならhistorical BID / ASK close、BTCなら `bid = ask = close` 近似を使いますが、1分内のTP/SL到達順序、細かいspread変化、秒単位のentry timingは再現できないため**概算 / smoke test**です。live相当のFifty+成績としては扱いません。
+raw tick時は秒以下の市場経路を使い、Fifty+の応答をliveと同じ `available_at` 時点で、その時点までに受信済みの最新fresh quoteへ適用します。Fifty+では実際に選んだ方向の売買成績とは別に、同じentry条件からLONG / SHORT双方のnet TP-vs-SLを独立に追跡し、TP先着率・決着時間・両方向SL等を答え合わせします。UP / DOWNのChoice確率は相対選好であり、この実測TP先着率とは別です。 完了済みの答え合わせは次回以降のFifty+判断へcompactな `outcome_history` として戻し、Jevが過去の方向別実績を参考にできます。再起動後もローカル保存済み履歴を読み戻しますが、各判断時刻より後に確定した結果は除外します。開始時の1m / 5m / 15m / 1h contextも、`start_at` までに確定したPublic historical KLineでlive同様にwarmupします。1分足fallback時はFXならhistorical BID / ASK close、BTCなら `bid = ask = close` 近似を使いますが、1分内のTP/SL到達順序、細かいspread変化、秒単位のentry timingは再現できないため**概算 / smoke test**です。live相当のFifty+成績としては扱いません。
 
 - 検証時間: 30秒 / 1分 / 5分 / 15分 / 1時間 / 6時間 / 1日
 - Jev判断間隔: 1 / 2 / 5 / 10 / 30 / 60 / 300 / 900秒
