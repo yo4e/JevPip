@@ -1,3 +1,5 @@
+import pytest
+
 from jevpip.broker.paper import PaperBroker, PaperConfig
 
 
@@ -38,6 +40,75 @@ def test_momentum_paper_trade_uses_ask_to_enter_and_bid_to_exit():
     assert closed[0]["gross_pnl"] == 10.0
     assert closed[0]["pnl"] == 10.0
     assert broker.snapshot()["balance"] == 100010.0
+
+
+def test_strategy_oco_fills_at_registered_tp_boundary_when_tick_overshoots():
+    broker = PaperBroker(
+        PaperConfig(
+            initial_balance=100000,
+            size=1000,
+            price_unit=0.01,
+            move_unit_label="pips",
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=1,
+            stop_loss_units=2,
+            max_hold_seconds=30,
+            cooldown_seconds=0,
+            slippage_units=0,
+        )
+    )
+
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    opened = broker.on_tick(
+        tick("2026-09-19T00:00:01+00:00", "150.010", "150.012")
+    )[0]
+    assert opened["action"] == "OPEN"
+    bracket = broker.snapshot()["position"]["oco_bracket"]
+    assert bracket["quote_side"] == "bid"
+    assert bracket["take_profit_quote"] == "150.022"
+    assert bracket["stop_loss_quote"] == "149.992"
+
+    # The next observed tick is far beyond TP. A resting paper OCO must not
+    # turn a configured +1 pip target into an optimistic +4.8 pip windfall.
+    closed = broker.on_tick(
+        tick("2026-09-19T00:00:02+00:00", "150.060", "150.062")
+    )[0]
+    assert closed["reason"] == "take_profit"
+    assert closed["price"] == "150.022"
+    assert closed["gross_pnl"] == pytest.approx(10)
+    assert closed["pnl"] == pytest.approx(10)
+    assert broker.snapshot()["position"] is None
+
+
+def test_strategy_oco_fills_at_registered_sl_boundary_when_tick_overshoots():
+    broker = PaperBroker(
+        PaperConfig(
+            initial_balance=100000,
+            size=1000,
+            price_unit=0.01,
+            move_unit_label="pips",
+            momentum_window_seconds=1,
+            momentum_trigger_units=0.5,
+            max_spread_units=2,
+            take_profit_units=2,
+            stop_loss_units=1,
+            max_hold_seconds=30,
+            cooldown_seconds=0,
+            slippage_units=0,
+        )
+    )
+
+    broker.on_tick(tick("2026-09-19T00:00:00+00:00", "150.000", "150.002"))
+    broker.on_tick(tick("2026-09-19T00:00:01+00:00", "150.010", "150.012"))
+    closed = broker.on_tick(
+        tick("2026-09-19T00:00:02+00:00", "149.900", "149.902")
+    )[0]
+    assert closed["reason"] == "stop_loss"
+    assert closed["price"] == "150.002"
+    assert closed["gross_pnl"] == pytest.approx(-10)
+    assert closed["pnl"] == pytest.approx(-10)
 
 
 def test_btc_taker_fee_can_turn_small_gross_profit_into_net_loss():

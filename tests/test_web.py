@@ -49,6 +49,7 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "tick age" in response.text
         assert "Take Profit" in response.text
         assert "Stop Loss" in response.text
+        assert "paper OCO" in response.text
         assert "売買条件を読み込み中" in response.text
         assert "デモ口座" in response.text
         assert "含み損益（入口手数料除く）" in response.text

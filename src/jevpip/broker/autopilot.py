@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Any
 from uuid import uuid4
 
-from jevpip.broker.paper import PaperBroker, PaperConfig, PaperPosition
+from jevpip.broker.paper import PaperBroker, PaperConfig, PaperOcoBracket, PaperPosition
 from jevpip.broker.strategies import (
     StrategyDecision,
     coin_flip_signal,
@@ -184,6 +184,140 @@ class AutopilotBroker(PaperBroker):
             self._candidate = None
             self._confirmations = 0
 
+    def _set_fifty_oco(
+        self,
+        *,
+        side: str,
+        quantity: Decimal,
+        bid: Decimal,
+        ask: Decimal,
+    ) -> None:
+        """Register the exact code-owned NET TP/SL race as a paper OCO."""
+        if self.config.autopilot_style != "fifty":
+            self._oco_bracket = None
+            return
+        target_kind = (
+            "jpy" if self.instrument.market_kind == "crypto_spot" else "units"
+        )
+        target_value = Decimal(
+            str(
+                self.config.autopilot_fifty_target_jpy
+                if target_kind == "jpy"
+                else self.config.autopilot_fifty_target_units
+            )
+        )
+        target_label = (
+            "円" if target_kind == "jpy" else self.config.move_unit_label
+        )
+        races = build_directional_races(
+            bid=bid,
+            ask=ask,
+            quantity=quantity,
+            price_unit=self.price_unit,
+            fee_rate=self.fee_rate,
+            slippage_price=self.slippage_price,
+            target_value=target_value,
+            target_label=target_label,
+            target_kind=target_kind,
+        )
+        race = races["UP" if side == "LONG" else "DOWN"]
+        conditions = race["reference_exit_conditions"]
+        self._oco_bracket = PaperOcoBracket(
+            side=side,
+            quote_side=conditions["quote_side"],
+            take_profit_quote=Decimal(
+                str(conditions["take_profit"]["quote_price"])
+            ),
+            stop_loss_quote=Decimal(
+                str(conditions["stop_loss"]["quote_price"])
+            ),
+            take_profit_reason="fifty_take_profit",
+            stop_loss_reason="fifty_stop_loss",
+            semantics="fifty_net_symmetric",
+        )
+
+    def _set_optional_autopilot_oco(self) -> None:
+        """Register optional daytrade/scalp net TP/SL as resting paper legs."""
+        if self.config.autopilot_style == "fifty" or self.position is None:
+            return
+        tp_units = (
+            None
+            if self.config.autopilot_take_profit_units is None
+            else Decimal(str(self.config.autopilot_take_profit_units))
+        )
+        sl_units = (
+            None
+            if self.config.autopilot_stop_loss_units is None
+            else Decimal(str(self.config.autopilot_stop_loss_units))
+        )
+        if tp_units is None and sl_units is None:
+            self._oco_bracket = None
+            return
+
+        position = self.position
+        quantity = position.size
+        entry = position.entry_price
+        entry_fee_per_unit = position.entry_fee / quantity
+        fee = self.fee_rate
+        slip = self.slippage_price
+
+        if position.side == "LONG":
+            denom = Decimal("1") - fee
+            tp_quote = (
+                None
+                if tp_units is None
+                else (
+                    entry
+                    + entry_fee_per_unit
+                    + tp_units * self.price_unit
+                ) / denom + slip
+            )
+            sl_quote = (
+                None
+                if sl_units is None
+                else (
+                    entry
+                    + entry_fee_per_unit
+                    - sl_units * self.price_unit
+                ) / denom + slip
+            )
+            quote_side = "bid"
+        else:
+            denom = Decimal("1") + fee
+            tp_quote = (
+                None
+                if tp_units is None
+                else (
+                    entry
+                    - entry_fee_per_unit
+                    - tp_units * self.price_unit
+                ) / denom - slip
+            )
+            sl_quote = (
+                None
+                if sl_units is None
+                else (
+                    entry
+                    - entry_fee_per_unit
+                    + sl_units * self.price_unit
+                ) / denom - slip
+            )
+            quote_side = "ask"
+
+        self._oco_bracket = PaperOcoBracket(
+            side=position.side,
+            quote_side=quote_side,
+            take_profit_quote=tp_quote,
+            stop_loss_quote=sl_quote,
+            take_profit_reason=(
+                None if tp_quote is None else "net_take_profit"
+            ),
+            stop_loss_reason=(
+                None if sl_quote is None else "net_stop_loss"
+            ),
+            semantics="autopilot_net_optional",
+        )
+
     def _record(self, row: dict[str, Any], decision_id: str | None) -> dict[str, Any]:
         self.account_version += 1
         row.update(kind="paper_trade", decision_id=decision_id,
@@ -203,6 +337,15 @@ class AutopilotBroker(PaperBroker):
         if old is None:
             self.position = PaperPosition(side, quantity, price, at, fee, slip)
             self._entry_mid, self._entry_spread_cost = mid, spread
+            if self.config.autopilot_style == "fifty":
+                self._set_fifty_oco(
+                    side=side,
+                    quantity=quantity,
+                    bid=bid,
+                    ask=ask,
+                )
+            else:
+                self._set_optional_autopilot_oco()
         else:
             size = old.size + quantity
             self._entry_mid = (self._entry_mid * old.size + mid * quantity) / size
@@ -211,6 +354,7 @@ class AutopilotBroker(PaperBroker):
             old.entry_fee += fee
             old.entry_slippage_cost += slip
             self._entry_spread_cost += spread
+            self._set_optional_autopilot_oco()
         self.fees_paid += fee
         self.slippage_cost += slip
         return self._record({
@@ -245,6 +389,7 @@ class AutopilotBroker(PaperBroker):
             self.position = replace(old, size=remaining, entry_fee=old.entry_fee-entry_fee,
                                     entry_slippage_cost=old.entry_slippage_cost-entry_slip)
             self._entry_spread_cost -= allocated_spread
+            self._set_optional_autopilot_oco()
         else:
             self._entry_mid = self._entry_spread_cost = ZERO
             if self.config.autopilot_style == "fifty":
@@ -271,6 +416,12 @@ class AutopilotBroker(PaperBroker):
         net_pnl = self._position_net_pnl(bid, ask)
         net_units = net_pnl / self.position.size / self.price_unit
         if cfg.autopilot_style == "fifty":
+            # Normal Fifty+ exits are resting paper-OCO legs created at entry.
+            # Keep the old threshold check only as a defensive fallback for a
+            # position created without a bracket (for example malformed legacy
+            # state in a direct library caller).
+            if self._oco_bracket is not None:
+                return None
             if self.instrument.market_kind == "crypto_spot":
                 target_jpy = Decimal(str(cfg.autopilot_fifty_target_jpy))
                 if net_pnl >= target_jpy:
@@ -284,10 +435,11 @@ class AutopilotBroker(PaperBroker):
                 if net_units <= -target_units:
                     return "fifty_stop_loss"
             return None
-        if cfg.autopilot_take_profit_units is not None and net_units >= Decimal(str(cfg.autopilot_take_profit_units)):
-            return "net_take_profit"
-        if cfg.autopilot_stop_loss_units is not None and net_units <= -Decimal(str(cfg.autopilot_stop_loss_units)):
-            return "net_stop_loss"
+        if self._oco_bracket is None:
+            if cfg.autopilot_take_profit_units is not None and net_units >= Decimal(str(cfg.autopilot_take_profit_units)):
+                return "net_take_profit"
+            if cfg.autopilot_stop_loss_units is not None and net_units <= -Decimal(str(cfg.autopilot_stop_loss_units)):
+                return "net_stop_loss"
         if cfg.autopilot_max_hold_seconds is not None and (at-self.position.opened_at).total_seconds() >= cfg.autopilot_max_hold_seconds:
             return "max_hold"
         return None
@@ -515,7 +667,6 @@ class AutopilotBroker(PaperBroker):
         self._last_market_status = str(event.get("status", "UNKNOWN"))
         self._last_spread_units = (ask-bid)/self.price_unit
         self._remember_market(at, bid, ask)
-        self._update_drawdown()
         trades: list[dict[str, Any]] = []
         before = self.account_version
         market_age = (now-at).total_seconds()
@@ -523,12 +674,32 @@ class AutopilotBroker(PaperBroker):
         if self._last_market_status != "OPEN" or not -max_age <= market_age <= max_age:
             self._target_status = "market_closed_or_stale"
         else:
-            forced = self._risk_exit(at, bid, ask)
-            if forced and self.position is not None:
+            oco_fill = (
+                self._oco_fill_quote(bid, ask)
+                if self.position is not None
+                else None
+            )
+            if oco_fill is not None and self.position is not None:
+                forced, fill_bid, fill_ask = oco_fill
+                trades.append(
+                    self._reduce(
+                        self.position.size,
+                        at,
+                        fill_bid,
+                        fill_ask,
+                        forced,
+                        None,
+                    )
+                )
+                self._target_status = forced
+                self._pending = None
+            else:
+                forced = self._risk_exit(at, bid, ask)
+            if oco_fill is None and forced and self.position is not None:
                 trades.append(self._reduce(self.position.size, at, bid, ask, forced, None))
                 self._target_status = forced
                 self._pending = None
-            elif self._pending is not None:
+            elif oco_fill is None and self._pending is not None:
                 trades.extend(self._apply_pending_target(
                     at=at,
                     now=now,

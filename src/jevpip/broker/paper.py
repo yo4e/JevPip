@@ -104,6 +104,25 @@ class PaperTrade:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class PaperOcoBracket:
+    """Research-paper OCO bracket fixed when a position is opened.
+
+    The relevant executable quote side is interpolated back to the configured
+    boundary when a later tick has already crossed it. This prevents sparse
+    tick/replay sampling from turning a configured TP/SL into a windfall or an
+    oversized loss. Configured slippage and fees remain part of execution.
+    """
+
+    side: Side
+    quote_side: Literal["bid", "ask"]
+    take_profit_quote: Decimal | None
+    stop_loss_quote: Decimal | None
+    take_profit_reason: str | None
+    stop_loss_reason: str | None
+    semantics: str
+
+
 class PaperBroker:
     """Single-position paper scalper driven by real BID/ASK ticks.
 
@@ -124,6 +143,7 @@ class PaperBroker:
         self.fees_paid = Decimal("0")
         self.slippage_cost = Decimal("0")
         self.position: PaperPosition | None = None
+        self._oco_bracket: PaperOcoBracket | None = None
         self.trades: deque[PaperTrade] = deque(maxlen=200)
         self._prices: deque[tuple[datetime, Decimal]] = deque(maxlen=50000)
         self._bar_prices: deque[tuple[datetime, Decimal]] = deque(maxlen=5000)
@@ -331,16 +351,23 @@ class PaperBroker:
         generated: list[dict[str, Any]] = []
         closed_this_tick = False
         if self.position is not None:
-            exit_reason = self._exit_reason(
-                at,
-                bid,
-                ask,
-                decision_at=received_at,
-            )
-            if exit_reason is not None:
-                trade = self._close(at, bid, ask, exit_reason)
+            oco_fill = self._oco_fill_quote(bid, ask)
+            if oco_fill is not None:
+                exit_reason, fill_bid, fill_ask = oco_fill
+                trade = self._close(at, fill_bid, fill_ask, exit_reason)
                 generated.append({"kind": "paper_trade", **asdict(trade)})
                 closed_this_tick = True
+            else:
+                exit_reason = self._exit_reason(
+                    at,
+                    bid,
+                    ask,
+                    decision_at=received_at,
+                )
+                if exit_reason is not None:
+                    trade = self._close(at, bid, ask, exit_reason)
+                    generated.append({"kind": "paper_trade", **asdict(trade)})
+                    closed_this_tick = True
 
         code_candidate = StrategyDecision("WAIT", "position_open", {})
         entry_candidate = code_candidate
@@ -694,6 +721,127 @@ class PaperBroker:
         basis = self._latest_jev_requested_at or self._latest_jev_available_at
         return (now - basis).total_seconds()
 
+    def _strategy_oco_bracket(self, position: PaperPosition) -> PaperOcoBracket:
+        """Create the strategy TP/SL bracket from the actual entry fill."""
+        tp = Decimal(str(self.config.take_profit_units)) * self.price_unit
+        sl = Decimal(str(self.config.stop_loss_units)) * self.price_unit
+        slip = self.slippage_price
+        if position.side == "LONG":
+            return PaperOcoBracket(
+                side="LONG",
+                quote_side="bid",
+                take_profit_quote=position.entry_price + tp + slip,
+                stop_loss_quote=position.entry_price - sl + slip,
+                take_profit_reason="take_profit",
+                stop_loss_reason="stop_loss",
+                semantics="strategy_price_units",
+            )
+        return PaperOcoBracket(
+            side="SHORT",
+            quote_side="ask",
+            take_profit_quote=position.entry_price - tp - slip,
+            stop_loss_quote=position.entry_price + sl - slip,
+            take_profit_reason="take_profit",
+            stop_loss_reason="stop_loss",
+            semantics="strategy_price_units",
+        )
+
+    def _set_strategy_oco(self) -> None:
+        self._oco_bracket = (
+            None if self.position is None else self._strategy_oco_bracket(self.position)
+        )
+
+    def _oco_fill_quote(
+        self,
+        bid: Decimal,
+        ask: Decimal,
+    ) -> tuple[str, Decimal, Decimal] | None:
+        """Return a deterministic boundary-touch quote for an active OCO leg.
+
+        A raw feed can jump from one side of an order level to well beyond it.
+        For paper/research accounting we fill at the pre-registered boundary,
+        preserving the observed spread width. This is intentionally not a
+        level-2/gap/slippage simulator.
+        """
+        bracket = self._oco_bracket
+        if (
+            bracket is None
+            or self.position is None
+            or bracket.side != self.position.side
+        ):
+            return None
+        spread = ask - bid
+        if bracket.quote_side == "bid":
+            if (
+                bracket.take_profit_quote is not None
+                and bracket.take_profit_reason is not None
+                and bid >= bracket.take_profit_quote
+            ):
+                fill_bid = bracket.take_profit_quote
+                return (
+                    bracket.take_profit_reason,
+                    fill_bid,
+                    fill_bid + spread,
+                )
+            if (
+                bracket.stop_loss_quote is not None
+                and bracket.stop_loss_reason is not None
+                and bid <= bracket.stop_loss_quote
+            ):
+                fill_bid = bracket.stop_loss_quote
+                return (
+                    bracket.stop_loss_reason,
+                    fill_bid,
+                    fill_bid + spread,
+                )
+            return None
+
+        if (
+            bracket.take_profit_quote is not None
+            and bracket.take_profit_reason is not None
+            and ask <= bracket.take_profit_quote
+        ):
+            fill_ask = bracket.take_profit_quote
+            return (
+                bracket.take_profit_reason,
+                fill_ask - spread,
+                fill_ask,
+            )
+        if (
+            bracket.stop_loss_quote is not None
+            and bracket.stop_loss_reason is not None
+            and ask >= bracket.stop_loss_quote
+        ):
+            fill_ask = bracket.stop_loss_quote
+            return (
+                bracket.stop_loss_reason,
+                fill_ask - spread,
+                fill_ask,
+            )
+        return None
+
+    def _oco_snapshot(self) -> dict[str, Any] | None:
+        bracket = self._oco_bracket
+        if bracket is None:
+            return None
+        return {
+            "side": bracket.side,
+            "quote_side": bracket.quote_side,
+            "take_profit_quote": (
+                None
+                if bracket.take_profit_quote is None
+                else str(bracket.take_profit_quote)
+            ),
+            "stop_loss_quote": (
+                None
+                if bracket.stop_loss_quote is None
+                else str(bracket.stop_loss_quote)
+            ),
+            "take_profit_reason": bracket.take_profit_reason,
+            "stop_loss_reason": bracket.stop_loss_reason,
+            "semantics": bracket.semantics,
+        }
+
     def _entry_price(self, side: Side, bid: Decimal, ask: Decimal) -> Decimal:
         slip = self.slippage_price
         return ask + slip if side == "LONG" else bid - slip
@@ -747,11 +895,12 @@ class PaperBroker:
     ) -> str | None:
         if self.position is None:
             return None
-        units = self._position_units(bid, ask)
-        if units >= Decimal(str(self.config.take_profit_units)):
-            return "take_profit"
-        if units <= -Decimal(str(self.config.stop_loss_units)):
-            return "stop_loss"
+        if self._oco_bracket is None:
+            units = self._position_units(bid, ask)
+            if units >= Decimal(str(self.config.take_profit_units)):
+                return "take_profit"
+            if units <= -Decimal(str(self.config.stop_loss_units)):
+                return "stop_loss"
         if (at - self.position.opened_at).total_seconds() >= self.config.max_hold_seconds:
             return "max_hold"
         if self.config.strategy == "jev" or self.config.jev_direct_enabled:
@@ -823,6 +972,7 @@ class PaperBroker:
             entry_fee=entry_fee,
             entry_slippage_cost=entry_slippage,
         )
+        self._set_strategy_oco()
         self._reset_jev_position_management()
         self.fees_paid += entry_fee
         self.slippage_cost += entry_slippage
@@ -872,6 +1022,7 @@ class PaperBroker:
         stats["net_pnl"] = Decimal(stats["net_pnl"]) + net_pnl
         stats["gross_pnl"] = Decimal(stats["gross_pnl"]) + gross_pnl
         self.position = None
+        self._oco_bracket = None
         self._last_exit_at = at
         self._reset_jev_position_management()
 
@@ -958,6 +1109,7 @@ class PaperBroker:
                 "unrealized_gross_pnl": round(float(unrealized_gross), 3),
                 "current_units": round(float(current_units), 3),
                 "move_unit_label": self.config.move_unit_label,
+                "oco_bracket": self._oco_snapshot(),
             }
 
         fee_break_even_units_estimate = None
@@ -1046,6 +1198,7 @@ class PaperBroker:
                     else round(float(fee_break_even_units_estimate), 3)
                 ),
                 "slippage_units": self.config.slippage_units,
+                "paper_exit_execution": "resting_oco_boundary_touch",
                 "short_is_synthetic": self.config.short_is_synthetic,
             },
         }

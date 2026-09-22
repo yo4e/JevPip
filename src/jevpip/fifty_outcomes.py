@@ -232,16 +232,23 @@ def update_outcome_record(
         )
         target = _d(race["target"].get("net_take_profit_jpy_exact", race["target"]["net_take_profit_jpy"]))
         status = None
+        boundary_net = None
         if net >= target:
             status = "take_profit_first"
+            boundary_net = target
         elif net <= -target:
             status = "stop_loss_first"
-        if status is not None:
+            boundary_net = -target
+        if status is not None and boundary_net is not None:
             current.update(
                 status=status,
                 resolved_at=at.isoformat(),
                 duration_seconds=max(0.0, (at - entry_at).total_seconds()),
-                net_pnl_jpy_at_resolution=float(net),
+                # Match paper OCO accounting. The observed tick may already be
+                # far beyond the order level, but the research fill is pinned
+                # to the registered NET boundary.
+                net_pnl_jpy_at_resolution=float(boundary_net),
+                observed_tick_net_pnl_jpy=float(net),
                 quote={"bid": str(bid), "ask": str(ask)},
             )
 

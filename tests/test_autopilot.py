@@ -232,6 +232,38 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     assert _should_request_jev(ready) is True
 
 
+def test_fifty_oco_keeps_net_result_at_configured_boundary_on_tick_gap():
+    winner = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=0,
+    )
+    opened = act(winner, 0, "DOWN", bid=99, ask=101)
+    assert opened and opened[0]["action"] == "OPEN"
+    bracket = winner.snapshot()["position"]["oco_bracket"]
+    assert bracket["semantics"] == "fifty_net_symmetric"
+    assert bracket["quote_side"] == "ask"
+
+    # Jump far through the SHORT TP. The paper OCO interpolates to the fixed
+    # boundary instead of booking the whole observed-tick windfall.
+    closed = winner.on_tick(tick(2, bid=80, ask=82))
+    assert closed and closed[0]["reason"] == "fifty_take_profit"
+    assert closed[0]["pnl"] == pytest.approx(50, abs=1e-6)
+
+    loser = broker(
+        autopilot_style="fifty",
+        autopilot_horizon_seconds=30,
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=0,
+    )
+    opened = act(loser, 0, "DOWN", bid=99, ask=101)
+    assert opened and opened[0]["action"] == "OPEN"
+    closed = loser.on_tick(tick(2, bid=120, ask=122))
+    assert closed and closed[0]["reason"] == "fifty_stop_loss"
+    assert closed[0]["pnl"] == pytest.approx(-50, abs=1e-6)
+
+
 def test_fifty_trader_context_keeps_past_performance_and_filters_future_bars():
     b = broker(
         autopilot_style="fifty",
@@ -804,7 +836,8 @@ def test_net_tp_and_dd_exit_are_cost_aware_and_reject_old_target():
     act(b, 0, "LONG_BASE")
     assert b.on_tick(tick(1, 102, 104)) == []  # price gain but not net TP
     rows = b.on_tick(tick(2, 105, 107))
-    assert rows[0]["reason"] == "net_take_profit" and rows[0]["pnl"] > 0
+    assert rows[0]["reason"] == "net_take_profit"
+    assert rows[0]["pnl"] == pytest.approx(10, abs=1e-6)
     b = broker(autopilot_max_drawdown=50)
     act(b, 0, "LONG_BASE")
     b.on_tick(tick(2))
