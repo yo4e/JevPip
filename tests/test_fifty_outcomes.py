@@ -258,8 +258,8 @@ def test_outcome_known_at_controls_causal_history_cutoff(tmp_path):
         record,
         at=START + timedelta(seconds=1),
         known_at=START + timedelta(seconds=2),
-        bid=Decimal("106"),
-        ask=Decimal("108"),
+        bid=Decimal("102"),
+        ask=Decimal("104"),
         market_status="OPEN",
     ) is False
     assert update_outcome_record(
