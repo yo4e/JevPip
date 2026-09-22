@@ -60,6 +60,42 @@ def event_for(b, second, choice="LONG_BASE", **updates):
     return event
 
 
+def event_plan_answer(state, trade_choice, wake_choice):
+    def select(key, choices):
+        return {
+            "type": "choice",
+            "choice": key,
+            "confidence": 0.8,
+            "probabilities": {
+                candidate: 1.0 if candidate == key else 0.0
+                for candidate in choices
+            },
+        }
+
+    plan = state["autopilot"]["event_plan"]
+    return {
+        "model": "test-only",
+        "usage": {"input_tokens": 100, "output_tokens": 10},
+        "answers": {
+            "event_trade_plan": select(trade_choice, plan["trade_plans"]),
+            "event_wake_plan": select(wake_choice, plan["wake_plans"]),
+        },
+    }
+
+
+def event_plan_event(b, second, trade_choice, wake_choice):
+    requested = START + timedelta(seconds=second)
+    state = b.decision_state(requested)
+    event = {
+        "jev": event_plan_answer(state, trade_choice, wake_choice),
+        "state": state,
+        "requested_at": requested.isoformat(),
+        "available_at": (requested + timedelta(seconds=0.1)).isoformat(),
+    }
+    attach_target(event, state)
+    return event
+
+
 def act(b, second, choice, bid=99, ask=101):
     b.on_tick(tick(second, bid, ask))
     b.on_decision(event_for(b, second, choice))
@@ -132,6 +168,9 @@ def test_paper_demo_accepts_styles_and_current_defaults():
     assert PaperDemoInput(autopilot_style="scalp", autopilot_horizon_seconds=30).autopilot_style == "scalp"
     assert PaperDemoInput(autopilot_style="fifty", autopilot_fifty_oracle="tarot").autopilot_fifty_oracle == "tarot"
     assert PaperDemoInput(autopilot_style="fifty", autopilot_fifty_oracle="coin_flip").autopilot_fifty_oracle == "coin_flip"
+    event_input = PaperDemoInput(autopilot_style="event")
+    assert event_input.autopilot_style == "event"
+    assert event_input.autopilot_max_risk_pct == pytest.approx(0.01)
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_style="swing")
     with pytest.raises(ValueError):
@@ -140,6 +179,162 @@ def test_paper_demo_accepts_styles_and_current_defaults():
         PaperDemoInput(autopilot_fifty_reentry_seconds=3600.1)
     with pytest.raises(ValueError):
         PaperDemoInput(autopilot_fifty_oracle="crystal_ball")
+
+
+def test_event_plan_builds_bounded_trade_and_wake_choices():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    policy = state["autopilot"]
+    plan = policy["event_plan"]
+
+    assert plan["request_ready"] is True
+    assert "WAIT" in plan["trade_plans"]
+    assert any(key.endswith("_NOW") for key in plan["trade_plans"])
+    assert {"PRICE_ABOVE", "PRICE_BELOW", "BAR_5M_1", "TIMEOUT_15M"} <= set(
+        plan["wake_plans"]
+    )
+    assert plan["arbitrary_code_or_natural_language_triggers"] is False
+    assert set(question_specs(state)) == {"event_trade_plan", "event_wake_plan"}
+    assert _should_request_jev(state) is True
+
+
+def test_event_wait_sleeps_until_price_cross_wakes_jev():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    wake_price = Decimal(
+        state["autopilot"]["event_plan"]["wake_plans"]["PRICE_ABOVE"]["price"]
+    )
+    b.on_decision(event_plan_event(b, 0, "WAIT", "PRICE_ABOVE"))
+
+    sleeping = b.decision_state(START + timedelta(seconds=1))
+    assert sleeping["autopilot"]["event_plan"]["request_ready"] is False
+    assert _should_request_jev(sleeping) is False
+
+    below = wake_price - Decimal("0.5")
+    b.on_tick(
+        tick(
+            1,
+            bid=float(below - Decimal("0.5")),
+            ask=float(below + Decimal("0.5")),
+        )
+    )
+    assert b.snapshot()["event_request_ready"] is False
+
+    above = wake_price + Decimal("0.5")
+    b.on_tick(
+        tick(
+            2,
+            bid=float(above - Decimal("0.5")),
+            ask=float(above + Decimal("0.5")),
+        )
+    )
+    awake = b.decision_state(START + timedelta(seconds=2))
+    assert awake["autopilot"]["event_plan"]["request_ready"] is True
+    assert b.snapshot()["event_last_trigger"] == "price_cross_above"
+    assert _should_request_jev(awake) is True
+
+
+def test_event_market_entry_installs_protective_oco_and_wakes_after_fill():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+        autopilot_confirmations=1,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "MARKET" and value.get("side") == "LONG"
+    )
+    event = event_plan_event(b, 0, trade_choice, "BAR_5M_1")
+    selected = event["target_decision"]["event_plan"]["trade"]
+    b.on_decision(event)
+
+    trades = b.execute_event_pending(START + timedelta(seconds=0.1))
+    assert trades and trades[0]["action"] == "OPEN"
+    snap = b.snapshot()
+    assert snap["position"]["oco_bracket"]["semantics"] == "jev_event_net_oco"
+    assert snap["event_request_ready"] is True
+    assert snap["event_last_trigger"] == "entry_filled"
+    assert _should_request_jev(
+        b.decision_state(START + timedelta(seconds=0.2))
+    ) is True
+    assert selected["oco"]["risk_reward"] in {1.25, 1.5, 2.0}
+
+    hold_event = event_plan_event(b, 1, "HOLD", "TIMEOUT_15M")
+    b.on_decision(hold_event)
+    held = b.snapshot()
+    assert held["position"]["oco_bracket"]["semantics"] == "jev_event_net_oco"
+    assert held["event_request_ready"] is False
+
+
+def test_event_bar_close_and_timeout_are_code_only_wake_triggers():
+    bar = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    bar.on_tick(tick(0))
+    bar.on_decision(event_plan_event(bar, 0, "WAIT", "BAR_1M_1"))
+    bar.on_tick(tick(30))
+    assert bar.snapshot()["event_request_ready"] is False
+    bar.on_tick(tick(61))
+    assert bar.snapshot()["event_request_ready"] is True
+    assert bar.snapshot()["event_last_trigger"] == "bar_close:1min:1"
+
+    timeout = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    timeout.on_tick(tick(0))
+    timeout.on_decision(event_plan_event(timeout, 0, "WAIT", "TIMEOUT_5M"))
+    timeout.on_tick(tick(299))
+    assert timeout.snapshot()["event_request_ready"] is False
+    timeout.on_tick(tick(301))
+    assert timeout.snapshot()["event_request_ready"] is True
+    assert timeout.snapshot()["event_last_trigger"] == "timeout:300"
+
+
+def test_event_plan_rejects_tampered_risk_beyond_code_envelope():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.01,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    trade_choice = next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "MARKET"
+    )
+    event = event_plan_event(b, 0, trade_choice, "TIMEOUT_5M")
+    event["target_decision"]["event_plan"]["trade"]["oco"]["stop_loss_units"] = 1_000_000
+    b.on_decision(event)
+
+    snap = b.snapshot()
+    assert snap["target_status"] == "rejected:max_risk_per_trade"
+    assert snap["event_request_ready"] is True
+    assert snap["position"] is None
 
 
 def test_fx_fifty_plus_uses_margin_capacity_and_crypto_stays_one_x():
