@@ -7,18 +7,18 @@ from .questions import position_question_specs, question_specs, supervisor_quest
 from .autopilot import question_specs as autopilot_questions
 
 
-EVENT_TIMEFRAME_BAR_LIMIT = 16
-EVENT_RECENT_EXECUTION_LIMIT = 10
+BOUNDED_TIMEFRAME_BAR_LIMIT = 16
+BOUNDED_RECENT_EXECUTION_LIMIT = 10
 
 
-def _compact_event_bar(bar: object) -> dict[str, Any] | None:
+def _compact_bounded_bar(bar: object) -> dict[str, Any] | None:
     if not isinstance(bar, dict):
         return None
     fields = ("open_time", "end_time", "open", "high", "low", "close")
     return {key: bar[key] for key in fields if key in bar}
 
 
-def _compact_event_timeframes(value: object) -> dict[str, Any]:
+def _compact_bounded_timeframes(value: object) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     result: dict[str, Any] = {}
@@ -26,9 +26,9 @@ def _compact_event_timeframes(value: object) -> dict[str, Any]:
         if not isinstance(raw_view, dict):
             continue
         bars = raw_view.get("closed_bars")
-        recent = bars[-EVENT_TIMEFRAME_BAR_LIMIT:] if isinstance(bars, list) else []
-        compact_bars = [row for row in (_compact_event_bar(bar) for bar in recent) if row is not None]
-        current = _compact_event_bar(raw_view.get("current_bar"))
+        recent = bars[-BOUNDED_TIMEFRAME_BAR_LIMIT:] if isinstance(bars, list) else []
+        compact_bars = [row for row in (_compact_bounded_bar(bar) for bar in recent) if row is not None]
+        current = _compact_bounded_bar(raw_view.get("current_bar"))
         result[str(interval)] = {
             "interval": raw_view.get("interval", interval),
             "closed_bars_available": raw_view.get("closed_bars_available", len(compact_bars)),
@@ -40,35 +40,45 @@ def _compact_event_timeframes(value: object) -> dict[str, Any]:
 
 
 def _system_one_state(state: dict[str, Any]) -> dict[str, Any]:
-    """Remove event candidate tables that are already carried by questions.
+    """Bound heavy Jev contexts without mutating caller/broker state.
 
-    The caller's full state remains untouched so target decoding and broker-side
-    validation continue to use the exact generated plans.
+    Event and Fifty+ keep their code-owned semantics and dedicated state while
+    raw tick history and long repeated lists are omitted from the SDK payload.
     """
     autopilot = state.get("autopilot")
-    if not isinstance(autopilot, dict) or autopilot.get("style") != "event":
+    if not isinstance(autopilot, dict):
+        return state
+    style = autopilot.get("style")
+    if style not in {"event", "fifty"}:
         return state
 
     compact_state = dict(state)
     compact_autopilot = dict(autopilot)
-    compact_autopilot.pop("targets", None)
-    # Event triggers are monitored locally from raw ticks. Jev only needs the
-    # current quote plus multi-timeframe structure/indicators, so do not spend
-    # TypeSafe context on the tick tape or the duplicate legacy 1m bar list.
+    # Event/Fifty+ execution semantics are code-owned. Jev needs the current
+    # quote and bounded multi-timeframe structure, not the raw tick tape or the
+    # duplicate legacy 1m bar list.
     compact_autopilot.pop("recent_ticks", None)
     compact_autopilot.pop("closed_1m_bars", None)
-    compact_autopilot["timeframes"] = _compact_event_timeframes(
+    compact_autopilot["timeframes"] = _compact_bounded_timeframes(
         compact_autopilot.get("timeframes")
     )
     recent_executions = compact_autopilot.get("recent_executions")
     if isinstance(recent_executions, list):
-        compact_autopilot["recent_executions"] = recent_executions[:EVENT_RECENT_EXECUTION_LIMIT]
-    event_plan = compact_autopilot.get("event_plan")
-    if isinstance(event_plan, dict):
-        compact_event_plan = dict(event_plan)
-        for key in ("trade_plans", "wake_plans", "expiry_plans"):
-            compact_event_plan.pop(key, None)
-        compact_autopilot["event_plan"] = compact_event_plan
+        compact_autopilot["recent_executions"] = recent_executions[:BOUNDED_RECENT_EXECUTION_LIMIT]
+
+    if style == "event":
+        # Event trade/wake/expiry candidates are already carried by Choice
+        # questions. Keep the full generated plans only in caller/broker state.
+        compact_autopilot.pop("targets", None)
+        event_plan = compact_autopilot.get("event_plan")
+        if isinstance(event_plan, dict):
+            compact_event_plan = dict(event_plan)
+            for key in ("trade_plans", "wake_plans", "expiry_plans"):
+                compact_event_plan.pop(key, None)
+            compact_autopilot["event_plan"] = compact_event_plan
+
+    # Fifty+ keeps its dedicated race/outcome context intact. Its two bounded
+    # UP/DOWN targets also remain available in state and Choice criteria.
     compact_state["autopilot"] = compact_autopilot
     return compact_state
 
