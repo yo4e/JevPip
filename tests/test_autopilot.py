@@ -610,14 +610,14 @@ def test_fifty_plus_is_mandatory_up_down_and_event_driven():
     gate = waiting["autopilot"]["fifty_plus"]["entry_gate"]
     assert gate["ready"] is False
     assert gate["reason"] == "post_close_wait"
-    assert gate["reentry_remaining_seconds"] == pytest.approx(60)
+    assert gate["reentry_remaining_seconds"] == pytest.approx(600)
     assert _should_request_jev(waiting) is False
 
-    almost = b.decision_state(START + timedelta(seconds=61))
+    almost = b.decision_state(START + timedelta(seconds=601))
     assert almost["autopilot"]["fifty_plus"]["entry_gate"]["reentry_remaining_seconds"] == pytest.approx(1)
     assert _should_request_jev(almost) is False
 
-    ready = b.decision_state(START + timedelta(seconds=62))
+    ready = b.decision_state(START + timedelta(seconds=602))
     assert ready["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
     assert set(ready["autopilot"]["targets"]) == {"UP", "DOWN"}
     assert _should_request_jev(ready) is True
