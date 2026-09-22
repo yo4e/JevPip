@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from threading import Event
 import time
 from typing import Any
@@ -29,6 +30,12 @@ from jevpip.decision_trace import append_decision_trace, build_decision_trace
 from jevpip.gmo.history import fetch_history
 from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.gmo.public_rest import fetch_public_ticker
+from jevpip.fifty_outcomes import (
+    finalize_outcome_record,
+    new_outcome_record,
+    summarize_outcomes,
+    update_outcome_record,
+)
 from jevpip.instruments import get_instrument
 from jevpip.jev_replay import (
     plan_jev_replay,
@@ -37,6 +44,7 @@ from jevpip.jev_replay import (
 )
 from jevpip.observer import observe
 from jevpip.signals import SignalPolicy
+from jevpip.storage.jsonl import append_jsonl
 from jevpip.web.research_service import ResearchService, summarize_statistical_replay
 from jevpip.web.read_service import ReadOnlyDataService
 
@@ -79,6 +87,8 @@ class UIController:
         self._paper: PaperBroker | None = None
         self._paper_config: PaperConfig | None = None
         self._trader_history_seed: dict[str, Any] | None = None
+        self._fifty_outcomes_active: list[dict[str, Any]] = []
+        self._fifty_outcomes_recent: deque[dict[str, Any]] = deque(maxlen=100)
         self._trace_run_id: str | None = None
         self._trace_run_config: dict[str, Any] | None = None
         self._last_decision_trace: dict[str, Any] | None = None
@@ -220,6 +230,8 @@ class UIController:
                 }
             )
             self._last_decision_trace = None
+            self._fifty_outcomes_active = []
+            self._fifty_outcomes_recent.clear()
             self._last_error = None
             self._latest_market = None
             self._latest_decision = None
@@ -273,6 +285,7 @@ class UIController:
 
     async def stop_observer(self) -> None:
         await self._stop_context_refresh()
+        self._finalize_live_fifty_outcomes("session_stopped")
         task = self._task
         if task is None or task.done():
             self._status = "stopped"
@@ -290,6 +303,103 @@ class UIController:
     async def close(self) -> None:
         await self.stop_observer()
 
+    def _fifty_outcome_path(self, record: dict[str, Any]):
+        at = self._parse_timestamp(str(record["entry_at"]))
+        return (
+            self.settings.data_dir
+            / "fifty_outcomes"
+            / self._instrument_id
+            / f"{at.date().isoformat()}.jsonl"
+        )
+
+    def _persist_fifty_outcome(self, record: dict[str, Any]) -> None:
+        append_jsonl(self._fifty_outcome_path(record), record)
+        self._fifty_outcomes_recent.appendleft(record)
+
+    def _start_live_fifty_outcome(
+        self,
+        event: dict[str, Any],
+        executions: list[dict[str, Any]],
+        *,
+        entry_at: datetime,
+    ) -> None:
+        if not (
+            isinstance(self._paper, AutopilotBroker)
+            and self._paper.config.autopilot_style == "fifty"
+            and any(row.get("action") == "OPEN" for row in executions)
+        ):
+            return
+        target = event.get("target_decision")
+        if not isinstance(target, dict):
+            return
+        jev = event.get("jev")
+        target_answer = None
+        model = None
+        if isinstance(jev, dict):
+            model = jev.get("model")
+            answers = jev.get("answers")
+            if isinstance(answers, dict) and isinstance(answers.get("target_position"), dict):
+                target_answer = dict(answers["target_position"])
+        state = event.get("state")
+        context_version = None
+        if isinstance(state, dict):
+            autopilot_state = state.get("autopilot")
+            if isinstance(autopilot_state, dict):
+                context_version = autopilot_state.get("context_version")
+        record = new_outcome_record(
+            decision=target,
+            races=self._paper.fifty_directional_races(),
+            entry_at=entry_at,
+            source_kind="live_raw_ticks",
+            prediction={
+                "model": model,
+                "target_position": target_answer,
+                "confidence": target.get("confidence"),
+            },
+            context_version=None if context_version is None else str(context_version),
+        )
+        self._fifty_outcomes_active.append(record)
+        append_jsonl(
+            self._fifty_outcome_path(record),
+            {
+                "kind": "fifty_directional_outcome_started",
+                **{key: value for key, value in record.items() if key != "kind"},
+            },
+        )
+
+    def _update_live_fifty_outcomes(self, event: dict[str, Any]) -> None:
+        if not self._fifty_outcomes_active:
+            return
+        at = self._parse_timestamp(str(event["market_timestamp"]))
+        bid = Decimal(str(event["bid"]))
+        ask = Decimal(str(event["ask"]))
+        status = str(event.get("status") or "UNKNOWN")
+        completed: list[dict[str, Any]] = []
+        for record in self._fifty_outcomes_active:
+            if update_outcome_record(
+                record,
+                at=at,
+                bid=bid,
+                ask=ask,
+                market_status=status,
+            ):
+                completed.append(record)
+        for record in completed:
+            self._fifty_outcomes_active.remove(record)
+            self._persist_fifty_outcome(record)
+
+    def _finalize_live_fifty_outcomes(self, reason: str) -> None:
+        if not self._fifty_outcomes_active:
+            return
+        if self._latest_market and self._latest_market.get("market_timestamp"):
+            at = self._parse_timestamp(str(self._latest_market["market_timestamp"]))
+        else:
+            at = datetime.now(timezone.utc)
+        for record in list(self._fifty_outcomes_active):
+            finalize_outcome_record(record, at=at, reason=reason)
+            self._fifty_outcomes_active.remove(record)
+            self._persist_fifty_outcome(record)
+
     async def _on_update(self, event: dict[str, Any]) -> None:
         kind = event.get("kind")
         if kind == "tick":
@@ -306,6 +416,7 @@ class UIController:
             )
             if self._paper is not None:
                 at = self._parse_timestamp(str(event["market_timestamp"]))
+                self._update_live_fifty_outcomes(event)
                 decision_clock = self._parse_timestamp(
                     str(event.get("received_at") or event["market_timestamp"])
                 )
@@ -371,8 +482,14 @@ class UIController:
                     and event.get("available_at")
                 ):
                     available_at = self._parse_timestamp(str(event["available_at"]))
-                    for paper_event in self._paper.execute_fifty_pending(available_at):
+                    executions = self._paper.execute_fifty_pending(available_at)
+                    for paper_event in executions:
                         self._events.appendleft(paper_event)
+                    self._start_live_fifty_outcome(
+                        event,
+                        executions,
+                        entry_at=available_at,
+                    )
             self._update_jev_supervisor(event)
         elif kind == "error":
             self._last_error = str(event.get("message") or "不明なエラー")
@@ -422,6 +539,7 @@ class UIController:
     def reset_paper(self) -> dict[str, Any]:
         if self._paper_config is None:
             raise RuntimeError("デモ口座は有効になっていません。")
+        self._finalize_live_fifty_outcomes("paper_reset")
         self._paper = make_paper_broker(self._paper_config)
         if (
             isinstance(self._paper, AutopilotBroker)
@@ -455,6 +573,11 @@ class UIController:
             "last_error": self._last_error,
             "chart": list(self._chart),
             "paper": None if self._paper is None else self._paper.snapshot(),
+            "fifty_outcomes": {
+                "active": len(self._fifty_outcomes_active),
+                "recent": list(self._fifty_outcomes_recent)[:20],
+                "summary": summarize_outcomes(list(self._fifty_outcomes_recent)),
+            },
             "external_context": self._external_context_snapshot(now, self._instrument_id),
             "jev_supervisor": self._jev_supervisor_snapshot(now),
             "jev_usage": self._jev_usage_snapshot(),
