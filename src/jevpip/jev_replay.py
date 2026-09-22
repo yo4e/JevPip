@@ -16,6 +16,7 @@ from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
 from jevpip.fifty_outcomes import (
     finalize_outcome_record,
+    load_fifty_outcomes,
     new_outcome_record,
     summarize_outcomes,
     update_outcome_record,
@@ -599,6 +600,21 @@ def run_jev_historical_replay(
     broker = make_paper_broker(config)
     buffer = TickBuffer(max_age_seconds=86_400)
     trader_history_seeded = False
+    prior_fifty_outcomes: list[dict[str, Any]] = []
+    if (
+        isinstance(broker, AutopilotBroker)
+        and broker.config.autopilot_style == "fifty"
+    ):
+        prior_fifty_outcomes = load_fifty_outcomes(
+            data_dir,
+            instrument_id=instrument_id,
+            as_of=start_at,
+            limit=500,
+        )
+        broker.seed_fifty_outcome_history(
+            prior_fifty_outcomes,
+            as_of=start_at,
+        )
 
     run_id = (
         f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-"
@@ -622,6 +638,7 @@ def run_jev_historical_replay(
                           "replay_mode": replay_mode,
                           "source_path": None if source_path is None else str(source_path),
                           "trader_history": history_meta,
+                          "fifty_outcome_history_seed_count": len(prior_fifty_outcomes),
                           "plan": {**asdict(plan), "source_path": None if plan.source_path is None else str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
     active_fifty_outcomes: list[dict[str, Any]] = []
@@ -693,6 +710,8 @@ def run_jev_historical_replay(
         for record in completed:
             active_fifty_outcomes.remove(record)
             completed_fifty_outcomes.append(record)
+            if isinstance(broker, AutopilotBroker):
+                broker.remember_fifty_outcome(record)
             append_jsonl(output, record)
 
     next_request_at = start_at
@@ -890,6 +909,8 @@ def run_jev_historical_replay(
         )
         active_fifty_outcomes.remove(record)
         completed_fifty_outcomes.append(record)
+        if isinstance(broker, AutopilotBroker):
+            broker.remember_fifty_outcome(record)
         append_jsonl(output, record)
 
     summary = _summary(
@@ -919,6 +940,7 @@ def run_jev_historical_replay(
         "replay_mode": replay_mode,
         "source_path": None if source_path is None else str(source_path),
         "trader_history": history_meta,
+        "fifty_outcome_history_seed_count": len(prior_fifty_outcomes),
         "replay_fidelity": (
             "raw_tick"
             if source_kind == "raw_ticks"
