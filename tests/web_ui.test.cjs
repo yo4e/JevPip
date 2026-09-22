@@ -22,6 +22,7 @@ function runtime(){
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
+  vm.runInContext(source('function eventTradeSummary(', 'function chartPrice('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
@@ -60,6 +61,20 @@ for(const [interval,ms] of [['1min',60000],['5min',300000],['15min',900000],['1h
     assert.equal(c.chartTradeIndex(points,{timestamp:'invalid'},interval),-1);
   });
 }
+
+test('Jev diagnostics expose event choice and execution block reason',()=>{
+  const {context:c}=runtime();
+  const event={
+    target_decision:{
+      choice:'WAIT',
+      event_plan:{trade_choice:'WAIT',trade:{action:'WAIT'}}
+    }
+  };
+  assert.equal(c.eventTradeSummary(event),'Jev選択: WAIT');
+  assert.equal(c.executionStatusSummary({target_status:'confirming_target'}),'実行: 同一targetの再確認待ち');
+  assert.equal(c.executionStatusSummary({target_status:'max_spread'}),'実行: spread上限で見送り');
+  assert.equal(c.executionStatusSummary({target_status:'rejected:expired'}),'実行: rejected:expired');
+});
 
 test('event decision summary shows timeout, bar-close, price-cross and expiry',()=>{
   const {context:c}=runtime(),base={available_at:'2026-09-22T08:00:00+00:00'};
