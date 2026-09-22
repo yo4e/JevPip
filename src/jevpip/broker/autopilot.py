@@ -858,6 +858,8 @@ class AutopilotBroker(PaperBroker):
             return "minimum_confidence"
         if cfg.autopilot_cooldown_seconds is not None and self._last_change_at is not None and (at-self._last_change_at).total_seconds() < cfg.autopilot_cooldown_seconds:
             return "cooldown"
+        if cfg.autopilot_style == "event":
+            return None
         signature = (side, quantity)
         if signature != self._candidate:
             self._candidate, self._confirmations = signature, 0
