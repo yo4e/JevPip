@@ -5,16 +5,17 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 ## 始め方
 
 1. デモ自動売買で **Jevモード** タブを選ぶ。TypeSafe APIキーを設定する。
-2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔、**スキャルピング**は標準60秒間隔。どちらも `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。FXはpips、BTCは円で対称のネット利確・損切り幅を指定する。
+2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔、**スキャルピング**は標準60秒間隔。**おまかせ戦略**は固定cadenceではなくevent-drivenで、Jevがentry / protective OCO候補と次のwake-up条件を選ぶ。**Fifty+**は1ポジションずつ持ち、決済後は標準60秒待ってからJevへ次のUP / DOWNを二択で問い合わせる。すべて `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。
 3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
 デイトレ / スキャルピングでは固定の予測horizonをJevへ課さない。各判断時点で「現在どのtotal positionが適切か」を全部入りcontextから選ばせ、次の定期判断で改めて見直す。判断間隔の初期値はデイトレ15分、スキャルピング60秒。短い判断間隔ほどJev API callとinput token消費が増えるため、特にスキャルピングではtoken利用量に注意する。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
 
-### デイトレ / スキャルピング / Fifty+
+### デイトレ / スキャルピング / おまかせ戦略 / Fifty+
 
 - `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
+- `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補とwake候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
 - `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準60秒）待ってから次の方向判断を要求する。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。実entry時にspread・手数料・slippage込みのNET ±Xをpaper OCOとして固定し、後続tickが境界を飛び越えても登録済み境界へ補間して決済する。
@@ -29,16 +30,25 @@ UIではJevとの混在を避けるため、通常のMomentum / RSI / MAは **�
 
 ## モデルとコードの契約
 
-JevはTypeSafeの独立した2つのChoice質問に答える。
+通常のdaytrade / scalpでは、JevはTypeSafeの独立した2つのChoice質問に答える。
 
 - `target_position`: KEEP / FLAT / LONGまたはSHORTのSMALL・BASE・LARGE。数量は基準の0.5・1・2倍を数量刻みに切り捨てる。新規・増額で資金上限、最大数量、最大保有額を超える候補は渡さない。
 - `decision_factor`: NO_EDGE / COST_TOO_HIGH / TREND / REVERSAL / REDUCE_RISK / KEEP_THESIS。target_positionとは独立したChoiceで、売買判断の因果的な「理由」を保証するものではない。現在stateで目立つ判断要因の分類として記録する。
 
 KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 1000→LONG 500は500減額、LONG 1000→SHORT 1000は全決済と新規SHORTを同一decision IDへ紐付ける。BTCは0.0001 BTC、FXは1通貨刻み。任意数量・任意コマンドをモデルから受け取る構造ではない。
 
+おまかせ戦略では別の2 Choiceを使う。
+
+- `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補は資金上限・最大数量/保有額・spread等を満たすものだけを渡す。
+- `event_wake_plan`: 価格cross、1m/5m/15mの指定本数close、5/15/30分timeoutから、次にJevを起こす条件を選ぶ。任意文章、任意数式、任意コードは実行しない。
+
+初版のrisk profileはTIGHT / BASE / WIDEの動的候補で、stop幅はATRと往復コストからコードが生成し、take幅はRR 1.25 / 1.5 / 2.0候補になる。さらに `autopilot_max_risk_pct`（標準1% equity）をhard envelopeとして、候補生成時と実行直前の両方で最大損失を検証する。Jevはこのhard envelopeを変更できない。
+
+MARKET entryはfresh quoteで直ちにpaper約定し、同時にprotective paper OCOを固定する。PRICE_CROSS entryはコードがMID crossingを監視して約定する。fill直後はOCOを残したままJevを再度起こす。HOLD中も既存OCOは残る。position close後も自動的に再判断する。
+
 コードが `schema_version / decision_id / session_id / account_version / instrument_id / target_side / target_quantity / confidence / reason / basis_market_timestamp / requested_at / available_at / expires_at` を組み立てる。選択肢、確率集合・合計、confidence、有限数、数量刻み、銘柄、時刻順を検証する。confidenceは実測勝率ではない。
 
-Jevの3スタイルは共通の `trader_context_v1` を使う。stateには現在bid/ask/mid/spread、直近40 tick、1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、残高/equity・確定/含み損益、position、手数料/slippage、往復コスト、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdown、constraints、選択したfeatures、任意の公式イベントcontextを含む。指標計算用には最大240本の確定barを保持する。live起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。どの情報を重視するかはJev自身へ任せ、テクニカル指標や過去損益を固定売買ルールにはしない。APIキー・credentialは渡さない。
+Jevの4スタイルは共通の `trader_context_v1` を使う。stateには現在bid/ask/mid/spread、直近40 tick、1分60本 / 5分48本 / 15分32本 / 1時間24本のOHLC、SMA20/50/200、RSI14、ATR14、直近range位置、UTC/Tokyo/London/New Yorkのclock、残高/equity・確定/含み損益、position、手数料/slippage、往復コスト、最大50件のrecent execution、win/loss・PF・平均損益・最大DD・exit reason・PnL breakdown、constraints、選択したfeatures、任意の公式イベントcontextを含む。指標計算用には最大240本の確定barを保持する。live起動時はPublic historical KLineでwarmupし、判断時点より後に閉じるbarは除外する。どの情報を重視するかはJev自身へ任せ、テクニカル指標や過去損益を固定売買ルールにはしない。APIキー・credentialは渡さない。
 
 ## 約定・会計
 
@@ -77,7 +87,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 右側の同じ設定をJev BTへ渡す。1/2/5/10/30/60/300/900秒間隔、30秒〜1日のwindow、token確認、10,000 calls上限を維持。保存済みraw tickをFifty+比較の本命とし、raw tickがない場合のGMO historical 1分足fallbackは概算/smoke testとして扱う。previewの最大call数は実行時にも上限として適用する。observer/replayと新しい実行は重ねない。処理がcancelされた場合は進行中の1callを待ち、残りのcallを始めない。
 
-受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。Fifty+はliveと同様、応答の `available_at` に達したら、その時点までに受信済みの最新fresh quoteを使って即時適用する。次のtickをentry価格として先取りしない。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
+受信時刻をrequest時刻とし、実測API latencyを加えて回答の利用可能時刻を求める。market/received timestampが因果順でないrawファイルは実APIを呼ぶ前に拒否する。Fifty+とおまかせ戦略のMARKET/CLOSEはliveと同様、応答の `available_at` に達したら、その時点までに受信済みの最新fresh quoteを使って即時適用する。おまかせ戦略の価格cross / bar close / timeoutはreplay tickからコード側で発火させ、固定cadenceでは再問い合わせしない。次のtickをentry価格として先取りしない。最終tickでは新規建玉を作らず、取引可能な価格なら残りを強制決済する。最終価格が古い/閉場なら保有を残した評価額となる。
 
 ファンダONのhistorical replayは明示的に拒否する。現在のイベント情報を過去へ流用しない。liveの公式contextも、後日観測したrevisionを過去時点の判断に混ぜない。
 
