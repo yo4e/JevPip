@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import json
 
 import pytest
 
 from jevpip.fifty_outcomes import (
     build_directional_races,
+    build_fifty_outcome_context,
     finalize_outcome_record,
     hypothetical_net_pnl,
+    load_fifty_outcomes,
     new_outcome_record,
     summarize_outcomes,
     update_outcome_record,
@@ -144,3 +147,99 @@ def test_unresolved_is_not_forced_into_tp_or_sl():
     assert summary["chosen_resolved"] == 0
     assert summary["directions"]["LONG"]["unresolved"] == 1
     assert summary["directions"]["SHORT"]["unresolved"] == 1
+
+
+
+def completed_record(*, choice="UP", confidence=0.66, completed_after=10):
+    record = new_outcome_record(
+        decision=decision(choice),
+        races=races(),
+        entry_at=START,
+        source_kind="live_raw_ticks",
+        prediction={
+            "confidence": confidence,
+            "target_position": {
+                "choice": choice,
+                "confidence": confidence,
+            },
+        },
+        context_version="trader_context_v1",
+    )
+    if choice == "UP":
+        update_outcome_record(
+            record,
+            at=START + timedelta(seconds=completed_after),
+            bid=Decimal("106"),
+            ask=Decimal("108"),
+            market_status="OPEN",
+        )
+        update_outcome_record(
+            record,
+            at=START + timedelta(seconds=completed_after + 1),
+            bid=Decimal("106"),
+            ask=Decimal("108"),
+            market_status="OPEN",
+        )
+    else:
+        update_outcome_record(
+            record,
+            at=START + timedelta(seconds=completed_after),
+            bid=Decimal("92"),
+            ask=Decimal("94"),
+            market_status="OPEN",
+        )
+        update_outcome_record(
+            record,
+            at=START + timedelta(seconds=completed_after + 1),
+            bid=Decimal("92"),
+            ask=Decimal("94"),
+            market_status="OPEN",
+        )
+    if not record["complete"]:
+        finalize_outcome_record(
+            record,
+            at=START + timedelta(seconds=completed_after + 2),
+            reason="test_end",
+        )
+    return record
+
+
+def test_outcome_context_is_compact_and_excludes_future_results():
+    known = completed_record(choice="UP", confidence=0.66, completed_after=10)
+    future = completed_record(choice="DOWN", confidence=0.91, completed_after=100)
+    context = build_fifty_outcome_context(
+        [known, future],
+        as_of=START + timedelta(seconds=50),
+    )
+
+    assert context["future_results_excluded"] is True
+    assert context["sample_count"] == 1
+    assert len(context["recent"]) == 1
+    assert context["recent"][0]["choice"] == "UP"
+    assert "races" not in context["recent"][0]
+    assert context["aggregate"]["chosen_resolved"] == 1
+    assert context["confidence_bands"]["0.6-0.7"]["resolved"] == 1
+    assert "0.9-1.0" not in context["confidence_bands"]
+
+
+def test_load_fifty_outcomes_survives_restart_without_future_leak(tmp_path):
+    root = tmp_path / "fifty_outcomes" / "USD_JPY"
+    root.mkdir(parents=True)
+    known = completed_record(choice="UP", completed_after=10)
+    future = completed_record(choice="DOWN", completed_after=100)
+    started_only = {
+        "kind": "fifty_directional_outcome_started",
+        "decision_id": "started",
+    }
+    path = root / "2026-09-20.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(row) for row in (started_only, known, future)) + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_fifty_outcomes(
+        tmp_path,
+        instrument_id="USD_JPY",
+        as_of=START + timedelta(seconds=50),
+    )
+    assert [row["choice"] for row in loaded] == ["UP"]
