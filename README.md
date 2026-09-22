@@ -143,7 +143,7 @@ Fifty+のentry / exit骨格、安全弁、会計をそのまま使い、次の�
 
 これは予測力や収益性を前提とするものではありません。月相・星座は決定論的、タロットとコイントスは実行ごとにランダムです。コイントスはJev Fifty+や他の方向源に優位性があるかを見るための基準群として使います。
 
-Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界を建玉時のpaper OCOとして固定し、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
+Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界を建玉時のpaper OCOとして固定し、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。USD/JPYの初期spread上限は **1.0 pips** です。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 PaperBroker / AutopilotBrokerは主に次を反映します。
 
@@ -520,6 +520,7 @@ unit testは外部APIへ依存しないものを基本とし、live connectivity
 - [CURRENT_STATE.md](./docs/CURRENT_STATE.md) : 現在できること、未実装、次の一手
 - [JEV_AUTOPILOT.md](./docs/JEV_AUTOPILOT.md) : Jevおまかせの契約・会計・制約・replay
 - [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) : Fifty+の仮説・1:1境界・検証観点
+- [BACKTEST_RESEARCH.md](./docs/BACKTEST_RESEARCH.md) : backtest / replay / comparisonの分類とFifty+比較方針
 - [DESIGN.md](./DESIGN.md) : 設計判断・実装履歴
 - [RESEARCH_2026-09-19.md](./docs/RESEARCH_2026-09-19.md) : 実装開始前の類似実装調査
 - [EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md](./docs/EXTERNAL_CONTEXT_RESEARCH_2026-09-19.md) : Jev supervisor向け公式event source / provenance / look-ahead設計
@@ -535,4 +536,6 @@ JevPipは現在、
 
 を1つのローカルアプリへまとめた段階です。
 
-Jevおまかせのpaper prototype、Fifty+、従来モードのA/B/C/D experiment harnessまで実装済みです。次はFifty+を含むpaper結果を十分な試行数・別期間・baselineと比較し、勝率だけでなくnet PnL、コスト、ラウンド数、時間帯・銘柄偏りを確認する段階です。収益性は未検証です。
+Jevおまかせのpaper prototype、Fifty+、従来モードのA/B/C/D experiment harnessまで実装済みです。Fifty+はLONG / SHORT双方の独立したNET TP-vs-SLを答え合わせし、完了済み履歴を次回以降のJevへcausalに返します。TP/SLはpaper OCOとして建玉時に固定され、tickのovershootを余分な損益へ変換しません。
+
+次はFifty+を十分な試行数・別期間で回し、同じmarket path / cost modelのcoin flip random controlと比較する段階です。単発の勝率ではなく、net PnL、PF、DD、spread / fee、ラウンド数、時間帯・銘柄偏り、random controlの分布を見る方針です。収益性は未検証です。
