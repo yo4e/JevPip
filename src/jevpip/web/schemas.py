@@ -54,7 +54,7 @@ class PaperDemoInput(BaseModel):
     autopilot_horizon_seconds: Literal[30, 120, 600, 1800] = 600
     autopilot_fifty_target_units: float = Field(default=5.0, gt=0, le=100000000)
     autopilot_fifty_target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
-    autopilot_fifty_reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
+    autopilot_fifty_reentry_seconds: float = Field(default=600.0, ge=0, le=3600)
     autopilot_fifty_oracle: Literal[
         "jev",
         "moon_phase",
@@ -71,7 +71,7 @@ class PaperDemoInput(BaseModel):
     autopilot_max_risk_pct: float = Field(default=0.01, gt=0, le=0.25)
     autopilot_max_change: float | None = Field(default=None, gt=0, le=100000000)
     autopilot_entry_loss: float | None = Field(default=None, gt=0, le=1000000000)
-    autopilot_max_spread: float | None = Field(default=None, ge=0, le=100000000)
+    autopilot_max_spread: float | None = Field(default=1.0, ge=0, le=100000000)
     autopilot_min_confidence: float | None = Field(default=None, ge=0, le=1)
     autopilot_cooldown_seconds: float | None = Field(default=None, ge=0, le=3600)
     autopilot_max_hold_seconds: float | None = Field(default=None, gt=0, le=86400)
@@ -206,7 +206,7 @@ class SpiritualBacktestRequest(BaseModel):
     paper_leverage: float = Field(default=25.0, ge=1, le=25)
     target_units: float = Field(default=10.0, gt=0, le=100000000)
     target_jpy: float = Field(default=500.0, gt=0, le=1000000000)
-    reentry_seconds: float = Field(default=60.0, ge=0, le=3600)
+    reentry_seconds: float = Field(default=600.0, ge=0, le=3600)
     max_spread_units: float = Field(default=1.0, ge=0, le=100000000)
     max_drawdown_pct: float = Field(default=0.20, gt=0, le=1)
     slippage_units: float = Field(default=0.0, ge=0, le=100000000)
