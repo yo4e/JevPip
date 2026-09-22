@@ -836,7 +836,8 @@ def test_net_tp_and_dd_exit_are_cost_aware_and_reject_old_target():
     act(b, 0, "LONG_BASE")
     assert b.on_tick(tick(1, 102, 104)) == []  # price gain but not net TP
     rows = b.on_tick(tick(2, 105, 107))
-    assert rows[0]["reason"] == "net_take_profit" and rows[0]["pnl"] > 0
+    assert rows[0]["reason"] == "net_take_profit"
+    assert rows[0]["pnl"] == pytest.approx(10, abs=1e-6)
     b = broker(autopilot_max_drawdown=50)
     act(b, 0, "LONG_BASE")
     b.on_tick(tick(2))
