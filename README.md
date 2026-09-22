@@ -368,7 +368,7 @@ Dはsource C-runで記録済みのJev directionだけを再利用します。sou
 1. `data/raw_ticks/<instrument>/YYYY-MM-DD.jsonl` があれば保存済みraw tickを使う
 2. raw tickがなければGMO Public APIのhistorical 1分足へ自動fallbackする
 
-raw tick時は秒以下の市場経路を使えます。1分足fallback時はFXならhistorical BID / ASK close、BTCなら `bid = ask = close` 近似を使います。この場合、1分内の値動き順序、細かいspread変化、秒単位のentry timingは再現できません。結果欄へ使用データ源と誤差を明記します。
+raw tick時は秒以下の市場経路を使い、Fifty+の応答をliveと同じ `available_at` 時点で、その時点までに受信済みの最新fresh quoteへ適用します。開始時の1m / 5m / 15m / 1h contextも、`start_at` までに確定したPublic historical KLineでlive同様にwarmupします。1分足fallback時はFXならhistorical BID / ASK close、BTCなら `bid = ask = close` 近似を使いますが、1分内のTP/SL到達順序、細かいspread変化、秒単位のentry timingは再現できないため**概算 / smoke test**です。live相当のFifty+成績としては扱いません。
 
 - 検証時間: 30秒 / 1分 / 5分 / 15分 / 1時間 / 6時間 / 1日
 - Jev判断間隔: 1 / 2 / 5 / 10 / 30 / 60 / 300 / 900秒

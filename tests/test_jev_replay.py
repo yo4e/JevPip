@@ -239,6 +239,8 @@ def test_plan_falls_back_to_gmo_historical_1m_without_raw_ticks(
     )
     assert preview["source_kind"] == "gmo_historical_1m"
     assert "GMO historical 1分足" in preview["source_note"]
+    assert "概算/smoke test" in preview["source_note"]
+    assert "TP/SL到達順序" in preview["source_note"]
 
 
 def test_replay_runs_on_historical_1m_fallback_and_marks_result(
@@ -267,7 +269,8 @@ def test_replay_runs_on_historical_1m_fallback_and_marks_result(
     )
     assert result["data_source"] == "gmo_historical_1m"
     assert result["replay_mode"] == "fx_bid_ask_close"
-    assert "誤差があります" in result["data_source_note"]
+    assert "概算/smoke test" in result["data_source_note"]
+    assert "live相当のFifty+成績として扱わない" in result["data_source_note"]
     assert result["summary"]["calls"] == client.calls
     assert client.calls > 0
 

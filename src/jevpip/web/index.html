@@ -376,7 +376,7 @@ details{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}summar
   <section class="tab" id="tab-jevbt">
     <div class="back-wrap">
       <div class="bt-guide"><div><span>DATA</span><strong>raw tick優先 / GMO 1分足fallback</strong></div><div><span>JEV API / TOKEN</span><strong>実際に使う・消費あり</strong></div><div><span>PURPOSE</span><strong>現在のJevをhistorical replay</strong></div></div>
-      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は、選んだ日に保存済みraw tickがあればそれを優先し、なければGMO historical 1分足を使います。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
+      <div class="notice" style="margin-bottom:9px"><strong>Jev historical replay</strong> は、保存済みraw tickをFifty+比較の本命データとして使います。raw tickがない日はGMO historical 1分足へfallbackしますが、1分内のTP/SL到達順序や秒単位のentry timingを復元できないため<strong>概算 / smoke test</strong>です。現在のJevを過去時点の情報だけで呼ぶ研究リプレイで、当時のJevモデルそのものを再現するものではありません。</div>
       <div class="mode-grid">
         <div class="field"><label class="label" for="jbt-date">日付</label><input id="jbt-date" type="date"><div class="muted" style="font-size:9px;margin-top:3px">raw tick保存日ならtickを優先。未保存日はGMO historical 1分足へ自動fallback。</div></div>
         <div class="field"><label class="label" for="jbt-start">開始時刻 UTC</label><input id="jbt-start" type="time" step="1"><div class="muted" style="font-size:9px;margin-top:3px">空欄ならその日の最初のraw tickから</div></div>
@@ -1309,6 +1309,7 @@ async function runJevReplay(){
     "output目安: "+outputEstimate+"（無料）\n"+
     "概算API cost: "+costEstimate+"\n"+
     "判断間隔: "+preview.cadence_seconds+"秒\n\n"+
+    (preview.source_note||"")+"\n\n"+
     "この見積りは直近usage平均と現在の公開価格による概算で、実際の請求額を保証しません。\n実行しますか？"
   );
   if(!ok)return;

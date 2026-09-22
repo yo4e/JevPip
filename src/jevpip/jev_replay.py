@@ -360,14 +360,23 @@ def preview_jev_replay(
         else estimated_input + estimated_output
     )
     source_note = (
-        "保存済みraw tickを使用します。"
+        "保存済みraw tickを使用します。Fifty+の到達順序・注文時刻比較の本命データです。"
         if plan.source_kind == "raw_ticks"
-        else "保存済みtickがないためGMO historical 1分足を使用します。"
+        else (
+            "保存済みtickがないためGMO historical 1分足を使用します。"
+            "これは概算/smoke test用です。1分内のTP/SL到達順序、当時の細かなspread、"
+            "秒単位のentry timingは再現できません。"
+        )
     )
     return {
         **asdict(plan),
         "source_path": None if plan.source_path is None else str(plan.source_path),
         "source_note": source_note,
+        "replay_fidelity": (
+            "raw_tick"
+            if plan.source_kind == "raw_ticks"
+            else "approximate_1m_smoke_test"
+        ),
         "max_calls_limit": MAX_JEV_REPLAY_CALLS,
         "within_call_limit": plan.planned_max_calls <= MAX_JEV_REPLAY_CALLS,
         "token_estimate": {
@@ -521,6 +530,7 @@ def run_jev_historical_replay(
     paper_config: PaperConfig,
     jev_client: Any,
     acknowledged_token_use: bool,
+    trader_history_seed: dict[str, Any] | None = None,
     cancel_event: Event | None = None,
 ) -> dict[str, Any]:
     if not acknowledged_token_use:
@@ -580,18 +590,30 @@ def run_jev_historical_replay(
     )
     broker = make_paper_broker(config)
     buffer = TickBuffer(max_age_seconds=86_400)
+    trader_history_seeded = False
 
     run_id = (
         f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-"
         f"{instrument_id}-{cadence_seconds}s-{uuid4().hex[:8]}"
     )
     output = data_dir / "jev_replays" / instrument_id / f"{run_id}.jsonl"
+    history_meta = (
+        None
+        if trader_history_seed is None
+        else {
+            "source": trader_history_seed.get("source"),
+            "as_of": trader_history_seed.get("as_of"),
+            "used_dates": trader_history_seed.get("used_dates", {}),
+            "errors": trader_history_seed.get("errors", {}),
+        }
+    )
     append_jsonl(output, {"kind": "jev_replay_config", "schema_version": 1,
                           "config": asdict(config), "profile": profile,
                           "signal_policy": asdict(signal_policy), "cadence_seconds": cadence_seconds,
                           "source_kind": source_kind,
                           "replay_mode": replay_mode,
                           "source_path": None if source_path is None else str(source_path),
+                          "trader_history": history_meta,
                           "plan": {**asdict(plan), "source_path": None if plan.source_path is None else str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
     next_request_at = start_at
@@ -610,11 +632,30 @@ def run_jev_historical_replay(
         if tick.market_timestamp > end_at:
             break
 
-        buffer.append(tick)
         if tick.market_timestamp < start_at:
-            if isinstance(broker, AutopilotBroker):
-                broker.warm_history(tick.as_json_dict())
+            # A live Jev session starts with closed historical KLines but no
+            # pre-start raw tick tape. When a live-style trader-history seed is
+            # available, keep the replay's short rolling context empty until
+            # in-window ticks actually arrive. Direct/library callers without
+            # a seed retain the older raw-history warmup behavior.
+            if trader_history_seed is None:
+                buffer.append(tick)
+                if isinstance(broker, AutopilotBroker):
+                    broker.warm_history(tick.as_json_dict())
             continue
+
+        buffer.append(tick)
+        if (
+            isinstance(broker, AutopilotBroker)
+            and trader_history_seed is not None
+            and not trader_history_seeded
+        ):
+            # Match live startup: closed public KLines known at replay start
+            # become the canonical multi-timeframe seed. Raw pre-window ticks
+            # remain useful for short rolling/tick context but must not replace
+            # the live-style closed-bar history.
+            broker.seed_trader_history(trader_history_seed, as_of=start_at)
+            trader_history_seeded = True
 
         selected_ticks += 1
         clock = tick.received_at if config.autopilot_enabled else tick.market_timestamp
@@ -622,7 +663,26 @@ def run_jev_historical_replay(
             pending_decision is not None
             and pending_decision[0] <= clock
         ):
-            broker.on_decision(pending_decision[1])
+            available_at, decision_event = pending_decision
+            broker.on_decision(decision_event)
+            if (
+                isinstance(broker, AutopilotBroker)
+                and broker.config.autopilot_style == "fifty"
+            ):
+                # Live Fifty+ applies a completed Jev answer immediately at
+                # available_at using the freshest quote already observed.
+                # Do this before consuming the next tick so replay cannot peek
+                # at a price that arrived after the answer became available.
+                for execution in broker.execute_fifty_pending(available_at):
+                    append_jsonl(output, execution)
+                if broker.last_decision_trace is not None:
+                    append_jsonl(
+                        output,
+                        {
+                            "kind": "target_decision_trace",
+                            **broker.last_decision_trace,
+                        },
+                    )
             pending_decision = None
 
         generated = broker.on_tick(tick.as_json_dict(), allow_entry=(not config.autopilot_enabled or tick.market_timestamp < final_market_at))
@@ -708,7 +768,14 @@ def run_jev_historical_replay(
         pending_decision is not None
         and pending_decision[0] <= final_clock
     ):
-        broker.on_decision(pending_decision[1])
+        available_at, decision_event = pending_decision
+        broker.on_decision(decision_event)
+        if (
+            isinstance(broker, AutopilotBroker)
+            and broker.config.autopilot_style == "fifty"
+        ):
+            for execution in broker.execute_fifty_pending(available_at):
+                append_jsonl(output, execution)
 
     final_trade = broker.finalize(
         last_tick.as_json_dict(),
@@ -744,11 +811,20 @@ def run_jev_historical_replay(
         "data_source": source_kind,
         "replay_mode": replay_mode,
         "source_path": None if source_path is None else str(source_path),
-        "data_source_note": (
-            "保存済みraw tickを使用しました。"
+        "trader_history": history_meta,
+        "replay_fidelity": (
+            "raw_tick"
             if source_kind == "raw_ticks"
-            else "保存済みtickがないためGMO historical 1分足で計算しています。"
-            "1分内の値動き順序、細かいspread変化、秒単位のentry timingは再現できないため誤差があります。"
+            else "approximate_1m_smoke_test"
+        ),
+        "data_source_note": (
+            "保存済みraw tickを使用しました。Fifty+の到達順序・注文時刻比較の本命データです。"
+            if source_kind == "raw_ticks"
+            else (
+                "GMO historical 1分足による概算/smoke testです。"
+                "1分内のTP/SL到達順序、当時の細かいspread、秒単位のentry timingは再現できません。"
+                "live相当のFifty+成績として扱わないでください。"
+            )
         ),
         "output": str(output),
         "summary": summary,
@@ -756,7 +832,9 @@ def run_jev_historical_replay(
             "This is a historical replay using the current Jev model, not a recreation "
             "of the model as it existed at the historical time.",
             (
-                "Only information built from raw ticks up to each basis timestamp is sent."
+                "Execution follows saved raw ticks, while multi-timeframe startup context "
+                "uses only public historical candles closed by replay start; no future candle "
+                "or pre-start raw tick tape is injected into a live-parity decision."
                 if source_kind == "raw_ticks"
                 else "GMO historical 1-minute close points are used because no saved raw "
                 "ticks are available; intra-minute path and sub-minute execution are unavailable."
