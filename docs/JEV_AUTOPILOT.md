@@ -42,7 +42,7 @@ KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 100
 - `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補は資金上限・最大数量/保有額・spread等を満たすものだけを渡す。
 - `event_wake_plan`: 価格cross、1m/5m/15mの指定本数close、5/15/30分timeoutから、次にJevを起こす条件を選ぶ。任意文章、任意数式、任意コードは実行しない。
 
-初版のrisk profileはTIGHT / BASE / WIDEの動的候補で、stop幅はATRと往復コストからコードが生成し、take幅はRR 1.25 / 1.5 / 2.0候補になる。さらに `autopilot_max_risk_pct`（標準1% equity）をhard envelopeとして、候補生成時と実行直前の両方で最大損失を検証する。Jevはこのhard envelopeを変更できない。
+初版のrisk profileはTIGHT / BASE / WIDEの動的候補で、stop幅はATRと往復コストからコードが生成し、take幅はRR 1.25 / 1.5 / 2.0候補になる。さらに `autopilot_max_risk_pct`（標準1% equity、UIで0.1〜25%）をhard envelopeとして、候補生成時と実行直前の両方で最大損失を検証する。risk envelopeは人間/設定側が所有し、Jevはこの上限を変更できない。
 
 MARKET entryはfresh quoteで直ちにpaper約定し、同時にprotective paper OCOを固定する。PRICE_CROSS entryはコードがMID crossingを監視して約定する。fill直後はOCOを残したままJevを再度起こす。HOLD中も既存OCOは残る。position close後も自動的に再判断する。
 
