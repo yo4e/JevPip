@@ -116,10 +116,10 @@ class PaperOcoBracket:
 
     side: Side
     quote_side: Literal["bid", "ask"]
-    take_profit_quote: Decimal
-    stop_loss_quote: Decimal
-    take_profit_reason: str
-    stop_loss_reason: str
+    take_profit_quote: Decimal | None
+    stop_loss_quote: Decimal | None
+    take_profit_reason: str | None
+    stop_loss_reason: str | None
     semantics: str
 
 
@@ -772,14 +772,22 @@ class PaperBroker:
             return None
         spread = ask - bid
         if bracket.quote_side == "bid":
-            if bid >= bracket.take_profit_quote:
+            if (
+                bracket.take_profit_quote is not None
+                and bracket.take_profit_reason is not None
+                and bid >= bracket.take_profit_quote
+            ):
                 fill_bid = bracket.take_profit_quote
                 return (
                     bracket.take_profit_reason,
                     fill_bid,
                     fill_bid + spread,
                 )
-            if bid <= bracket.stop_loss_quote:
+            if (
+                bracket.stop_loss_quote is not None
+                and bracket.stop_loss_reason is not None
+                and bid <= bracket.stop_loss_quote
+            ):
                 fill_bid = bracket.stop_loss_quote
                 return (
                     bracket.stop_loss_reason,
@@ -788,14 +796,22 @@ class PaperBroker:
                 )
             return None
 
-        if ask <= bracket.take_profit_quote:
+        if (
+            bracket.take_profit_quote is not None
+            and bracket.take_profit_reason is not None
+            and ask <= bracket.take_profit_quote
+        ):
             fill_ask = bracket.take_profit_quote
             return (
                 bracket.take_profit_reason,
                 fill_ask - spread,
                 fill_ask,
             )
-        if ask >= bracket.stop_loss_quote:
+        if (
+            bracket.stop_loss_quote is not None
+            and bracket.stop_loss_reason is not None
+            and ask >= bracket.stop_loss_quote
+        ):
             fill_ask = bracket.stop_loss_quote
             return (
                 bracket.stop_loss_reason,
@@ -811,8 +827,16 @@ class PaperBroker:
         return {
             "side": bracket.side,
             "quote_side": bracket.quote_side,
-            "take_profit_quote": str(bracket.take_profit_quote),
-            "stop_loss_quote": str(bracket.stop_loss_quote),
+            "take_profit_quote": (
+                None
+                if bracket.take_profit_quote is None
+                else str(bracket.take_profit_quote)
+            ),
+            "stop_loss_quote": (
+                None
+                if bracket.stop_loss_quote is None
+                else str(bracket.stop_loss_quote)
+            ),
             "take_profit_reason": bracket.take_profit_reason,
             "stop_loss_reason": bracket.stop_loss_reason,
             "semantics": bracket.semantics,
