@@ -180,6 +180,7 @@ def new_outcome_record(
         "available_at": decision.get("available_at"),
         "entry_at": entry_at.isoformat(),
         "source_kind": source_kind,
+        "label_semantics": "independent_counterfactual_net_tp_vs_sl",
         "context_version": context_version,
         "prediction": prediction or {},
         "races": races,
