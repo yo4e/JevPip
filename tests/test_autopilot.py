@@ -1808,7 +1808,7 @@ def test_fifty_client_bounds_common_history_but_preserves_dedicated_context(monk
 def test_live_provider_shares_replay_state_and_fundamentals_toggle(tmp_path):
     from jevpip.config import Settings
     from jevpip.web.controller import UIController
-    b = broker()
+    b = broker(autopilot_style="fifty")
     b.on_tick(tick(0))
     ui = UIController(Settings(data_dir=tmp_path))
     ui._paper, ui._paper_config = b, b.config
