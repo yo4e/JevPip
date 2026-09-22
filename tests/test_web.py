@@ -59,6 +59,8 @@ def test_web_root_is_japanese_and_has_dashboard_features():
         assert "Choice確率はこの実測率とは別物です" in response.text
         assert "公式イベントを見る" in response.text
         assert "スキャルピング" in response.text
+        assert "おまかせ戦略" in response.text
+        assert "価格cross・足確定・timeout・約定時だけJevを再呼び出し" in response.text
         assert "Fifty+" in response.text
         assert "1ポジションずつ" in response.text
         assert 'id="fifty-reentry-seconds"' in response.text
