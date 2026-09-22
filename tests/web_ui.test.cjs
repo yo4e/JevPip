@@ -17,6 +17,7 @@ function runtime(){
   const context=vm.createContext({$,state,autoLimits:[],document:{querySelectorAll:()=>[...nodes.values()]},instrumentSpec(){return {price_decimals:0};},Option:function(text,value){this.text=text;this.value=value;},applyInstrumentDefaults(){},autopilotStyleChanged(){},autopilotChanged(){},modeChanged(){},setPaperDecisionMode(mode){$('paper-mode').value=mode;state.restoredPaperMode=mode;},updateTradeSummary(){},updateBacktestNote(){},updateStrategyBacktestSummary(){},applyProfile(name,p){state.restoredProfile=p;},applySignal(name,p){state.restoredSignal=p;}});
   vm.runInContext(source('function chartPrice(', 'window.addEventListener("resize"'),context);
   vm.runInContext(source('const paperFields=', 'function updateTradeSummary()'),context);
+  vm.runInContext(source('function autopilotConfig()', 'function updateFiftyTargetUi()'),context);
   vm.runInContext(source('const yen=', 'const pct='),context);
   vm.runInContext(source('function esc(s)', 'function renderCredentialState()'),context);
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
@@ -109,8 +110,13 @@ test('Jev style defaults use 15-minute daytrade and 60-second scalp cadence',()=
   assert.ok($('auto-style-note').textContent.includes('token'));
 
   $('auto-style').value='fifty';
+  $('auto-fundamentals').checked=true;
   apply();
   assert.equal($('jev-every').value,'1');
+  assert.equal($('fifty-reentry-seconds').value,'600');
+  assert.equal($('auto-fundamentals-wrap').style.display,'flex');
+  assert.equal($('auto-fundamentals').checked,true);
+  assert.equal(c.autopilotConfig().autopilot_fundamentals,true);
 });
 
 test('reload restores the running BTC paper settings, including zero-valued settings',()=>{
