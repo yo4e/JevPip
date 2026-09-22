@@ -343,6 +343,7 @@ strategy PnL backtestではありません。
 - replay開始時もPublic historical KLineを `start_at` 時点まででwarmupし、1m / 5m / 15m / 1h contextをliveと揃える
 - pending decision中の重複call抑止
 - Fifty+の実entryごとにLONG / SHORT双方の独立TP-vs-SL結果をraw pathで答え合わせし、TP先着率・決着時間・両方向SL・未決着を保存
+- 完了済みのFifty+答え合わせを `fifty_plus.outcome_history` として次回Jevへ渡す。直近20件 + aggregate + confidence band、再起動時最大500件seed、判断時点より未来の決着は除外
 - Jev direct paper entry + bounded HOLD/CLOSE
 - preview時の最大call数計算
 - recent reported usageからtoken消費目安
