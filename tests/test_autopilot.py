@@ -922,6 +922,16 @@ def test_fifty_replay_executes_at_response_time_before_sparse_next_tick(tmp_path
     assert trades[0]["timestamp"] == (START + timedelta(seconds=0.1)).isoformat()
     assert trades[1]["reason"] == "fifty_take_profit"
     assert not any("rejected:expired" in json.dumps(row) for row in saved)
+    labels = result["summary"]["fifty_directional_outcomes"]
+    assert labels["samples"] == 1
+    assert labels["chosen_resolved"] == 1
+    assert labels["chosen_tp_first_rate"] == pytest.approx(1.0)
+    assert labels["directions"]["LONG"]["take_profit_first"] == 1
+    assert labels["directions"]["SHORT"]["stop_loss_first"] == 1
+    outcome_rows = [row for row in saved if row.get("kind") == "fifty_directional_outcome"]
+    assert len(outcome_rows) == 1
+    assert outcome_rows[0]["outcomes"]["LONG"]["status"] == "take_profit_first"
+    assert outcome_rows[0]["outcomes"]["SHORT"]["status"] == "stop_loss_first"
 
 
 def test_fifty_replay_uses_live_style_trader_history_seed(tmp_path, monkeypatch):
