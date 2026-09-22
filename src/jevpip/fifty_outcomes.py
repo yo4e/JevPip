@@ -82,10 +82,12 @@ def _direction_contract(
             "ask": str(ask),
             "execution_price": str(entry_price),
             "entry_fee_jpy": float(entry_fee),
+            "entry_fee_exact": str(entry_fee),
         },
         "target": {
             "net_take_profit_jpy": float(target_jpy),
             "net_stop_loss_jpy": float(-target_jpy),
+            "net_take_profit_jpy_exact": str(target_jpy),
             "display_value": float(target_value),
             "display_label": target_label,
         },
@@ -220,13 +222,13 @@ def update_outcome_record(
             side=side,
             quantity=_d(race["quantity"]),
             entry_price=_d(entry["execution_price"]),
-            entry_fee=_d(entry["entry_fee_jpy"]),
+            entry_fee=_d(entry.get("entry_fee_exact", entry["entry_fee_jpy"])),
             bid=bid,
             ask=ask,
             fee_rate=_d(cost["fee_rate"]),
             slippage_price=_d(cost["slippage_price"]),
         )
-        target = _d(race["target"]["net_take_profit_jpy"])
+        target = _d(race["target"].get("net_take_profit_jpy_exact", race["target"]["net_take_profit_jpy"]))
         status = None
         if net >= target:
             status = "take_profit_first"
