@@ -6,7 +6,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 
 1. デモ自動売買で **Jevモード** タブを選ぶ。TypeSafe APIキーを設定する。
 2. 銘柄、基準数量、仮想残高、Jevスタイルを選ぶ。**デイトレ**は標準900秒（15分）間隔、**スキャルピング**は標準60秒間隔。**おまかせ戦略**は固定cadenceではなくevent-drivenで、Jevがentry / protective OCO候補と次のwake-up条件を選ぶ。**Fifty+**は1ポジションずつ持ち、決済後は標準600秒（10分）待ってからJevへ次のUP / DOWNを二択で問い合わせる。すべて `trader_context_v1` のmulti-timeframe・口座/PnL・cost・recent execution等を広くJevへ渡す。
-3. 「公式イベントを見る」を使う場合はチェックする。現在は観測済みのBLS / BOJ / Fed等の公式イベント予定だけを渡す。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
+3. 「公式イベントを見る」を使う場合はチェックする。おまかせ戦略とJev Fifty+を含むJevモードで、観測済みのBLS / BOJ / Fed等の公式イベント予定を判断contextへ追加する。スピリチュアルFifty+はOFF固定。広義のニュース・指標実績・市場解説をまとめて取得する機能ではない。
 4. 必要な制約だけ「Jevを縛る・詳細設定」でチェックし、開始する。
 
 デイトレ / スキャルピングでは固定の予測horizonをJevへ課さない。各判断時点で「現在どのtotal positionが適切か」を全部入りcontextから選ばせ、次の定期判断で改めて見直す。判断間隔の初期値はデイトレ15分、スキャルピング60秒。短い判断間隔ほどJev API callとinput token消費が増えるため、特にスキャルピングではtoken利用量に注意する。従来の固定TP/SL・最大8秒保有・コード戦略・supervisorはこのモードには適用しない。
@@ -16,7 +16,7 @@ Issue #17 の試作実装。Jevが保有方向と**目標総数量**を選び、
 - `daytrade`: `trader_context_v1` を利用し、current quote、直近40 tick、1m / 5m / 15m / 1h、基本テクニカル、clock、account/PnL、recent execution、cost / constraintsを渡す。標準cadenceは900秒（15分）。
 - `scalp`: daytradeと同じ `trader_context_v1` を利用する。短期判断でも情報をtickだけへ限定せず、どのtimeframeや口座情報を重視するかはJev自身へ任せる。標準cadenceは60秒。短く変更するほどtoken消費が増える。
 - `event`（UI: **おまかせ戦略**）: 固定cadenceを使わない。コードが現在quote・ATR・直近高安・cost・risk envelopeから実行可能なentry/OCO候補、wake候補、plan expiry候補を動的生成し、JevはTypeSafe Choiceでそれぞれ1つを選ぶ。entry候補はMARKETまたは価格cross、wake候補は価格cross / 1m・5m・15m bar close / timeout、expiry候補は5 / 15 / 30 / 60分。entry fillとposition closeは常に自動wake。tick受信中に条件が成立しなければJev APIを呼ばない。
-- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準600秒 / 10分）待ってから次の方向判断を要求する。
+- `fifty`: FLAT / KEEPをモデル候補に出さず、`UP / DOWN` の二択だけを渡す。UPは基準数量のLONG、DOWNは基準数量のSHORT。ポジション保有中はJev APIを呼ばず、対称のTP/SLで決済された後は `autopilot_fifty_reentry_seconds`（標準600秒 / 10分）待ってから次の方向判断を要求する。「公式イベントを見る」がONなら、その時点で観測済みの公式event contextも方向判断へ渡す。
   - 背景にある実験仮説と設計思想は [FIFTY_PLUS.md](./FIFTY_PLUS.md) を参照。
 - Fifty+のFX勝負幅は `autopilot_fifty_target_units`、BTCは `autopilot_fifty_target_jpy`。Jevへの質問では、LONGとSHORTを同じ開始条件から独立した仮想tradeとして示し、それぞれ「自身のnet +X TPが自身のnet -X SLより先か」を評価させたうえでUP / DOWNを選ばせる。片側の敗北を反対側の勝利として反転しない。実entry時にspread・手数料・slippage込みのNET ±Xをpaper OCOとして固定し、後続tickが境界を飛び越えても登録済み境界へ補間して決済する。
 - 新規ラウンド開始時の推定往復コストが勝負幅以上なら、建てた瞬間に損切り境界へ入るためJevを呼ばず待機する。spread等が狭まり、勝負幅が往復コストを上回れば自動的に判断を再開する。
@@ -40,8 +40,8 @@ KEEPは現在数量、FLATは0。LONG 1000→LONG 1000は約定なし、LONG 100
 おまかせ戦略では別の3 Choiceを使う。
 
 - `event_trade_plan`: コードがその時点で生成したbounded planから、WAIT / MARKET / PRICE_CROSS / HOLD / CLOSEのいずれかを含む具体的なtrade planを選ぶ。flat時のentry候補はLONG/SHORT、基準数量の0.5/1/2倍、現在quote・ATR・直近高安・往復コストから作ったentry levelとNET OCO幅の組み合わせ。候補生成時に資金上限・最大数量/保有額・hard risk envelopeを検証し、spread / stale / external supervisor等の実行時条件は約定直前にも再検証する。実行時gateで拒否された場合はtickごとに即再問い合わせせず、選択済みwakeまたはexpiryまでcode-only監視へ戻る。
-- `event_wake_plan`: 価格cross、1m/5m/15mの指定本数close、5/15/30分timeoutから、次にJevを起こす条件を選ぶ。任意文章、任意数式、任意コードは実行しない。
-- `event_expiry_plan`: wake条件とは独立したplanの最大寿命を5/15/30/60分から選ぶ。expiryが先に到来した場合は未約定entryを失効させ、古いplanで後から約定しない。
+- `event_wake_plan`: 価格cross、5分足3本 / 15分足1本close、15/30分timeoutから、次にJevを起こす条件を選ぶ。1分・5分単位の定期polling候補は出さず、価格変化を条件化できる場合はcode-onlyの価格cross監視を優先させる。任意文章、任意数式、任意コードは実行しない。
+- `event_expiry_plan`: wake条件とは独立したplanの最大寿命を15/30/60分から選ぶ。expiryが先に到来した場合は未約定entryを失効させ、古いplanで後から約定しない。5分expiryはtokenを消費するheartbeat化を避けるため候補に出さない。
 
 初版のrisk profileはTIGHT / BASE / WIDEの動的候補で、stop幅はATRと往復コストからコードが生成し、take幅はRR 1.25 / 1.5 / 2.0候補になる。さらに `autopilot_max_risk_pct`（標準1% equity、UIで0.1〜25%）をhard envelopeとして、候補生成時と実行直前の両方で最大損失を検証する。risk envelopeは人間/設定側が所有し、Jevはこの上限を変更できない。
 
