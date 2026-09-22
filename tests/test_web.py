@@ -1346,6 +1346,7 @@ def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
                 "start_time": "00:00:00",
                 "duration_seconds": 60,
                 "cadence_seconds": 1,
+                "event_driven": True,
             },
         )
 
@@ -1353,6 +1354,7 @@ def test_jev_replay_preview_api_delegates_without_spending_tokens(monkeypatch):
     assert response.json()["planned_max_calls"] == 60
     assert called["cadence_seconds"] == 1
     assert called["duration_seconds"] == 60
+    assert called["event_driven"] is True
 
 
 def test_jev_replay_run_api_requires_explicit_token_acknowledgement(monkeypatch):
