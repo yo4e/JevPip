@@ -2060,3 +2060,301 @@ def test_live_controller_persists_both_reversal_legs(tmp_path):
     assert [leg["action"] for leg in legs] == ["CLOSE", "OPEN"]
     assert legs[0]["decision_id"] == legs[1]["decision_id"]
     assert reversal["position_management"]["account_version_after"] == 3
+
+
+def _first_event_market_choice(b: AutopilotBroker, as_of: datetime) -> str:
+    state = b.decision_state(as_of)
+    return next(
+        key
+        for key, value in state["autopilot"]["event_plan"]["trade_plans"].items()
+        if value.get("action") == "MARKET" and value.get("side") == "LONG"
+    )
+
+
+def test_event_oco_loss_latches_dd_halt_before_any_reentry():
+    b = broker(
+        autopilot_style="event",
+        initial_balance=2000,
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_drawdown_pct=0.001,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    choice = _first_event_market_choice(b, START)
+    b.on_decision(event_plan_event(b, 0, choice, "TIMEOUT_15M"))
+    assert b.execute_event_pending(START + timedelta(seconds=0.1))
+
+    closed = b.on_tick(tick(1, bid=50, ask=52))
+    assert closed and closed[0]["reason"] == "event_stop_loss"
+    assert b.position is None
+    assert b.snapshot()["risk_halted"] is True
+    halted = b.decision_state(START + timedelta(seconds=1))
+    assert halted["autopilot"]["event_plan"]["request_ready"] is False
+    assert _should_request_jev(halted) is False
+
+    retry_choice = _first_event_market_choice(b, START + timedelta(seconds=2))
+    b.on_decision(event_plan_event(b, 2, retry_choice, "TIMEOUT_15M"))
+    assert b.execute_event_pending(START + timedelta(seconds=2.1)) == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "risk_halted"
+
+
+def test_event_entry_cost_can_latch_dd_halt_immediately():
+    b = broker(
+        autopilot_style="event",
+        initial_balance=2000,
+        fee_rate=0.001,
+        slippage_units=0,
+        autopilot_max_drawdown_pct=0.0001,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    choice = _first_event_market_choice(b, START)
+    b.on_decision(event_plan_event(b, 0, choice, "TIMEOUT_15M"))
+    opened = b.execute_event_pending(START + timedelta(seconds=0.1))
+    assert opened and opened[0]["action"] == "OPEN"
+    assert b.snapshot()["risk_halted"] is True
+    assert _should_request_jev(
+        b.decision_state(START + timedelta(seconds=0.1))
+    ) is False
+
+
+@pytest.mark.parametrize("style", ["event", "fifty"])
+def test_immediate_autopilot_execution_rejects_market_stale_quote(style):
+    b = broker(
+        autopilot_style=style,
+        autopilot_ttl_seconds=60,
+        max_market_age_seconds=5,
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+        autopilot_fifty_target_units=5,
+    )
+    b.on_tick(tick(0))
+    if style == "event":
+        choice = _first_event_market_choice(b, START)
+        event = event_plan_event(b, 0, choice, "TIMEOUT_15M")
+    else:
+        event = event_for(b, 0, "UP")
+
+    available = START + timedelta(seconds=6.1)
+    event["available_at"] = available.isoformat()
+    event["target_decision"]["available_at"] = available.isoformat()
+    event["target_decision"]["expires_at"] = (START + timedelta(seconds=60)).isoformat()
+
+    stale = tick(
+        0.1,
+        received_at=(START + timedelta(seconds=6)).isoformat(),
+    )
+    b.on_tick(stale)
+    assert b.snapshot()["target_status"] == "market_closed_or_stale"
+    b.on_decision(event)
+    execute = (
+        b.execute_event_pending
+        if style == "event"
+        else b.execute_fifty_pending
+    )
+    assert execute(available) == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "rejected:stale_quote"
+
+
+def test_fifty_rechecks_round_trip_cost_before_immediate_execution():
+    b = broker(
+        autopilot_style="fifty",
+        size=1000,
+        paper_leverage=25,
+        price_unit=0.01,
+        fee_rate=0.00002,
+        slippage_units=0,
+        autopilot_fifty_target_units=1,
+        autopilot_max_spread=1,
+    )
+    b.on_tick(tick(0, bid=150.000, ask=150.001))
+    state = b.decision_state(START)
+    assert state["autopilot"]["fifty_plus"]["entry_gate"]["ready"] is True
+    event = event_for(b, 0, "UP")
+
+    b.on_tick(tick(0.05, bid=150.000, ask=150.008))
+    gate = b.decision_state(START + timedelta(seconds=0.05))["autopilot"]["fifty_plus"]["entry_gate"]
+    assert gate["max_spread_units"] == pytest.approx(1.0)
+    assert gate["spread_units"] < 1.0
+    assert gate["reason"] == "round_trip_cost_at_or_above_target"
+
+    b.on_decision(event)
+    assert b.execute_fifty_pending(START + timedelta(seconds=0.1)) == []
+    assert b.position is None
+    assert b.snapshot()["target_status"] == "round_trip_cost_at_or_above_target"
+
+
+def test_late_pre_entry_market_tick_cannot_close_fifty_position():
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_target_units=5,
+        autopilot_max_spread=10,
+        fee_rate=0,
+        slippage_units=0,
+    )
+    b.on_tick(tick(0))
+    event = event_for(b, 0, "UP")
+    available = START + timedelta(seconds=0.5)
+    event["available_at"] = available.isoformat()
+    event["target_decision"]["available_at"] = available.isoformat()
+    b.on_decision(event)
+    opened = b.execute_fifty_pending(available)
+    assert opened and b.position is not None
+    assert b.position.opened_at == available
+
+    late = tick(
+        0.2,
+        bid=106,
+        ask=108,
+        received_at=(START + timedelta(seconds=0.6)).isoformat(),
+    )
+    assert b.on_tick(late) == []
+    assert b.position is not None
+    assert b.snapshot()["target_status"] == "market_predates_position"
+
+    fresh = tick(
+        1,
+        bid=106,
+        ask=108,
+        received_at=(START + timedelta(seconds=1.2)).isoformat(),
+    )
+    closed = b.on_tick(fresh)
+    assert closed and closed[0]["action"] == "CLOSE"
+    assert closed[0]["timestamp"] == (START + timedelta(seconds=1.2)).isoformat()
+
+
+def test_event_api_error_uses_bounded_retry_backoff():
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    failed_at = START + timedelta(seconds=0.1)
+    b.on_decision(
+        {
+            "target_error": "api_error",
+            "available_at": failed_at.isoformat(),
+            "recorded_at": failed_at.isoformat(),
+        }
+    )
+
+    for second in (1, 29, 30):
+        state = b.decision_state(START + timedelta(seconds=second))
+        assert state["autopilot"]["event_plan"]["request_ready"] is False
+        assert _should_request_jev(state) is False
+
+    ready = b.decision_state(START + timedelta(seconds=30.2))
+    assert ready["autopilot"]["event_plan"]["request_ready"] is True
+    assert _should_request_jev(ready) is True
+
+
+def test_max_change_applies_to_discretionary_flat_but_not_forced_oco():
+    b = broker(
+        autopilot_max_change=5,
+        autopilot_take_profit_units=1,
+    )
+    assert act(b, 0, "LONG_SMALL")[0]["action"] == "OPEN"
+    assert act(b, 2, "LONG_BASE")[0]["action"] == "INCREASE"
+    assert b.position is not None and b.position.size == 10
+
+    assert act(b, 4, "FLAT") == []
+    assert b.snapshot()["target_status"] == "max_position_change"
+    assert b.position is not None and b.position.size == 10
+
+    forced = b.on_tick(tick(6, bid=120, ask=122))
+    assert forced and forced[0]["action"] == "CLOSE"
+    assert forced[0]["reason"] == "net_take_profit"
+    assert b.position is None
+
+
+def test_live_controller_skips_stale_tick_for_fifty_labels(tmp_path):
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    b = broker(
+        autopilot_style="fifty",
+        autopilot_fifty_target_units=5,
+        autopilot_fifty_reentry_seconds=60,
+        autopilot_max_spread=10,
+        fee_rate=0,
+        slippage_units=0,
+        max_market_age_seconds=5,
+    )
+    ui = UIController(Settings(data_dir=tmp_path))
+    ui._paper, ui._paper_config = b, b.config
+    ui._instrument_id = "USD_JPY"
+
+    async def run():
+        await ui._on_update({"kind": "tick", **tick(0)})
+        await ui._on_update({"kind": "decision", **event_for(b, 0, "UP")})
+        await ui._on_update(
+            {
+                "kind": "tick",
+                **tick(
+                    1,
+                    bid=106,
+                    ask=108,
+                    received_at=(START + timedelta(seconds=7)).isoformat(),
+                ),
+            }
+        )
+        assert len(ui._fifty_outcomes_active) == 1
+        record = ui._fifty_outcomes_active[0]
+        assert record["outcomes"]["LONG"]["status"] == "pending"
+        assert record["outcomes"]["SHORT"]["status"] == "pending"
+
+        await ui._on_update({"kind": "tick", **tick(8, bid=106, ask=108)})
+
+    asyncio.run(run())
+    assert ui._fifty_outcomes_active == []
+    path = tmp_path / "fifty_outcomes" / "USD_JPY" / "2026-09-20.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    completed = [row for row in rows if row["kind"] == "fifty_directional_outcome"]
+    assert len(completed) == 1
+    assert completed[0]["outcomes"]["LONG"]["known_at"] == tick(8)["received_at"]
+
+
+@pytest.mark.parametrize("style", ["fifty", "event"])
+def test_live_controller_persists_immediate_autopilot_execution_trace(tmp_path, style):
+    from jevpip.config import Settings
+    from jevpip.web.controller import UIController
+
+    b = broker(
+        autopilot_style=style,
+        autopilot_fifty_target_units=5,
+        autopilot_max_spread=10,
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    ui = UIController(Settings(data_dir=tmp_path))
+    ui._paper, ui._paper_config = b, b.config
+    ui._instrument_id = "USD_JPY"
+    ui._trace_run_id = f"immediate-{style}"
+    ui._trace_run_config = {"paper": asdict(b.config)}
+
+    async def run():
+        await ui._on_update({"kind": "tick", **tick(0)})
+        if style == "fifty":
+            event = event_for(b, 0, "UP")
+        else:
+            choice = _first_event_market_choice(b, START)
+            event = event_plan_event(b, 0, choice, "TIMEOUT_15M")
+        await ui._on_update({"kind": "decision", **event})
+
+    asyncio.run(run())
+    path = tmp_path / "decision_traces" / "USD_JPY" / "2026-09-20.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    opens = [
+        execution
+        for row in rows
+        for execution in row.get("trade_link", {}).get("executions", [])
+        if execution.get("action") == "OPEN"
+    ]
+    assert len(opens) == 1
