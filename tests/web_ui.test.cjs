@@ -23,6 +23,7 @@ function runtime(){
   vm.runInContext(source('function renderTopQuote(', 'async function start()'),context);
   vm.runInContext(source('function eventDelayLabel(', 'function chartPrice('),context);
   vm.runInContext(source('function eventTradeSummary(', 'function chartPrice('),context);
+  vm.runInContext(source('function decisionLogSummary(', 'function activeDecisionModeLabel('),context);
   vm.runInContext(source('function renderExecutions(', '\n$("autopilot").addEventListener'),context);
   return {context,$,state,nodes};
 }
