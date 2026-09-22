@@ -518,6 +518,8 @@ def _summary(
         "fees_paid": snapshot["fees_paid"],
         "slippage_cost": snapshot["slippage_cost"],
         "average_trade_pnl": snapshot["average_trade_pnl"],
+        "average_win_pnl": snapshot["average_win_pnl"],
+        "average_loss_pnl": snapshot["average_loss_pnl"],
         "exit_reasons": snapshot["exit_reasons"],
         "trades": snapshot["trades"],
     }
