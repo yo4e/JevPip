@@ -151,3 +151,25 @@ def build_event_wake_plans(levels: dict[str, Decimal]) -> dict[str, dict[str, An
             "description": "Wake after thirty minutes even if no other event happens.",
         },
     }
+
+
+def build_event_expiry_plans() -> dict[str, dict[str, Any]]:
+    """Bounded independent lifetimes for an accepted event plan."""
+    return {
+        "EXPIRY_5M": {
+            "seconds": 300,
+            "description": "Invalidate this plan after five minutes even if its wake trigger has not fired.",
+        },
+        "EXPIRY_15M": {
+            "seconds": 900,
+            "description": "Invalidate this plan after fifteen minutes.",
+        },
+        "EXPIRY_30M": {
+            "seconds": 1800,
+            "description": "Invalidate this plan after thirty minutes.",
+        },
+        "EXPIRY_60M": {
+            "seconds": 3600,
+            "description": "Invalidate this plan after sixty minutes.",
+        },
+    }
