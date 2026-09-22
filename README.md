@@ -143,7 +143,7 @@ Fifty+のentry / exit骨格、安全弁、会計をそのまま使い、次の�
 
 これは予測力や収益性を前提とするものではありません。月相・星座は決定論的、タロットとコイントスは実行ごとにランダムです。コイントスはJev Fifty+や他の方向源に優位性があるかを見るための基準群として使います。
 
-Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
+Jev Fifty+とスピリチュアルモードは、数量やTP/SLの自由判断を方向源へ任せません。コード側が対称のネット損益境界を建玉時のpaper OCOとして固定し、決済後待機、spread上限、往復コストgate、最大DD、fee / slippage、口座会計を管理します。詳細は [FIFTY_PLUS.md](./docs/FIFTY_PLUS.md) を参照してください。
 
 PaperBroker / AutopilotBrokerは主に次を反映します。
 
@@ -151,12 +151,15 @@ PaperBroker / AutopilotBrokerは主に次を反映します。
 - configured slippage
 - instrumentごとのreference fee
 - code-owned risk / exit rules
+- 戦略モードのTP/SLとFifty+の対称NET境界を、建玉時に固定するpaper OCO / bracket
 - FX paperの最大25xレバレッジによる必要証拠金近似（BTCは1x固定）
 - Jev / スピリチュアルFifty+の最大DD 20%初期停止
 - single position
 - net / gross PnL、fee / slippage cost、Profit Factor、max drawdown、win rate
 
-> Paper tradingは将来利益を示すものではありません。板の深さ、部分約定、動的slippage、資金・証拠金制約などは完全にはモデル化していません。
+TP/SLは建玉時にOCO境界として固定します。raw tickが境界を飛び越えた場合も、paper研究では「境界へ最初に触れた」とみなし、その登録済み境界へ補間して約定します。これにより、粗いtick間隔のせいで設定TP/SL以上の利益・損失を偶然計上しません。configured slippage / feeは境界計算・約定会計へ反映します。
+
+> Paper tradingは将来利益を示すものではありません。板の深さ、部分約定、注文板上の実fill改善、gap-through、動的slippage、資金・証拠金制約などは完全にはモデル化していません。paper OCOの境界補間は研究用の決定論的近似です。
 
 ## Safety supervisor
 
