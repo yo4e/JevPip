@@ -49,9 +49,10 @@ Jevおまかせはprimary paper workflowとして実装済みです。
 スタイル:
 - **デイトレ**: `trader_context_v1` を利用。標準900秒（15分）ごとに現在の最適total positionを再判断
 - **スキャルピング**: `trader_context_v1` を利用。標準60秒ごとに現在の最適total positionを再判断。短く設定するほどtoken消費が増える
+- **おまかせ戦略**: boundedなtrade / wake / expiryをJevが選ぶevent-driven mode。entry planはfillで消費し、protective OCOは独立して維持。価格cross / bar close / timeout / expiry / fill / closeだけで再判断する
 - **Fifty+**: flat時だけJevへUP / DOWNを問い合わせ、保有中はAPIを呼ばない。LONG / SHORTそれぞれについて自身のnet TP-vs-SLを独立に評価させ、対称のNET ±Xをentry時のpaper OCOとして固定して決済後待機を使う
 
-3スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
+4スタイルとも1m / 5m / 15m / 1h、SMA / RSI / ATR、clock、account / PnL、cost、recent execution等を広く渡し、何を重視するかはJev自身へ任せる
 
 Fifty+にはspread上限、往復コストgate、最大DD停止、FX paper leverage等のcode-owned safetyを共通適用します。paper OCOは研究用の境界touch近似で、observed tickのovershootを余分なPnLへ変換しません。実注文のgap-through、stop-market slippage、価格改善、板厚は別物です。live開始時はPublic historical KLineでmulti-timeframeをwarmupし、未確定future barは除外します。詳細は [JEV_AUTOPILOT.md](JEV_AUTOPILOT.md) と [FIFTY_PLUS.md](FIFTY_PLUS.md)。
 
