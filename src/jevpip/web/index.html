@@ -729,14 +729,14 @@ function updateTradeSummary(){
   if(brain==="spiritual"){
     const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
     const oracle=$("spiritual-strategy").value==="tarot"?"タロット1枚引き 🃏":$("spiritual-strategy").value==="zodiac_polarity"?"太陽星座の極性 ♈":"月相 🌙";
-    box.textContent="スピリチュアル Fifty+ / "+oracle+"が方向を決定 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / Jev API不使用。";
+    box.textContent="スピリチュアル Fifty+ / "+oracle+"が方向を決定 / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益・paper OCO） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / Jev API不使用。";
     return;
   }
   if(brain==="jev"){
     const mode=$("auto-style").value;
     if(mode==="fifty"){
       const target=i.market_kind==="crypto_spot"?($("fifty-target-jpy").value+"円"):($("fifty-target-units").value+" "+i.move_unit_label);
-      box.textContent="Jevモード Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 待機後にJevがUP / DOWNを二択で判断します。";
+      box.textContent="Jevモード Fifty+ / 基準数量 "+$("paper-size").value+" "+i.quantity_label+" / 勝負幅 ±"+target+"（ネット損益・paper OCO） / 決済後 "+$("fifty-reentry-seconds").value+"秒待機 / spread上限 "+$("paper-max-spread").value+" "+i.move_unit_label+" / 最大レバレッジ "+$("paper-leverage").value+"x / 最大DD "+$("paper-max-dd-pct").value+"%で停止 / 待機後にJevがUP / DOWNを二択で判断します。";
       return;
     }
     const style=mode==="scalp"?"スキャルピング":"デイトレ";
@@ -758,7 +758,7 @@ function updateTradeSummary(){
   }
   const synthetic=i.paper_short_is_synthetic?' / SHORTは仮想ショート':'';
   const supervisor=$("paper-supervisor").checked?"安全監督ON":"安全監督OFF";
-  box.innerHTML=`<strong>戦略モード / ${esc(i.display_symbol)} / 注文数量 ${size} ${esc(i.quantity_label)}</strong><br>${entry}<br><strong>${esc(supervisor)} / Jev API不使用</strong><br>Take Profit +${esc($("p-tp").value)}${esc(unit)} / Stop Loss -${esc($("p-sl").value)}${esc(unit)} / 最大spread ${esc($("p-spread").value)}${esc(unit)}<br>${esc(i.paper_fee_label)} / slippage ${esc($("p-slip").value||0)}${esc(unit)}${synthetic}`;
+  box.innerHTML=`<strong>戦略モード / ${esc(i.display_symbol)} / 注文数量 ${size} ${esc(i.quantity_label)}</strong><br>${entry}<br><strong>${esc(supervisor)} / Jev API不使用</strong><br>paper OCO: Take Profit +${esc($("p-tp").value)}${esc(unit)} / Stop Loss -${esc($("p-sl").value)}${esc(unit)} / 最大spread ${esc($("p-spread").value)}${esc(unit)}<br>${esc(i.paper_fee_label)} / slippage ${esc($("p-slip").value||0)}${esc(unit)}${synthetic}`;
 }
 function instrumentSpec(){return state.config?.instruments?.[$("instrument").value]||null}
 function applyInstrumentDefaults(){
