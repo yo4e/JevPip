@@ -499,6 +499,7 @@ class UIController:
         self._events.appendleft(event)
 
     def _observer_done(self, task: asyncio.Task[None]) -> None:
+        self._finalize_live_fifty_outcomes("observer_finished")
         if self._context_task is not None and not self._context_task.done():
             self._context_task.cancel()
         if task.cancelled():
