@@ -31,6 +31,54 @@ def finite_decimal(value: object, name: str, *, positive: bool = False) -> Decim
     return result
 
 
+def _event_trade_criteria(plans: dict[str, Any]) -> dict[str, Any]:
+    """Compact Choice criteria; the full executable plans stay in broker state."""
+    result: dict[str, Any] = {}
+    for key, plan in plans.items():
+        if not isinstance(plan, dict):
+            continue
+        item: dict[str, Any] = {
+            "action": plan.get("action"),
+            "side": plan.get("side"),
+            "quantity": plan.get("quantity"),
+        }
+        trigger = plan.get("entry_trigger")
+        if isinstance(trigger, dict):
+            item["entry_trigger"] = {
+                field: trigger[field]
+                for field in ("type", "price")
+                if field in trigger
+            }
+        oco = plan.get("oco")
+        if isinstance(oco, dict):
+            item["oco"] = {
+                field: oco[field]
+                for field in ("stop_loss_units", "take_profit_units", "risk_reward")
+                if field in oco
+            }
+        if "estimated_max_loss_jpy" in plan:
+            item["estimated_max_loss_jpy"] = plan["estimated_max_loss_jpy"]
+        result[key] = item
+    return result
+
+
+def _event_wake_criteria(plans: dict[str, Any]) -> dict[str, Any]:
+    fields = ("type", "price", "timeframe", "bars", "seconds")
+    return {
+        key: {field: plan[field] for field in fields if field in plan}
+        for key, plan in plans.items()
+        if isinstance(plan, dict)
+    }
+
+
+def _event_expiry_criteria(plans: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: {"seconds": plan["seconds"]}
+        for key, plan in plans.items()
+        if isinstance(plan, dict) and "seconds" in plan
+    }
+
+
 def question_specs(state: dict[str, Any]) -> dict[str, Any]:
     policy = state["autopilot"]
     style = policy.get("style", "daytrade")
@@ -51,7 +99,7 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                     "Use all supplied trader context and trade only when the prospective setup "
                     "justifies its costs and downside."
                 ),
-                "criteria": event_plan["trade_plans"],
+                "criteria": _event_trade_criteria(event_plan["trade_plans"]),
             },
             "event_wake_plan": {
                 "type": "choice",
@@ -62,7 +110,7 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                     "that would materially change the current thesis rather than a needlessly "
                     "frequent timer."
                 ),
-                "criteria": event_plan["wake_plans"],
+                "criteria": _event_wake_criteria(event_plan["wake_plans"]),
             },
             "event_expiry_plan": {
                 "type": "choice",
@@ -71,7 +119,7 @@ def question_specs(state: dict[str, Any]) -> dict[str, Any]:
                     "arrives before the selected entry or wake event, code invalidates the old "
                     "plan and asks for a fresh review. Choose exactly one supplied lifetime."
                 ),
-                "criteria": event_plan["expiry_plans"],
+                "criteria": _event_expiry_criteria(event_plan["expiry_plans"]),
             },
         }
     if style == "fifty":

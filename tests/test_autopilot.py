@@ -1554,7 +1554,103 @@ def test_client_uses_only_target_questions_without_network(monkeypatch):
     assert set(captured["questions"]) == {"target_position", "decision_factor"}
     assert captured["options"]["timeout"] == 10
     assert captured["options"]["retry"].max_retries == 0
+    assert captured["state"] is state
     assert result["model"] == "test-only"
+
+
+def test_event_client_deduplicates_and_compacts_typesafe_payload(monkeypatch):
+    from jevpip.jev.client import JevClient
+
+    b = broker(
+        autopilot_style="event",
+        fee_rate=0,
+        slippage_units=0,
+        autopilot_max_risk_pct=0.05,
+    )
+    b.on_tick(tick(0))
+    state = b.decision_state(START)
+    plan = state["autopilot"]["event_plan"]
+    trade_choice = next(
+        key
+        for key, value in plan["trade_plans"].items()
+        if value.get("action") == "MARKET" and value.get("side") == "LONG"
+    )
+    captured = {}
+
+    class FakeSDK:
+        def __init__(self, **kwargs):
+            captured["options"] = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def system_one(self, **kwargs):
+            captured.update(kwargs)
+
+            class Response:
+                def model_dump(self, **kwargs):
+                    return event_plan_answer(
+                        state,
+                        trade_choice,
+                        "TIMEOUT_30M",
+                        "EXPIRY_30M",
+                    )
+
+            return Response()
+
+    monkeypatch.setattr("typesafe_sdk.TypeSafeClient", FakeSDK)
+    result = JevClient("test-key-not-a-credential").decide(state)
+
+    sent = captured["state"]["autopilot"]
+    sent_plan = sent["event_plan"]
+    assert "targets" not in sent
+    assert "trade_plans" not in sent_plan
+    assert "wake_plans" not in sent_plan
+    assert "expiry_plans" not in sent_plan
+    assert sent_plan["reference_levels"] == plan["reference_levels"]
+    assert sent_plan["hard_max_risk_pct"] == plan["hard_max_risk_pct"]
+
+    questions = captured["questions"]
+    assert set(questions) == {
+        "event_trade_plan",
+        "event_wake_plan",
+        "event_expiry_plan",
+    }
+    trade_criteria = questions["event_trade_plan"]["criteria"]
+    assert set(trade_criteria) == set(plan["trade_plans"])
+    selected_criterion = trade_criteria[trade_choice]
+    assert set(selected_criterion) >= {"action", "side", "quantity", "oco"}
+    assert "description" not in selected_criterion
+    assert "estimated_notional_jpy" not in selected_criterion
+    assert set(questions["event_wake_plan"]["criteria"]) == set(plan["wake_plans"])
+    assert set(questions["event_expiry_plan"]["criteria"]) == set(plan["expiry_plans"])
+
+    # The broker/decode state remains complete even though the SDK payload is compact.
+    assert "targets" in state["autopilot"]
+    assert "trade_plans" in plan
+    assert "wake_plans" in plan
+    assert "expiry_plans" in plan
+    requested = START
+    available = START + timedelta(seconds=0.1)
+    event = {
+        "jev": result,
+        "state": state,
+        "requested_at": requested.isoformat(),
+        "available_at": available.isoformat(),
+    }
+    attach_target(event, state)
+    assert event["target_decision"]["event_plan"]["trade"] == plan["trade_plans"][trade_choice]
+
+    old_questions = question_specs(state)
+    old_questions["event_trade_plan"]["criteria"] = plan["trade_plans"]
+    old_questions["event_wake_plan"]["criteria"] = plan["wake_plans"]
+    old_questions["event_expiry_plan"]["criteria"] = plan["expiry_plans"]
+    old_size = len(json.dumps({"state": state, "questions": old_questions}))
+    new_size = len(json.dumps({"state": captured["state"], "questions": questions}))
+    assert new_size < old_size * 0.7
 
 
 def test_live_provider_shares_replay_state_and_fundamentals_toggle(tmp_path):
