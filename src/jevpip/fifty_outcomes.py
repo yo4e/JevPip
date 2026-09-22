@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
+import json
+from pathlib import Path
 from typing import Any
 
 ZERO = Decimal("0")
@@ -331,3 +333,218 @@ def summarize_outcomes(
             )
         }
     return result
+
+
+
+def _parsed_time(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def outcome_completed_at(record: dict[str, Any]) -> datetime | None:
+    """Return when both directional labels became known, or None if incomplete."""
+    if not record.get("complete"):
+        return None
+    times: list[datetime] = []
+    outcomes = record.get("outcomes")
+    if not isinstance(outcomes, dict):
+        return None
+    for side in ("LONG", "SHORT"):
+        row = outcomes.get(side)
+        if not isinstance(row, dict):
+            return None
+        raw = row.get("resolved_at") or row.get("observed_until")
+        parsed = _parsed_time(raw)
+        if parsed is None:
+            return None
+        times.append(parsed)
+    return max(times) if times else None
+
+
+def load_fifty_outcomes(
+    data_dir: Path,
+    *,
+    instrument_id: str,
+    as_of: datetime,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Load completed live outcome labels known by *as_of*, newest last.
+
+    Only canonical completed rows are loaded. "started" rows are intentionally
+    ignored, and future completions are excluded so a restart cannot leak a
+    later answer into an earlier decision/replay.
+    """
+    if as_of.tzinfo is None:
+        raise ValueError("as_of must be timezone-aware")
+    root = data_dir / "fifty_outcomes" / instrument_id
+    if not root.exists():
+        return []
+    rows: list[tuple[datetime, dict[str, Any]]] = []
+    for path in sorted(root.glob("*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            if record.get("kind") != "fifty_directional_outcome":
+                continue
+            completed_at = outcome_completed_at(record)
+            if completed_at is None or completed_at > as_of.astimezone(timezone.utc):
+                continue
+            rows.append((completed_at, record))
+    rows.sort(key=lambda item: item[0])
+    if limit > 0:
+        rows = rows[-limit:]
+    return [record for _, record in rows]
+
+
+def _compact_outcome(record: dict[str, Any]) -> dict[str, Any]:
+    outcomes = record.get("outcomes") if isinstance(record.get("outcomes"), dict) else {}
+    compact_outcomes: dict[str, Any] = {}
+    for side in ("LONG", "SHORT"):
+        row = outcomes.get(side) if isinstance(outcomes, dict) else None
+        if not isinstance(row, dict):
+            continue
+        compact_outcomes[side] = {
+            key: row.get(key)
+            for key in (
+                "status",
+                "resolved_at",
+                "duration_seconds",
+                "unresolved_reason",
+                "observed_seconds",
+            )
+            if row.get(key) is not None
+        }
+    prediction = record.get("prediction")
+    confidence = None
+    target_position = None
+    if isinstance(prediction, dict):
+        confidence = prediction.get("confidence")
+        raw_target = prediction.get("target_position")
+        if isinstance(raw_target, dict):
+            target_position = {
+                key: raw_target.get(key)
+                for key in ("choice", "probability", "confidence", "reason")
+                if raw_target.get(key) is not None
+            }
+    race = None
+    races = record.get("races")
+    if isinstance(races, dict):
+        up = races.get("UP")
+        if isinstance(up, dict):
+            target = up.get("target")
+            if isinstance(target, dict):
+                race = {
+                    "target_value": target.get("display_value"),
+                    "target_label": target.get("display_label"),
+                }
+    return {
+        "decision_id": record.get("decision_id"),
+        "choice": record.get("choice"),
+        "chosen_side": record.get("chosen_side"),
+        "basis_market_timestamp": record.get("basis_market_timestamp"),
+        "entry_at": record.get("entry_at"),
+        "completed_at": (
+            None
+            if outcome_completed_at(record) is None
+            else outcome_completed_at(record).isoformat()
+        ),
+        "confidence": confidence,
+        "target_position_answer": target_position,
+        "race": race,
+        "outcomes": compact_outcomes,
+    }
+
+
+def _confidence_band(value: object) -> str | None:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= confidence <= 1:
+        return None
+    lower = min(0.9, int(confidence * 10) / 10)
+    upper = 1.0 if lower >= 0.9 else lower + 0.1
+    return f"{lower:.1f}-{upper:.1f}"
+
+
+def build_fifty_outcome_context(
+    records: list[dict[str, Any]],
+    *,
+    as_of: datetime,
+    recent_limit: int = 20,
+) -> dict[str, Any]:
+    """Compact, causal answer-key context suitable for the next Jev request."""
+    if as_of.tzinfo is None:
+        raise ValueError("as_of must be timezone-aware")
+    cutoff = as_of.astimezone(timezone.utc)
+    eligible = [
+        record
+        for record in records
+        if (completed := outcome_completed_at(record)) is not None
+        and completed <= cutoff
+    ]
+    eligible.sort(key=lambda record: outcome_completed_at(record) or datetime.min.replace(tzinfo=timezone.utc))
+    aggregate = summarize_outcomes(eligible)
+
+    bands: dict[str, dict[str, Any]] = {}
+    for record in eligible:
+        prediction = record.get("prediction")
+        confidence = prediction.get("confidence") if isinstance(prediction, dict) else None
+        band = _confidence_band(confidence)
+        side = str(record.get("chosen_side") or "")
+        outcomes = record.get("outcomes")
+        if band is None or side not in {"LONG", "SHORT"} or not isinstance(outcomes, dict):
+            continue
+        row = outcomes.get(side)
+        if not isinstance(row, dict) or row.get("status") not in {
+            "take_profit_first",
+            "stop_loss_first",
+        }:
+            continue
+        bucket = bands.setdefault(
+            band,
+            {"resolved": 0, "take_profit_first": 0, "tp_first_rate": None},
+        )
+        bucket["resolved"] += 1
+        if row["status"] == "take_profit_first":
+            bucket["take_profit_first"] += 1
+    for bucket in bands.values():
+        bucket["tp_first_rate"] = (
+            None
+            if not bucket["resolved"]
+            else bucket["take_profit_first"] / bucket["resolved"]
+        )
+
+    recent = eligible[-max(0, recent_limit):] if recent_limit else []
+    return {
+        "schema_version": 1,
+        "semantics": "past_completed_independent_counterfactual_net_tp_vs_sl",
+        "as_of": cutoff.isoformat(),
+        "future_results_excluded": True,
+        "sample_count": len(eligible),
+        "aggregate": aggregate,
+        "confidence_bands": bands,
+        "recent": [_compact_outcome(record) for record in recent],
+        "guidance": (
+            "These are past completed answer keys only. Use them as empirical context, "
+            "not as mandatory rules. Choice probabilities are relative preferences and "
+            "must not be treated as calibrated win probabilities."
+        ),
+    }
