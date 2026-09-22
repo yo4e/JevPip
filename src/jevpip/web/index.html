@@ -1276,7 +1276,8 @@ function jevReplayBasePayload(){
     date:$("jbt-date").value,
     start_time:$("jbt-start").value||null,
     duration_seconds:Number($("jbt-duration").value||60),
-    cadence_seconds:Number($("jbt-cadence").value||1)
+    cadence_seconds:Number($("jbt-cadence").value||1),
+    event_driven:$("autopilot").checked&&$("auto-style").value==="event"
   }
 }
 function formatTokenEstimate(x){
@@ -1297,7 +1298,8 @@ async function previewJevReplay(silent=false){
     const t=r.token_estimate||{},inputEstimate=formatTokenEstimate(t.estimated_billable_input_tokens),outputEstimate=formatTokenEstimate(t.estimated_output_tokens),costEstimate=formatUsd(t.estimated_cost_usd);
     const range=new Date(r.selected_start).toISOString().slice(11,19)+"〜"+new Date(r.selected_end).toISOString().slice(11,19)+" UTC";
     const sourceLabel=r.source_kind==="raw_ticks"?"保存済みraw tick":"GMO historical 1分足";
-    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>データ: <strong>${esc(sourceLabel)}</strong> / 対象 ${esc(range)} / 市場点 ${esc(r.selected_ticks)}件 / 判断間隔 ${esc(r.cadence_seconds)}秒 / データ間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>${esc(r.source_note||"")}<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
+    const decisionLabel=r.event_driven?"イベント駆動（trigger成立時のみ再判断）":"判断間隔 "+r.cadence_seconds+"秒";
+    $("jbt-estimate").innerHTML=`<strong>⚠ Jev APIを実際に呼びます。</strong><br>データ: <strong>${esc(sourceLabel)}</strong> / 対象 ${esc(range)} / 市場点 ${esc(r.selected_ticks)}件 / ${esc(decisionLabel)} / データ間隔 中央値 ${Number(r.median_tick_interval_seconds||0).toFixed(1)}秒・最大 ${Number(r.max_tick_gap_seconds||0).toFixed(1)}秒<br>${esc(r.source_note||"")}<br>最大Jev call数 <strong>${Number(r.planned_max_calls).toLocaleString("ja-JP")}</strong><br>課金対象input目安 <strong>${esc(inputEstimate)}</strong> / output目安 ${esc(outputEstimate)}（無料） / 概算API cost <strong>${esc(costEstimate)}</strong>${t.reported_calls?"（直近usage "+esc(t.reported_calls)+" calls平均。モード・state量の変更で増減）":""}<br>現在の公開価格: input ${Number(t.input_price_usd_per_million_tokens??0.042).toFixed(3)} / 1M tokens、output $0。1run上限 ${Number(r.max_calls_limit).toLocaleString("ja-JP")} calls。${r.within_call_limit?" 実行可能です。":" この設定は上限超過のため実行できません。"}`;
     $("jbt-run").disabled=!r.within_call_limit||!state.config?.typesafe_api_key_configured;
     return r;
   }catch(e){
@@ -1318,7 +1320,7 @@ async function runJevReplay(){
     "課金対象input目安: "+inputEstimate+"\n"+
     "output目安: "+outputEstimate+"（無料）\n"+
     "概算API cost: "+costEstimate+"\n"+
-    "判断間隔: "+preview.cadence_seconds+"秒\n\n"+
+    (preview.event_driven?"判断方式: イベント駆動\n":"判断間隔: "+preview.cadence_seconds+"秒\n")+"\n"+
     (preview.source_note||"")+"\n\n"+
     "この見積りは直近usage平均と現在の公開価格による概算で、実際の請求額を保証しません。\n実行しますか？"
   );
@@ -1346,7 +1348,8 @@ async function runJevReplay(){
       const shortRate=outcome.directions?.SHORT?.resolved?pct(outcome.directions.SHORT.tp_first_rate):"-";
       outcomeText=" Fifty+方向別答え合わせ: 選択方向TP先着 "+chosen+" ("+Number(outcome.chosen_tp_first||0)+"/"+Number(outcome.chosen_resolved||0)+") / LONG "+longRate+" / SHORT "+shortRate+" / 両方向SL "+Number(outcome.both_stop_loss_first||0)+"件。Choice確率はこの実測率とは別物です。";
     }
-    $("jbt-result-note").textContent=(r.data_source_note||"")+outcomeText+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
+    const truncationNote=r.completed_full_window===false?"⚠ call予算到達で途中打ち切りです。全区間の戦略成績として扱わないでください。 ":"";
+    $("jbt-result-note").textContent=truncationNote+(r.data_source_note||"")+outcomeText+" usageはTypeSafe APIレスポンスの実測値です。現在の公開価格ではinputのみ課金対象、outputは無料。概算costはinput usage × $0.042 / 1M tokensで計算します。TypeSafe側コンソールの請求・Usage表示そのものをJevPipが確認した値ではありません。";
     $("jbt-output").textContent="保存先: "+r.output;
     $("jbt-diagnostics").textContent=diagnosticsText(s);
     renderExecutions("jbt-executions",s.trades||[]);
