@@ -14,6 +14,12 @@ from uuid import uuid4
 from jevpip.backtest.kline import load_historical_ticks
 from jevpip.broker.paper import PaperBroker, PaperConfig
 from jevpip.broker.autopilot import AutopilotBroker, make_paper_broker
+from jevpip.fifty_outcomes import (
+    finalize_outcome_record,
+    new_outcome_record,
+    summarize_outcomes,
+    update_outcome_record,
+)
 from jevpip.jev.autopilot import attach_target
 from jevpip.market.buffer import TickBuffer
 from jevpip.market.features import build_features
@@ -616,6 +622,57 @@ def run_jev_historical_replay(
                           "trader_history": history_meta,
                           "plan": {**asdict(plan), "source_path": None if plan.source_path is None else str(plan.source_path)}})
     pending_decision: tuple[datetime, dict[str, Any]] | None = None
+    active_fifty_outcomes: list[dict[str, Any]] = []
+    completed_fifty_outcomes: list[dict[str, Any]] = []
+
+    def start_fifty_outcome(
+        decision_event: dict[str, Any],
+        executions: list[dict[str, Any]],
+        *,
+        entry_at: datetime,
+    ) -> None:
+        if not (
+            isinstance(broker, AutopilotBroker)
+            and broker.config.autopilot_style == "fifty"
+            and any(row.get("action") == "OPEN" for row in executions)
+        ):
+            return
+        target = decision_event.get("target_decision")
+        if not isinstance(target, dict):
+            return
+        record = new_outcome_record(
+            decision=target,
+            races=broker.fifty_directional_races(),
+            entry_at=entry_at,
+            source_kind=source_kind,
+        )
+        active_fifty_outcomes.append(record)
+        append_jsonl(
+            output,
+            {
+                "kind": "fifty_directional_outcome_started",
+                **{key: value for key, value in record.items() if key != "kind"},
+            },
+        )
+
+    def update_fifty_outcomes(tick: MarketTick) -> None:
+        if not active_fifty_outcomes:
+            return
+        completed: list[dict[str, Any]] = []
+        for record in active_fifty_outcomes:
+            if update_outcome_record(
+                record,
+                at=tick.market_timestamp,
+                bid=tick.bid,
+                ask=tick.ask,
+                market_status=tick.status,
+            ):
+                completed.append(record)
+        for record in completed:
+            active_fifty_outcomes.remove(record)
+            completed_fifty_outcomes.append(record)
+            append_jsonl(output, record)
+
     next_request_at = start_at
     cadence = timedelta(seconds=cadence_seconds)
     calls = 0
@@ -673,8 +730,14 @@ def run_jev_historical_replay(
                 # available_at using the freshest quote already observed.
                 # Do this before consuming the next tick so replay cannot peek
                 # at a price that arrived after the answer became available.
-                for execution in broker.execute_fifty_pending(available_at):
+                executions = broker.execute_fifty_pending(available_at)
+                for execution in executions:
                     append_jsonl(output, execution)
+                start_fifty_outcome(
+                    decision_event,
+                    executions,
+                    entry_at=available_at,
+                )
                 if broker.last_decision_trace is not None:
                     append_jsonl(
                         output,
@@ -685,6 +748,7 @@ def run_jev_historical_replay(
                     )
             pending_decision = None
 
+        update_fifty_outcomes(tick)
         generated = broker.on_tick(tick.as_json_dict(), allow_entry=(not config.autopilot_enabled or tick.market_timestamp < final_market_at))
         for execution in generated:
             append_jsonl(output, execution)
@@ -774,8 +838,14 @@ def run_jev_historical_replay(
             isinstance(broker, AutopilotBroker)
             and broker.config.autopilot_style == "fifty"
         ):
-            for execution in broker.execute_fifty_pending(available_at):
+            executions = broker.execute_fifty_pending(available_at)
+            for execution in executions:
                 append_jsonl(output, execution)
+            start_fifty_outcome(
+                decision_event,
+                executions,
+                entry_at=available_at,
+            )
 
     final_trade = broker.finalize(
         last_tick.as_json_dict(),
@@ -790,6 +860,16 @@ def run_jev_historical_replay(
             },
         )
 
+    for record in list(active_fifty_outcomes):
+        finalize_outcome_record(
+            record,
+            at=last_tick.market_timestamp,
+            reason="end_of_sample",
+        )
+        active_fifty_outcomes.remove(record)
+        completed_fifty_outcomes.append(record)
+        append_jsonl(output, record)
+
     summary = _summary(
         broker,
         planned_max_calls=plan.planned_max_calls,
@@ -798,6 +878,11 @@ def run_jev_historical_replay(
         usages=usages,
         latencies=latencies,
     )
+    if config.autopilot_enabled and config.autopilot_style == "fifty":
+        summary["fifty_directional_outcomes"] = summarize_outcomes(
+            completed_fifty_outcomes,
+            actual_summary=summary,
+        )
     result = {
         "kind": "jev_historical_replay_summary",
         "run_id": run_id,
