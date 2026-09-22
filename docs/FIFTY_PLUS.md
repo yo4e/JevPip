@@ -10,6 +10,14 @@
 
 Fifty+ は、この仮説をできるだけ単純な形で検証します。
 
+### 現在の研究上の位置づけ
+
+JevPipでは、Fifty+を現在の**主なdirection-source比較実験**として扱います。Jev版だけのPnLを見るのではなく、同じexecution/accounting条件で coin flip random control と比較することを優先します。
+
+コイントスは方向を完全ランダムにしても、spread / fee / slippage / entry timingの影響を受けるため、実現PnLやWIN率が自動的に損益0・50%へ収束するとは限りません。したがって評価では、単純な「50%を超えたか」に加えて、**同じmarket path・同じコスト条件のrandom control分布をどれだけ上回ったか**を見ます。
+
+これはFifty+の収益性や優位性が確認済みという意味ではありません。十分な試行数、複数期間・銘柄、複数seedのrandom controlでの検証が必要です。
+
 通常の自動売買のように「今は取引しない」「ポジション量を増減する」「コストが高いので見送る」といった判断をAIへ任せません。AIの仕事は、**次に上側と下側のどちらの対称境界へ先に到達するかを選ぶことだけ**です。
 
 ## 基本ルール
@@ -21,7 +29,7 @@ Fifty+ は、この仮説をできるだけ単純な形で検証します。
 5. TPまたはSLの一方へ到達したらその境界で決済し、もう一方をキャンセルする。設定した再判断待機時間だけFLATで待つ。
 6. 待機後に次のUP / DOWNを決め、以後これを繰り返す。
 
-つまり、**1ポジションずつ持ち、ラウンド間には短い待機を入れられる**ストラテジーです。JevPipの初期値は60秒です。
+つまり、**1ポジションずつ持ち、ラウンド間には待機を入れられる**ストラテジーです。JevPipの初期値は600秒（10分）です。急変直後の往復ビンタを減らすため、初期値は短期再entryより観測の安定を優先しています。
 
 Fifty+ には、方向源に「FLAT」「WAIT」「KEEP」「COST_TOO_HIGH」のような棄権用の選択肢を持たせません。これは積極的に取引させるためだけではなく、**方向判定そのものを同じ執行条件で比較しやすくするため**です。Jevを方向源にした場合は、AIの方向判定が50%を超える優位性を持つかを主に検証します。
 
@@ -91,22 +99,22 @@ Fifty+ではJevに次を判断させません。
 
 方向の選び方そのものはJevへ固定ルールとして教えません。その代わり、一般的な短期トレーダーが参照できる程度の情報を広く渡し、**どの情報を重視し、どれをノイズとして無視するかもJev自身へ任せます**。
 
-live Jev Fifty+では、判断時点で利用可能な範囲から主に次を渡します。
+live Jev Fifty+では、broker内部ではraw tickと長いmulti-timeframe履歴を保持しつつ、TypeSafeへ送る判断contextはtoken budgetのためboundedにしています。主に次を渡します。
 
 - 現在のbid / ask / mid / spread
-- 直近40 tick
-- 1分 / 5分 / 15分 / 1時間のmulti-timeframe OHLC
+- 1分 / 5分 / 15分 / 1時間それぞれの最新16本の確定OHLC + current bar
 - 各時間足のSMA20 / SMA50 / SMA200、RSI14、ATR14
 - 直近20本の高値・安値とrange内の現在位置
 - UTC / 東京 / ロンドン / ニューヨークの現在時刻と曜日
 - 現在position
 - balance / equity、確定・含み損益、fees / slippage
 - closed trades、wins / losses、win rate、profit factor、平均損益、最大DD
-- recent executions、exit reason集計、PnL breakdown
-- broker側のcost model / constraints
-- 「公式イベントを見る」がONなら、既存の公式event context
+- recent executionsは直近10件
+- exit reason集計、PnL breakdown、broker側のcost model / constraints
+- Fifty+固有の勝負幅、LONG / SHORT directional race、outcome history / confidence-band集計
+- 「公式イベントを見る」がONなら、観測済みの公式event context
 
-multi-timeframe履歴は起動時にPublic historical KLineからwarmupし、その後はlive tickで更新します。SMA200等の計算用には最大240本の確定barを保持しますが、Jevへ生のOHLCとして渡す本数は1分60本、5分48本、15分32本、1時間24本です。
+raw tick tapeと、timeframesと重複するlegacy 1分足リストはFifty+のTypeSafe payloadへは送りません。tickはbroker側の監視・bar更新・paper executionには引き続き使います。multi-timeframe履歴は起動時にPublic historical KLineからwarmupし、指標計算用には最大240本の確定barを内部保持します。
 
 未確定の将来bar、判断時点より後でしか知り得ない値、API keyなどのcredentialは渡しません。テクニカル指標や過去損益は**観測情報**であり、「MAが上ならLONG」「連敗したら反転」のような固定ルールはコード側から課しません。
 
