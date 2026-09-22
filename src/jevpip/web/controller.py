@@ -32,6 +32,7 @@ from jevpip.gmo.private_rest import GMOPrivateReadClient
 from jevpip.gmo.public_rest import fetch_public_ticker
 from jevpip.fifty_outcomes import (
     finalize_outcome_record,
+    load_fifty_outcomes,
     new_outcome_record,
     summarize_outcomes,
     update_outcome_record,
@@ -132,6 +133,8 @@ class UIController:
         self._observer_starting = True
         try:
             instrument = get_instrument(instrument_id)
+            self._fifty_outcomes_active = []
+            self._fifty_outcomes_recent.clear()
             await self.refresh_external_context(instrument.id)
 
             jev_client = None
@@ -187,6 +190,19 @@ class UIController:
                         self._trader_history_seed,
                         as_of=warmup_at,
                     )
+                    if config.autopilot_style == "fifty":
+                        historical_outcomes = load_fifty_outcomes(
+                            self.settings.data_dir,
+                            instrument_id=instrument.id,
+                            as_of=warmup_at,
+                            limit=500,
+                        )
+                        self._paper.seed_fifty_outcome_history(
+                            historical_outcomes,
+                            as_of=warmup_at,
+                        )
+                        for record in reversed(historical_outcomes[-100:]):
+                            self._fifty_outcomes_recent.append(record)
                 if (
                     with_jev
                     and config.strategy_enabled
@@ -230,8 +246,6 @@ class UIController:
                 }
             )
             self._last_decision_trace = None
-            self._fifty_outcomes_active = []
-            self._fifty_outcomes_recent.clear()
             self._last_error = None
             self._latest_market = None
             self._latest_decision = None
@@ -315,6 +329,8 @@ class UIController:
     def _persist_fifty_outcome(self, record: dict[str, Any]) -> None:
         append_jsonl(self._fifty_outcome_path(record), record)
         self._fifty_outcomes_recent.appendleft(record)
+        if isinstance(self._paper, AutopilotBroker):
+            self._paper.remember_fifty_outcome(record)
 
     def _start_live_fifty_outcome(
         self,
@@ -542,14 +558,27 @@ class UIController:
             raise RuntimeError("デモ口座は有効になっていません。")
         self._finalize_live_fifty_outcomes("paper_reset")
         self._paper = make_paper_broker(self._paper_config)
-        if (
-            isinstance(self._paper, AutopilotBroker)
-            and self._trader_history_seed is not None
-        ):
-            self._paper.seed_trader_history(
-                self._trader_history_seed,
-                as_of=datetime.now(timezone.utc),
-            )
+        if isinstance(self._paper, AutopilotBroker):
+            reset_at = datetime.now(timezone.utc)
+            if self._trader_history_seed is not None:
+                self._paper.seed_trader_history(
+                    self._trader_history_seed,
+                    as_of=reset_at,
+                )
+            if self._paper.config.autopilot_style == "fifty":
+                historical_outcomes = load_fifty_outcomes(
+                    self.settings.data_dir,
+                    instrument_id=self._instrument_id,
+                    as_of=reset_at,
+                    limit=500,
+                )
+                self._paper.seed_fifty_outcome_history(
+                    historical_outcomes,
+                    as_of=reset_at,
+                )
+                self._fifty_outcomes_recent.clear()
+                for record in reversed(historical_outcomes[-100:]):
+                    self._fifty_outcomes_recent.append(record)
         return self._paper.snapshot()
 
     def snapshot(self) -> dict[str, Any]:
