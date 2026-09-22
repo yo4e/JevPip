@@ -517,6 +517,13 @@ def test_strategy_backtest_api(monkeypatch):
         assert payload["baselines"]["buy_and_hold"]["net_pnl"] == 7.0
 
 
+def test_spiritual_backtest_request_defaults_to_ten_minute_wait():
+    from jevpip.web.schemas import SpiritualBacktestRequest
+
+    request = SpiritualBacktestRequest(date="20260920")
+    assert request.reentry_seconds == 600
+
+
 def test_spiritual_backtest_api(monkeypatch):
     from jevpip.web.app import controller
 
