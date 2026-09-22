@@ -81,7 +81,7 @@ APIエラーやmalformed responseでFLATを合成しない。保有は維持し�
 
 Jev BT開始時もliveと同じ `fetch_trader_history(as_of=start_at)` → `seed_trader_history()` を使い、開始時点までに確定済みのPublic KLineだけで `trader_context_v1` の1m / 5m / 15m / 1hをwarmupする。live起動直後と揃えるため、window前のraw tickは `recent_ticks` や短期feature bufferへ注入しない。判断開始後に実際に到着したreplay tickだけでそれらを育て、開始時刻より後に閉じるbarも先取りしない。
 
-`data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。 Fifty+ではさらに、実entryごとにLONG / SHORT双方のcounterfactualなnet TP-vs-SL到達結果・決着時間を同じraw tick pathから保存し、選択方向TP先着率と方向別TP先着率を集計する。未決着は別分類にし、Choice確率を実測勝率として扱わない。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
+`data/jev_replays/<instrument>/` に設定、raw source path/window、全request state、モデル応答・usage・実測latency、判断trace、全約定、集計をJSONLで保存する。 Fifty+ではさらに、実entryごとにLONG / SHORT双方のcounterfactualなnet TP-vs-SL到達結果・決着時間を同じraw tick pathから保存し、選択方向TP先着率と方向別TP先着率を集計する。未決着は別分類にし、Choice確率を実測勝率として扱わない。 完了済みの答え合わせは次のFifty+ requestの `fifty_plus.outcome_history` に入り、直近20件、aggregate、confidence bandをJevが参照できる。live再起動時とJev BT開始時には `data/fifty_outcomes/<instrument>/` から、その開始時刻までに確定済みの記録だけを最大500件seedする。replay中に新しく完了した答え合わせも、その後のcallから利用可能にする。画面は直近100約定。liveは既存 `decisions/` と `decision_traces/` に保存し、反転の両約定もtraceに残す。
 
 ## 検証と残る課題
 
