@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+from datetime import date as calendar_date
 import io
 import json
 from statistics import fmean
@@ -62,6 +63,7 @@ class ResearchService:
         format: ExportFormat,
     ) -> tuple[str, str, str]:
         get_instrument(instrument_id)
+        _validate_export_date(date)
         directory = self.settings.data_dir / _EXPORT_DIRECTORIES[dataset] / instrument_id
         path = directory / f"{date}.jsonl"
         if not path.is_file():
@@ -74,6 +76,8 @@ class ResearchService:
 
         rows = [json.loads(line) for line in text.splitlines() if line.strip()]
         flattened = [_flatten_export_row(row) for row in rows]
+        if not flattened:
+            return "", "text/csv; charset=utf-8", filename
         fieldnames = sorted({key for row in flattened for key in row})
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
@@ -182,6 +186,15 @@ class ResearchService:
             "output": str(output),
             "summary": summarize_statistical_replay(rows),
         }
+
+
+def _validate_export_date(value: str) -> None:
+    try:
+        parsed = calendar_date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("export date は YYYY-MM-DD 形式で指定してください。") from exc
+    if parsed.isoformat() != value:
+        raise ValueError("export date は YYYY-MM-DD 形式で指定してください。")
 
 
 def _flatten_export_row(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
