@@ -2,6 +2,16 @@
 
 JevPip can export selected local research datasets without changing paper or live-trading state.
 
+## UI
+
+Open the local export page:
+
+```text
+http://127.0.0.1:8765/api/export/ui
+```
+
+Choose the dataset, instrument and date, then download CSV or JSONL.
+
 ## Supported datasets
 
 - `decision_traces`: live paper decision trace JSONL under `data/decision_traces/<instrument>/YYYY-MM-DD.jsonl`
@@ -12,7 +22,7 @@ JevPip can export selected local research datasets without changing paper or liv
 - **JSONL** preserves the stored records as-is and is the preferred lossless format.
 - **CSV** flattens nested dictionaries using dotted column names. Lists are kept as compact JSON strings in a cell.
 
-The export endpoint is read-only:
+The export endpoints are read-only:
 
 ```text
 GET /api/export/dates?dataset=decision_traces&instrument_id=USD_JPY
