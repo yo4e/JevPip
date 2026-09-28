@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+from datetime import date as calendar_date
+import io
+import json
 from statistics import fmean
-from typing import Any
+from typing import Any, Literal
 
 from jevpip.backtest.kline import run_statistical_replay
 from jevpip.backtest.spiritual import SpiritualBacktestConfig, run_spiritual_backtest
@@ -10,6 +14,14 @@ from jevpip.backtest.strategy import StrategyBacktestConfig, run_strategy_backte
 from jevpip.broker.comparison import compare_raw_file
 from jevpip.config import Settings
 from jevpip.instruments import get_instrument
+
+
+ExportDataset = Literal["decision_traces", "fifty_outcomes"]
+ExportFormat = Literal["csv", "jsonl"]
+_EXPORT_DIRECTORIES: dict[ExportDataset, str] = {
+    "decision_traces": "decision_traces",
+    "fifty_outcomes": "fifty_outcomes",
+}
 
 
 class ResearchService:
@@ -31,6 +43,47 @@ class ResearchService:
             ),
             reverse=True,
         )
+
+    def export_dates(self, dataset: ExportDataset, instrument_id: str) -> list[str]:
+        get_instrument(instrument_id)
+        directory = self.settings.data_dir / _EXPORT_DIRECTORIES[dataset] / instrument_id
+        if not directory.exists():
+            return []
+        return sorted(
+            (path.stem for path in directory.glob("*.jsonl") if path.is_file()),
+            reverse=True,
+        )
+
+    def export_research_data(
+        self,
+        *,
+        dataset: ExportDataset,
+        instrument_id: str,
+        date: str,
+        format: ExportFormat,
+    ) -> tuple[str, str, str]:
+        get_instrument(instrument_id)
+        _validate_export_date(date)
+        directory = self.settings.data_dir / _EXPORT_DIRECTORIES[dataset] / instrument_id
+        path = directory / f"{date}.jsonl"
+        if not path.is_file():
+            raise ValueError(f"export data がありません: {dataset} / {instrument_id} / {date}")
+
+        text = path.read_text(encoding="utf-8")
+        filename = f"jevpip-{dataset}-{instrument_id}-{date}.{format}"
+        if format == "jsonl":
+            return text, "application/x-ndjson; charset=utf-8", filename
+
+        rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+        flattened = [_flatten_export_row(row) for row in rows]
+        if not flattened:
+            return "", "text/csv; charset=utf-8", filename
+        fieldnames = sorted({key for row in flattened for key in row})
+        output = io.StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(flattened)
+        return output.getvalue(), "text/csv; charset=utf-8", filename
 
     async def compare_raw_date(
         self,
@@ -133,6 +186,30 @@ class ResearchService:
             "output": str(output),
             "summary": summarize_statistical_replay(rows),
         }
+
+
+def _validate_export_date(value: str) -> None:
+    try:
+        parsed = calendar_date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("export date は YYYY-MM-DD 形式で指定してください。") from exc
+    if parsed.isoformat() != value:
+        raise ValueError("export date は YYYY-MM-DD 形式で指定してください。")
+
+
+def _flatten_export_row(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    flat: dict[str, Any] = {}
+    for key, item in value.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(item, dict):
+            flat.update(_flatten_export_row(item, name))
+        elif isinstance(item, (list, tuple)):
+            flat[name] = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+        elif item is None or isinstance(item, (str, int, float, bool)):
+            flat[name] = item
+        else:
+            flat[name] = str(item)
+    return flat
 
 
 def summarize_statistical_replay(rows: list[dict[str, Any]]) -> dict[str, Any]:

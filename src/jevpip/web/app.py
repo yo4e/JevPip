@@ -17,6 +17,8 @@ from jevpip.config import (
 from jevpip.instruments import get_instrument, public_instruments
 from jevpip.signals import SignalPolicy
 from jevpip.web.controller import UIController
+from jevpip.web.export_api import build_export_router
+from jevpip.web.research_service import ResearchService
 from jevpip.web.schemas import (
     BacktestRequest,
     CredentialSettingsInput,
@@ -34,6 +36,7 @@ from jevpip.web.schemas import (
 
 settings = Settings()
 controller = UIController(settings)
+research_service = ResearchService(settings)
 
 
 @asynccontextmanager
@@ -47,6 +50,7 @@ app = FastAPI(
     description="GMOのFX / 暗号資産Public API × TypeSafe Jev のローカル研究UI",
     lifespan=lifespan,
 )
+app.include_router(build_export_router(research_service))
 
 
 @app.get("/", response_class=HTMLResponse)
