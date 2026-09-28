@@ -6,6 +6,8 @@ import io
 import json
 from pathlib import Path
 
+import pytest
+
 from jevpip.config import Settings
 from jevpip.web import research_service as module
 from jevpip.web.research_service import ResearchService
@@ -83,7 +85,7 @@ def test_export_csv_flattens_nested_records_and_preserves_unicode(tmp_path: Path
     assert filename == "jevpip-fifty_outcomes-USD_JPY-2026-09-28.csv"
 
 
-def test_export_csv_empty_jsonl_returns_headerless_empty_file(tmp_path: Path):
+def test_export_csv_empty_jsonl_returns_empty_file(tmp_path: Path):
     directory = tmp_path / "decision_traces" / "USD_JPY"
     directory.mkdir(parents=True)
     (directory / "2026-09-28.jsonl").write_text("", encoding="utf-8")
@@ -95,7 +97,18 @@ def test_export_csv_empty_jsonl_returns_headerless_empty_file(tmp_path: Path):
         date="2026-09-28",
         format="csv",
     )
-    assert content == "\r\n"
+    assert content == ""
+
+
+def test_export_rejects_non_iso_date_before_path_resolution(tmp_path: Path):
+    service = ResearchService(Settings(data_dir=tmp_path))
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        service.export_research_data(
+            dataset="decision_traces",
+            instrument_id="USD_JPY",
+            date="../../secrets",
+            format="jsonl",
+        )
 
 
 def test_statistical_replay_uses_data_dir_and_explicit_analysis_kind(
