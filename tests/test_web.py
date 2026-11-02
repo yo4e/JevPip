@@ -1088,6 +1088,36 @@ def test_credentials_api_saves_secrets_without_returning_them(tmp_path, monkeypa
     assert controller.settings is settings
 
 
+def test_credentials_api_save_failure_preserves_shared_settings(tmp_path, monkeypatch):
+    import jevpip.config as config
+    from jevpip.web.app import controller, settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "typesafe_api_key", "fixture-old-typesafe")
+    monkeypatch.setattr(settings, "gmo_fx_api_key", "fixture-old-gmo")
+    monkeypatch.setattr(settings, "gmo_fx_api_secret", "fixture-old-secret")
+    before = settings.model_dump()
+
+    def fail_save(path, updates):
+        raise PermissionError("fixture save failure")
+
+    monkeypatch.setattr(config, "_write_env_values", fail_save)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/config/credentials",
+            json={"clear_typesafe_api_key": True, "clear_gmo_private_credentials": True},
+        )
+        assert response.status_code == 500
+        payload = client.get("/api/config").json()
+
+    assert payload["typesafe_api_key_configured"] is True
+    assert payload["gmo_private_credentials_configured"] is True
+    assert settings.model_dump() == before
+    assert controller.settings is settings
+    assert not (tmp_path / ".env").exists()
+    assert "fixture-old-" not in response.text
+
+
 def test_controller_tracks_typesafe_reported_token_usage():
     import asyncio
 
