@@ -73,12 +73,12 @@ def _write_env_values(path: Path, updates: dict[str, str | None]) -> None:
             "\n".join(output) + ("\n" if output else ""),
             encoding="utf-8",
         )
+        if os.name == "posix":
+            tmp_path.chmod(0o600)
         os.replace(tmp_path, path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-    if os.name == "posix":
-        path.chmod(0o600)
 
 
 def update_local_credentials(
@@ -94,6 +94,7 @@ def update_local_credentials(
     """Persist local credentials to .env and update the live Settings object.
 
     Missing values mean "leave unchanged". Explicit clear flags remove stored values.
+    Validate and persist all changes before publishing them to Settings.
     Secret values are never returned by this helper.
     """
 
@@ -101,29 +102,25 @@ def update_local_credentials(
 
     if clear_typesafe_api_key:
         updates["TYPESAFE_API_KEY"] = None
-        settings.typesafe_api_key = None
     elif typesafe_api_key is not None:
         cleaned = _clean_secret(typesafe_api_key, label="TYPESAFE_API_KEY")
         updates["TYPESAFE_API_KEY"] = cleaned
-        settings.typesafe_api_key = cleaned
 
     if clear_gmo_private_credentials:
         updates["GMO_FX_API_KEY"] = None
         updates["GMO_FX_API_SECRET"] = None
-        settings.gmo_fx_api_key = None
-        settings.gmo_fx_api_secret = None
     else:
         if gmo_fx_api_key is not None:
             cleaned = _clean_secret(gmo_fx_api_key, label="GMO_FX_API_KEY")
             updates["GMO_FX_API_KEY"] = cleaned
-            settings.gmo_fx_api_key = cleaned
         if gmo_fx_api_secret is not None:
             cleaned = _clean_secret(gmo_fx_api_secret, label="GMO_FX_API_SECRET")
             updates["GMO_FX_API_SECRET"] = cleaned
-            settings.gmo_fx_api_secret = cleaned
 
     if updates:
         _write_env_values(env_path or Path(".env"), updates)
+        for key, value in updates.items():
+            setattr(settings, key.lower(), value)
 
 
 def load_profile(name: str, config_path: Path | None = None) -> dict[str, Any]:
